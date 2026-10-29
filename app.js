@@ -159,6 +159,8 @@ function payState(b) {
 }
 const orario = (b) => (b.giornata_intera ? "Tutto il giorno" : `${b.inizio}–${b.fine}`);
 const isRecurring = (b) => (b.gcal_id || "").includes("|");
+// eventi nati sul Google Calendar della sala: titolo, data, orario e stato si cambiano dal calendario
+const fromCalendar = (b) => !!b && (b.origine === "calendario" || isRecurring(b));
 function ago(ts) {
   if (!ts) return "";
   const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
@@ -509,10 +511,13 @@ function openBooking(b, date, prefill) {
   $("#b-giornata").checked = !!v.giornata_intera;
   syncAllDay();
   $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
-    : isRecurring(b) ? "Evento ricorrente di Google Calendar: titolo, data e orario si modificano dal calendario; qui puoi gestire prezzo, turni e note."
+    : fromCalendar(b) ? "Evento del Google Calendar della sala: titolo, data, orario e stato si cambiano dal calendario. Qui gestisci prezzo, incassi, turni e note."
     : b.gcal_id ? "Sincronizzata con il Google Calendar della sala: le modifiche arrivano anche lì entro 15 minuti." : "";
+  const lock = fromCalendar(b);
+  for (const k of ["titolo", "data", "stato"]) $("#b-" + k).disabled = lock;
+  $("#b-giornata").disabled = lock;
   $("#b-error").innerHTML = "";
-  renderDeleteArea("#b-delete-area", !!b && !isRecurring(b), async () => { await run(sb.from("bookings").delete().eq("id", b.id), "Prenotazione eliminata"); dlgB.close(); });
+  renderDeleteArea("#b-delete-area", !!b && !fromCalendar(b), async () => { await run(sb.from("bookings").delete().eq("id", b.id), "Prenotazione eliminata"); dlgB.close(); });
   checkAvail();
   dlgB.showModal();
 }
@@ -574,7 +579,8 @@ $("#b-turni-std").onclick = () => {
 ["#b-data", "#b-inizio", "#b-fine", "#b-stato"].forEach((s) => $(s).addEventListener("input", checkAvail));
 function syncAllDay() {
   const all = $("#b-giornata").checked;
-  $("#b-inizio").disabled = all; $("#b-fine").disabled = all;
+  const lock = fromCalendar(S.bookings.find((x) => x.id === S.editing));
+  $("#b-inizio").disabled = all || lock; $("#b-fine").disabled = all || lock;
   checkAvail();
 }
 $("#b-giornata").addEventListener("change", syncAllDay);
@@ -598,7 +604,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
   try {
     if (S.editing) {
       const prev = S.bookings.find((x) => x.id === S.editing);
-      if (prev && isRecurring(prev)) for (const k of ["titolo", "data", "inizio", "fine", "giornata_intera"]) delete rec[k];
+      if (fromCalendar(prev)) for (const k of ["titolo", "data", "inizio", "fine", "giornata_intera", "stato"]) delete rec[k];
       await run(sb.from("bookings").update(rec).eq("id", S.editing), "Prenotazione aggiornata");
     } else {
       const { data: created, error } = await sb.from("bookings").insert({ ...rec, origine: S.fromRequest ? "email" : "app" }).select("id").single();

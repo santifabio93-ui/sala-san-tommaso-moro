@@ -2,14 +2,20 @@
  * Sala San Tommaso Moro — sincronizzazione automatica con l'app.
  *
  * Va copiato in Google Apps Script (https://script.google.com) in ciascun account Google:
- *  - salatommasomoro@gmail.com  → MODALITA = "calendario+email" (calendario nei due sensi + email della sala)
+ *  - salatommasomoro@gmail.com  → MODALITA = "lettura+email"    (legge il calendario, non lo modifica mai + email della sala)
+ *                                  poi, se vuoi, "calendario+email" (anche le prenotazioni create nell'app finiscono nel calendario)
  *  - santifabio93@gmail.com     → MODALITA = "email"            (solo le email che parlano della sala)
+ *
+ * SICUREZZA DEL CALENDARIO
+ *  - In "lettura" lo script non scrive, non modifica e non cancella nulla nel calendario.
+ *  - In "calendario" lo script modifica o cancella SOLO gli eventi che ha creato lui (contrassegnati
+ *    con un'etichetta invisibile). Gli eventi esistenti o creati a mano non vengono mai toccati.
  *
  * Impostazioni (Impostazioni progetto → Proprietà script):
  *   SUPABASE_URL   https://uayqjbzpumsnynuoeayo.supabase.co
  *   SUPABASE_KEY   la chiave pubblica (sb_publishable_...)
  *   SYNC_TOKEN     il codice di sincronizzazione mostrato dallo script SQL 002
- *   MODALITA       "calendario+email" oppure "email"
+ *   MODALITA       "lettura+email", "calendario+email" oppure "email"
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
@@ -19,6 +25,7 @@ const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
 const ETICHETTA = "Sala/Richieste";
+const CONTRASSEGNO = "creatoDallAppSala"; // tag invisibile sugli eventi creati dall'app
 // email che parlano della sala e sembrano richieste; quelle con l'etichetta "Sala/Richieste" entrano sempre
 const RICERCA_EMAIL =
   '-from:me newer_than:21d -category:promotions -category:social ' +
@@ -38,7 +45,8 @@ function sincronizza() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   try {
-    if (cfg.modalita.indexOf("calendario") !== -1) sincronizzaCalendario(cfg);
+    const scrivi = cfg.modalita.indexOf("calendario") !== -1;
+    if (scrivi || cfg.modalita.indexOf("lettura") !== -1) sincronizzaCalendario(cfg, scrivi);
     if (cfg.modalita.indexOf("email") !== -1) leggiEmail(cfg);
   } finally {
     lock.releaseLock();
@@ -79,16 +87,23 @@ function calendario(cfg) {
   return cfg.calendario ? CalendarApp.getCalendarById(cfg.calendario) : CalendarApp.getDefaultCalendar();
 }
 
-function sincronizzaCalendario(cfg) {
+const creatoDallApp = (e) => e && e.getTag(CONTRASSEGNO) === "1";
+
+function sincronizzaCalendario(cfg, scrivi) {
   const cal = calendario(cfg);
   if (!cal) throw new Error("Calendario non trovato: " + cfg.calendario);
-
-  // 1. prima scrivo sul calendario le modifiche fatte nell'app
-  const pending = rpc(cfg, "sync_calendar_pending", {});
   const scritti = [], cancellati = [];
+
+  // 1. solo in modalità "calendario": scrivo le prenotazioni create o modificate nell'app
+  const pending = scrivi ? rpc(cfg, "sync_calendar_pending", {}) : {};
   (pending.scrivi || []).forEach((b) => {
     try {
       const ev = b.gcal_id ? cal.getEventById(b.gcal_id) : null;
+      if (ev && !creatoDallApp(ev)) {
+        // evento nato sul calendario: non lo tocco, segno solo che è allineato
+        scritti.push({ id: b.id });
+        return;
+      }
       const titolo = titoloCalendario(b);
       let e = ev;
       if (b.giornata_intera) {
@@ -100,6 +115,7 @@ function sincronizzaCalendario(cfg) {
         if (e) { e.setTime(inizio, fine); e.setTitle(titolo); }
         else e = cal.createEvent(titolo, inizio, fine);
       }
+      e.setTag(CONTRASSEGNO, "1");
       e.setDescription(b.note || "");
       scritti.push({ id: b.id, gcal_id: e.getId() });
     } catch (err) {
@@ -109,7 +125,7 @@ function sincronizzaCalendario(cfg) {
   (pending.cancella || []).forEach((id) => {
     try {
       const e = cal.getEventById(id);
-      if (e) e.deleteEvent();
+      if (creatoDallApp(e)) e.deleteEvent(); // gli eventi nati sul calendario non vengono mai cancellati
       cancellati.push(id);
     } catch (err) {
       Logger.log("Non cancellato " + id + ": " + err);

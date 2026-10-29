@@ -65,8 +65,10 @@ L'azione «Mantieni attivo Supabase» farà una piccola richiesta ogni 3 giorni.
 
 Lo script `google-apps-script/Sincronizzazione.gs` gira gratis dentro Google ogni 15 minuti:
 
-- **Calendario nei due sensi** (account della sala): gli eventi del Google Calendar compaiono nell'app,
-  e le prenotazioni create o modificate nell'app finiscono nel calendario. Nel titolo, «Ref. Nome 333-…»
+- **Calendario** (account della sala): gli eventi del Google Calendar compaiono nell'app.
+  Con `MODALITA` = `lettura+email` lo script **non modifica mai il calendario**. Con `calendario+email`
+  anche le prenotazioni create nell'app finiscono nel calendario: lo script modifica o cancella **solo gli
+  eventi creati da lui** (hanno un contrassegno invisibile), mai quelli esistenti o inseriti a mano. Nel titolo, «Ref. Nome 333-…»
   diventa referente e telefono; «EVENTO DA PERFEZIONARE» e «OPZIONE –» diventano stato *Opzione*.
   Gli eventi ricorrenti (es. cineforum) si modificano solo da Google Calendar.
 - **Email**: le email che chiedono la sala compaiono in **Richieste**, con data e ora riconosciute quando
@@ -78,7 +80,8 @@ Lo script `google-apps-script/Sincronizzazione.gs` gira gratis dentro Google ogn
 2. Entra in https://script.google.com con l'account **salatommasomoro@gmail.com** → **Nuovo progetto**,
    cancella il contenuto e incolla `google-apps-script/Sincronizzazione.gs`. Salva.
 3. **Impostazioni progetto** (ingranaggio) → **Proprietà script** → aggiungi:
-   `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1), `MODALITA` = `calendario+email`.
+   `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1), `MODALITA` = `lettura+email`.
+   Prima di passare a `calendario+email`, fai un backup del calendario: Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 4. Torna all'editor, scegli la funzione **installa** e premi **Esegui**; accetta i permessi.
 5. Ripeti i punti 2–4 con l'account **santifabio93@gmail.com**, con `MODALITA` = `email`.
 

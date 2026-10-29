@@ -32,7 +32,7 @@ alter table public.calendar_deletions enable row level security;
 create or replace function public.bookings_track_delete() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if old.gcal_id is not null and old.gcal_id not like '%|%'
+  if old.gcal_id is not null and old.gcal_id not like '%|%' and old.origine <> 'calendario'
      and coalesce(current_setting('sala.sync', true), '') <> 'on' then
     insert into public.calendar_deletions (gcal_id) values (old.gcal_id) on conflict do nothing;
   end if;
@@ -150,8 +150,9 @@ begin
               coalesce((ev->>'giornata_intera')::boolean, false), coalesce(ev->>'stato', 'confermata'),
               coalesce(ev->>'note', ''), now(), now());
       n_new := n_new + 1;
-    elsif b.sync_at is null or b.aggiornato <= b.sync_at or (ev->>'gcal_id') like '%|%' then
-      -- nessuna modifica in sospeso nell'app: vale il calendario
+    elsif b.origine = 'calendario' or b.sync_at is null or b.aggiornato <= b.sync_at or (ev->>'gcal_id') like '%|%' then
+      -- eventi nati sul calendario, o nessuna modifica in sospeso nell'app: vale il calendario
+      -- (le note scritte nell'app non vengono sovrascritte)
       update public.bookings set
         titolo = ev->>'titolo',
         referente = case when coalesce(ev->>'referente', '') <> '' then ev->>'referente' else referente end,
@@ -160,12 +161,11 @@ begin
         data = (ev->>'data')::date, inizio = (ev->>'inizio')::time, fine = (ev->>'fine')::time,
         giornata_intera = coalesce((ev->>'giornata_intera')::boolean, false),
         stato = coalesce(ev->>'stato', stato),
-        note = coalesce(ev->>'note', note),
         sync_at = now(), aggiornato = now()
       where id = b.id
-        and (titolo, data, inizio, fine, giornata_intera, stato, note)
+        and (titolo, data, inizio, fine, giornata_intera, stato)
             is distinct from (ev->>'titolo', (ev->>'data')::date, (ev->>'inizio')::time, (ev->>'fine')::time,
-                              coalesce((ev->>'giornata_intera')::boolean, false), coalesce(ev->>'stato', stato), coalesce(ev->>'note', note));
+                              coalesce((ev->>'giornata_intera')::boolean, false), coalesce(ev->>'stato', stato));
       if found then n_upd := n_upd + 1; end if;
     end if;
   end loop;
@@ -194,7 +194,7 @@ begin
         'giornata_intera', giornata_intera, 'stato', stato, 'note', note))
       from public.bookings
       where (gcal_id is null and stato <> 'annullata' and data >= current_date - 1)
-         or (gcal_id is not null and gcal_id not like '%|%' and sync_at is not null and aggiornato > sync_at)
+         or (gcal_id is not null and gcal_id not like '%|%' and origine <> 'calendario' and sync_at is not null and aggiornato > sync_at)
     ), '[]'::jsonb),
     'cancella', coalesce((select jsonb_agg(gcal_id) from public.calendar_deletions), '[]'::jsonb)
   );
