@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.5";
+const VERSIONE = "2026-10-30.6";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -29,6 +29,7 @@ const VIEWS = {
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   bilancio: { label: "Bilancio", roles: ["admin"] },
+  donazioni: { label: "Donazioni", roles: ["admin"] },
   economia: { label: "Economia", roles: ["admin"] },
   utenti: { label: "Persone", roles: ["admin"] },
 };
@@ -43,9 +44,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
-  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "economia"] }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -55,7 +56,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false,
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -130,10 +131,11 @@ async function loadAll() {
       sb.from("films").select("*").order("titolo"),
       sb.from("proiezioni").select("*").order("data").order("ora"),
       S.isAdmin ? sb.from("prima_nota").select("*").order("data").order("n").limit(10000) : null,
+      S.isAdmin ? sb.from("donatori").select("*") : null,
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
-    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, c1r].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
@@ -149,6 +151,7 @@ async function loadAll() {
     if (ca.data) S.cassa = ca.data.map(mapCassa);
     if (fi.data) S.films = fi.data;
     if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
+    if (dn.data) S.donatori = dn.data;
     if (pn.data) S.primaNota = pn.data.map((r) => ({ ...r, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
     if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
@@ -162,7 +165,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -266,6 +269,7 @@ function render() {
   if (S.view === "c1") renderC1();
   if (S.view === "stats") renderStats();
   if (S.view === "bilancio") renderBilancio();
+  if (S.view === "donazioni") renderDonazioni();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -1408,6 +1412,144 @@ function indicatoriGestione(list, all, ctx) {
   </div>${conto}`;
 }
 
+/* ---------- donazioni e donatori ---------- */
+const isDonazione = (r) => r.entrate > 0 && (/^E03$/i.test(r.cod_cat) || /donaz|liberal/i.test(r.categoria + " " + r.settore));
+const TIPI_DON = { azienda: "Azienda", associazione: "Associazione o gruppo", privato: "Privato", ente: "Ente" };
+// tipo proposto dal nome, finché non lo si sceglie nella scheda
+const tipoStimato = (nome) => (/\b(s\.?\s?r\.?\s?l|s\.?\s?p\.?\s?a|s\.?\s?n\.?\s?c|s\.?\s?a\.?\s?s)\.?\b/i.test(nome) ? "azienda"
+  : /\b(gruppo|associazione|asd|aps|pallavolo|volley|danza|coro|circolo|comitato|club|scout|catechismo|alpini|pro loco)\b/i.test(nome) ? "associazione"
+  : /\b(comune|parrocchia|diocesi|scuola|istituto|regione|provincia)\b/i.test(nome) ? "ente" : "");
+function donatoriDa(movs) {
+  const m = new Map();
+  movs.filter(isDonazione).forEach((r) => {
+    const nome = r.controparte || r.descrizione.replace(/^(donazione|erogazione liberale)\s*/i, "") || "Senza nome";
+    const k = normT(nome);
+    if (!m.has(k)) m.set(k, { chiave: k, nome, doni: [] });
+    m.get(k).doni.push(r);
+  });
+  return [...m.values()].map((d) => {
+    const info = S.donatori.find((x) => x.chiave === d.chiave) || {};
+    const doni = d.doni.sort((a, b) => a.data.localeCompare(b.data));
+    return { ...d, info, nome: info.nome || d.nome, tipo: info.tipo || tipoStimato(d.nome), tipoCerto: !!info.tipo, doni,
+      totale: r2(doni.reduce((s, r) => s + r.entrate, 0)), prima: doni[0].data, ultima: doni[doni.length - 1].data, anni: [...new Set(doni.map((r) => +r.data.slice(0, 4)))] };
+  });
+}
+function renderDonazioni() {
+  const tutte = S.primaNota.filter(isDonazione);
+  const years = [...new Set([...tutte.map((r) => +r.data.slice(0, 4)), new Date().getFullYear()])].sort();
+  $("#dn-years").innerHTML = [...years.map((y) => [String(y), String(y)]), ["tutti", "Tutti gli anni"]].map(([k, l]) => `<button type="button" data-y="${k}" aria-pressed="${String(S.dnYear) === k}">${l}</button>`).join("");
+  $("#dn-years").querySelectorAll("[data-y]").forEach((b) => (b.onclick = () => { S.dnYear = b.dataset.y === "tutti" ? "tutti" : +b.dataset.y; renderDonazioni(); }));
+  const el = $("#dn-body");
+  if (!tutte.length) { el.innerHTML = `<div class="empty">Nessuna donazione in prima nota. Arrivano qui le entrate con categoria «Erogazioni liberali e donazioni» (codice E03).</div>`; return; }
+  const Y = S.dnYear === "tutti" ? null : String(S.dnYear);
+  const movs = Y ? tutte.filter((r) => r.data.startsWith(Y)) : tutte;
+  const donatori = donatoriDa(Y ? S.primaNota.filter((r) => r.data.startsWith(Y)) : S.primaNota).sort((a, b) => b.totale - a.totale);
+  const tutti = donatoriDa(S.primaNota);
+  const tot = r2(movs.reduce((s, r) => s + r.entrate, 0));
+  const entrateAnno = sommaE(Y ? S.primaNota.filter((r) => r.data.startsWith(Y)) : S.primaNota);
+  const fissiAnno = sommaU((Y ? S.primaNota.filter((r) => r.data.startsWith(Y)) : S.primaNota).filter((r) => r.uscite && !isVariabile(r)));
+  const media = donatori.length ? tot / movs.length : 0;
+  const maxDono = Math.max(0, ...movs.map((r) => r.entrate));
+  // concentrazione: quota dal 20% dei donatori più generosi
+  const nTop = Math.max(1, Math.ceil(donatori.length * 0.2));
+  const quotaTop = tot ? donatori.slice(0, nTop).reduce((s, d) => s + d.totale, 0) / tot : 0;
+  // fedeltà
+  const annoPrec = Y ? String(+Y - 1) : null;
+  const storico = Y && tutte.some((r) => r.data < `${Y}-01-01`); // «nuovi» e «persi» hanno senso solo con dati degli anni prima
+  const nuovi = Y ? donatori.filter((d) => tutti.find((t) => t.chiave === d.chiave).prima.startsWith(Y)) : [];
+  const persi = Y ? tutti.filter((t) => t.anni.includes(+annoPrec) && !t.anni.includes(+Y)) : [];
+  const ricorrenti = donatori.filter((d) => tutti.find((t) => t.chiave === d.chiave).doni.length > 1);
+  const daRingraziare = donatori.filter((d) => !(d.info.ringraziati || {})[Y || d.ultima.slice(0, 4)]);
+  const perTipo = ["azienda", "associazione", "privato", "ente", ""].map((t) => ({ t, ds: donatori.filter((d) => d.tipo === t) })).filter((x) => x.ds.length).map((x) => ({ ...x, v: x.ds.reduce((s, d) => s + d.totale, 0) }));
+  const mesi = MESI.map((m, i) => ({ m, v: Y ? movs.filter((r) => r.data.startsWith(`${Y}-${pad(i + 1)}`)).reduce((s, r) => s + r.entrate, 0) : 0 }));
+  const q = S.dnQ.trim().toLowerCase();
+  const lista = donatori.filter((d) => !q || (d.nome + " " + (d.info.note || "") + " " + (d.info.email || "")).toLowerCase().includes(q));
+  const ins = [
+    `<div class="insight"><span class="k">Peso sul bilancio</span>Le donazioni sono il <b>${pct(tot / (entrateAnno || 1))}</b> delle entrate e coprono il <b>${pct(tot / (fissiAnno || 1))}</b> dei costi fissi della struttura.</div>`,
+    donatori.length >= 3 && `<div class="insight"><span class="k">Concentrazione</span>${nTop === 1 ? "Il donatore più generoso ha dato" : `I ${nTop} donatori più generosi hanno dato`} il <b>${pct(quotaTop)}</b> del totale${quotaTop > 0.5 ? ": conviene curarli con attenzione" : ""}.</div>`,
+    storico && persi.length > 0 && `<div class="insight"><span class="k">Da ricontattare</span><b>${persi.length}</b> donatori del ${annoPrec} non hanno ancora donato nel ${Y}: ${persi.slice(0, 4).map((d) => `<b>${esc(d.nome)}</b>`).join(", ")}${persi.length > 4 ? "…" : ""}.</div>`,
+    storico && nuovi.length > 0 && `<div class="insight"><span class="k">Nuovi donatori</span><b>${nuovi.length}</b> su ${donatori.length} hanno donato per la prima volta nel ${Y}${ricorrenti.length ? `; ${ricorrenti.length} hanno donato più volte` : ""}.</div>`,
+    daRingraziare.length > 0 && `<div class="insight"><span class="k">Da ringraziare</span><b>${daRingraziare.length}</b> donatori non risultano ancora ringraziati${Y ? ` per il ${Y}` : ""}. Apri la scheda per preparare la lettera.</div>`,
+  ].filter(Boolean).join("");
+  el.innerHTML = `
+    <section class="kpis" aria-label="In sintesi">
+      <div class="kpi"><span class="eyebrow">Donazioni${Y ? " " + Y : ""}</span><b>${money(tot)}</b><small>${movs.length} versamenti</small></div>
+      <div class="kpi"><span class="eyebrow">Donatori</span><b>${donatori.length}</b><small>${storico ? `${nuovi.length} nuovi · ${ricorrenti.length} ricorrenti` : `${ricorrenti.length} hanno donato più volte`}</small></div>
+      <div class="kpi"><span class="eyebrow">Dono medio</span><b>${money(Math.round(media))}</b><small>il più alto ${money(maxDono)}</small></div>
+      <div class="kpi"><span class="eyebrow">Da ringraziare</span><b>${daRingraziare.length}</b><small>ricevute da inviare: ${donatori.filter((d) => !(d.info.ricevute || {})[Y || d.ultima.slice(0, 4)]).length}</small></div>
+    </section>
+    <div class="insights">${ins}</div>
+    <div class="st-grid" style="margin-top:0">
+      ${Y ? `<div class="panel"><h2>Donazioni mese per mese</h2><span class="hint">${Y}</span><div class="chart-wrap" id="dn-chart"></div></div>` : `<div class="panel"><h2>Donazioni per anno</h2><div class="hbars">${years.map((y) => { const v = tutte.filter((r) => r.data.startsWith(String(y))).reduce((s, r) => s + r.entrate, 0); return `<div class="hbar"><span class="nm">${y}</span><span class="v">${money(v)}</span><div class="track"><div class="fill" style="width:${(v / Math.max(1, ...years.map((yy) => tutte.filter((r) => r.data.startsWith(String(yy))).reduce((s, r) => s + r.entrate, 0)))) * 100}%"></div></div></div>`; }).join("")}</div></div>`}
+      <div class="panel"><h2>Chi dona</h2><span class="hint">Per tipo di donatore${perTipo.some((x) => x.t === "") ? " · alcuni sono da classificare nella scheda" : ""}</span>
+        <div class="hbars">${perTipo.sort((a, b) => b.v - a.v).map((x) => `<div class="hbar"><span class="nm">${x.t ? TIPI_DON[x.t] : "Da classificare"}</span><span class="v">${money(x.v)} · ${pct(x.v / (tot || 1))} · ${x.ds.length}</span><div class="track"><div class="fill" style="width:${(x.v / (tot || 1)) * 100}%"></div></div></div>`).join("")}</div></div>
+    </div>
+    <div class="panel" style="margin-top:18px"><h2>Elenco dei donatori</h2><span class="hint">Tocca un nome per contatti, note, ringraziamento e ricevuta</span>
+      <div class="pn-filters"><input type="search" id="dn-q" placeholder="Cerca un donatore…" value="${esc(S.dnQ)}" aria-label="Cerca un donatore"></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Donatore</th><th>Tipo</th><th class="n">Versamenti</th><th class="n">Totale</th><th>Ultima donazione</th><th>Ringraziato</th><th>Ricevuta</th></tr></thead><tbody>
+      ${lista.map((d) => { const anno = Y || d.ultima.slice(0, 4); const ri = (d.info.ringraziati || {})[anno], rc = (d.info.ricevute || {})[anno];
+        return `<tr class="click" data-don="${esc(d.chiave)}"><td><b>${esc(d.nome)}</b>${d.info.email || d.info.telefono ? `<div class="hint">${esc([d.info.email, d.info.telefono].filter(Boolean).join(" · "))}</div>` : ""}</td>
+          <td>${d.tipo ? `${TIPI_DON[d.tipo]}${d.tipoCerto ? "" : ' <span class="hint">(stimato)</span>'}` : '<span class="hint">Da classificare</span>'}</td>
+          <td class="n">${d.doni.length}</td><td class="n"><b>${money(d.totale)}</b></td><td>${esc(fmtShort(d.ultima))} · ${money(d.doni[d.doni.length - 1].entrate)}</td>
+          <td>${ri ? `<span class="pill saldato">Sì</span>` : `<span class="pill acconto">Da fare</span>`}</td><td>${rc ? `<span class="pill saldato">Inviata</span>` : `<span class="pill annullata">No</span>`}</td></tr>`; }).join("")}
+      </tbody></table></div></div>`;
+  if (Y) barChart($("#dn-chart"), mesi.map((x) => x.m), [{ name: "Donazioni", color: "var(--accent)", values: mesi.map((x) => x.v) }], (v) => eur.format(v));
+  el.querySelectorAll("[data-don]").forEach((r) => (r.onclick = () => openDonatore(tutti.find((d) => d.chiave === r.dataset.don))));
+  const qi = $("#dn-q"); qi.oninput = () => { S.dnQ = qi.value; clearTimeout(S._dnT); S._dnT = setTimeout(() => { renderDonazioni(); const n = $("#dn-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+}
+const dlgD = $("#dlg-donatore");
+function openDonatore(d) {
+  S.editingDon = d;
+  const anno = String(S.dnYear === "tutti" ? d.ultima.slice(0, 4) : S.dnYear);
+  $("#d-head").textContent = d.nome;
+  $("#d-storia").innerHTML = `${d.doni.length} ${d.doni.length === 1 ? "donazione" : "donazioni"}, totale <b>${money(d.totale)}</b>: ` + d.doni.map((r) => `${esc(parse(r.data).toLocaleDateString("it-IT"))} ${money(r.entrate)}`).join(" · ");
+  $("#d-nome").value = d.info.nome || d.nome;
+  $("#d-tipo").value = d.info.tipo || "";
+  for (const k of ["email", "telefono", "indirizzo", "note"]) $("#d-" + k).value = d.info[k] || "";
+  $("#d-ringraziato").checked = !!(d.info.ringraziati || {})[anno];
+  $("#d-ricevuta").checked = !!(d.info.ricevute || {})[anno];
+  $("#d-ringraziato-l").textContent = `Ringraziato per il ${anno}`;
+  $("#d-ricevuta-l").textContent = `Ricevuta ${anno} inviata`;
+  $("#d-error").innerHTML = "";
+  dlgD.showModal();
+}
+$("#donatore-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const d = S.editingDon, anno = String(S.dnYear === "tutti" ? d.ultima.slice(0, 4) : S.dnYear);
+  const ri = { ...(d.info.ringraziati || {}) }, rc = { ...(d.info.ricevute || {}) };
+  if ($("#d-ringraziato").checked) ri[anno] = ri[anno] || TODAY; else delete ri[anno];
+  if ($("#d-ricevuta").checked) rc[anno] = rc[anno] || TODAY; else delete rc[anno];
+  const rec = { chiave: d.chiave, nome: $("#d-nome").value.trim() || d.nome, tipo: $("#d-tipo").value || null, email: $("#d-email").value.trim(), telefono: $("#d-telefono").value.trim(),
+    indirizzo: $("#d-indirizzo").value.trim(), note: $("#d-note").value.trim(), ringraziati: ri, ricevute: rc, aggiornato: new Date().toISOString() };
+  try { await run(sb.from("donatori").upsert(rec), "Scheda del donatore salvata"); dlgD.close(); }
+  catch (x) { $("#d-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+});
+$("#d-lettera").onclick = () => {
+  const d = S.editingDon, anno = String(S.dnYear === "tutti" ? d.ultima.slice(0, 4) : S.dnYear);
+  const doni = d.doni.filter((r) => r.data.startsWith(anno));
+  const tipo = $("#d-tipo").value || d.tipo, nome = $("#d-nome").value.trim() || d.nome;
+  const saluto = tipo === "privato" ? `Gentile ${nome},` : `Spettabile ${nome},`;
+  const importi = doni.map((r) => `${money(r.entrate)} del ${parse(r.data).toLocaleDateString("it-IT")}`).join(" e ");
+  dlgD.close();
+  openCopyText([
+    saluto, "",
+    `a nome della Sala San Tommaso Moro di Piombino Dese desideriamo ringraziarvi di cuore per la vostra erogazione liberale${importi ? ` di ${importi}` : ""}.`,
+    "Il vostro sostegno ci aiuta a mantenere aperta e accogliente la sala e a proporre alla comunità cinema, teatro, danza e incontri.",
+    "", "Con riconoscenza,", (S.me.nome || "").split(" ")[0] ? `${S.me.nome}\nSala San Tommaso Moro` : "Sala San Tommaso Moro",
+  ].join("\n"));
+};
+$("#dn-export").onclick = () => {
+  const ds = donatoriDa(S.primaNota).sort((a, b) => b.totale - a.totale);
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const anni = [...new Set(S.primaNota.filter(isDonazione).map((r) => r.data.slice(0, 4)))].sort();
+  const righe = [["Donatore", "Tipo", "Email", "Telefono", "Indirizzo", ...anni.map((a) => "Donato " + a), "Totale", "Ultima donazione", "Ringraziato", "Ricevuta", "Note"].join(";"),
+    ...ds.map((d) => [cell(d.nome), cell(d.tipo ? TIPI_DON[d.tipo] : ""), cell(d.info.email), cell(d.info.telefono), cell(d.info.indirizzo),
+      ...anni.map((a) => String(r2(d.doni.filter((r) => r.data.startsWith(a)).reduce((s, r) => s + r.entrate, 0))).replace(".", ",")),
+      String(d.totale).replace(".", ","), d.ultima, cell(Object.keys(d.info.ringraziati || {}).join(", ")), cell(Object.keys(d.info.ricevute || {}).join(", ")), cell(d.info.note)].join(";"))];
+  download(`sala-stm-donatori-${TODAY}.csv`, "﻿" + righe.join("\r\n"), "text/csv");
+  toast("Elenco dei donatori scaricato");
+};
+
 /* ---------- sopralluoghi ---------- */
 const SOP_STATI = { da_fare: "Da fare", fatto: "Fatto", annullato: "Annullato" };
 const ESIGENZE = ["Proiettore e schermo", "Audio e microfoni", "Luci di scena", "Palco", "Sedie e tavoli", "Accessibilità", "Riscaldamento / aria condizionata", "Spazio per rinfresco", "Parcheggio"];
@@ -1786,7 +1928,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");

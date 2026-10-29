@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-10-30.5">
+<link rel="stylesheet" href="style.css?v=2026-10-30.6">
 </head>
 <body>
 
@@ -165,6 +165,15 @@
     </div>
     <p class="hint" id="pn-hint" style="margin:-6px 0 14px"></p>
     <div id="pn-body"></div>
+  </main>
+
+  <main id="view-donazioni" hidden>
+    <div class="toolbar">
+      <div class="seg" id="dn-years" role="group" aria-label="Anno"></div>
+      <div class="actions"><button class="btn" id="dn-export" type="button">Esporta elenco (Excel)</button></div>
+    </div>
+    <p class="hint" style="margin:-6px 0 14px">Le donazioni arrivano dalla prima nota (categoria «Erogazioni liberali e donazioni»); contatti, ringraziamenti e ricevute si segnano qui.</p>
+    <div id="dn-body"></div>
   </main>
 
   <main id="view-economia" hidden>
@@ -354,6 +363,29 @@
   </form>
 </dialog>
 
+<dialog id="dlg-donatore">
+  <form class="dlg" id="donatore-form" novalidate>
+    <div class="dlg-head"><h2 id="d-head">Donatore</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div id="d-storia" class="hint"></div>
+    <div class="form">
+      <div class="field h"><label for="d-nome">Nome da usare</label><input id="d-nome"></div>
+      <div class="field h"><label for="d-tipo">Tipo</label>
+        <select id="d-tipo"><option value="">Da classificare</option><option value="azienda">Azienda</option><option value="associazione">Associazione o gruppo</option><option value="privato">Privato</option><option value="ente">Ente o istituzione</option></select></div>
+      <div class="field h"><label for="d-email">Email</label><input id="d-email" type="email"></div>
+      <div class="field h"><label for="d-telefono">Telefono</label><input id="d-telefono" type="tel"></div>
+      <div class="field"><label for="d-indirizzo">Indirizzo (per la ricevuta)</label><input id="d-indirizzo"></div>
+      <div class="field"><label for="d-note">Note</label><textarea id="d-note" placeholder="Es. referente, occasione della donazione, preferisce essere ringraziato pubblicamente…"></textarea></div>
+      <div class="field"><label class="check"><input type="checkbox" id="d-ringraziato"> <span id="d-ringraziato-l">Ringraziato</span></label>
+        <label class="check"><input type="checkbox" id="d-ricevuta"> <span id="d-ricevuta-l">Ricevuta inviata</span></label></div>
+    </div>
+    <div id="d-error"></div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="d-lettera">Lettera di ringraziamento</button>
+      <div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Salva</button></div>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-sop">
   <form class="dlg" id="sop-form" novalidate>
     <div class="dlg-head"><h2 id="s-head">Nuovo sopralluogo</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -443,7 +475,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-10-30.5"></script>
-<script type="module" src="app.js?v=2026-10-30.5"></script>
+<script src="config.js?v=2026-10-30.6"></script>
+<script type="module" src="app.js?v=2026-10-30.6"></script>
 </body>
 </html>

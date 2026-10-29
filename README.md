@@ -147,6 +147,13 @@ distributore, costo per spettatore; giorni di utilizzo e ricavo medio per affitt
 **conto economico riclassificato** a margine di contribuzione. Sono costi variabili le categorie U01, U02, U03, U05,
 U06, U07, U15 (legate agli spettacoli); le altre uscite sono costi fissi di struttura (`CAT_VARIABILI` in `app.js`).
 
+## Donazioni
+Esegui `supabase/008_donatori.sql` nel SQL Editor (si può rieseguire). In **Economia → Donazioni** (solo amministratori)
+le donazioni arrivano dalla prima nota (categoria E03, donatore = colonna «Controparte»): totale, numero di donatori,
+dono medio, peso su entrate e costi fissi, concentrazione, nuovi e da ricontattare (quando ci sono anni precedenti),
+donazioni per mese e per tipo di donatore, elenco con ricerca. Nella scheda di ogni donatore si salvano tipo, contatti,
+note, ringraziamento e ricevuta per anno, e si prepara la lettera di ringraziamento. «Esporta elenco» scarica un CSV.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
