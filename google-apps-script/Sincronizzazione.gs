@@ -28,7 +28,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.4"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-10-30.5"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -59,7 +59,7 @@ function sincronizza() {
     if (scrivi || cfg.modalita.indexOf("lettura") !== -1) prova("calendario", () => sincronizzaCalendario(cfg, scrivi));
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
     if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
-    if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 12));
+    if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 30));
   } finally {
     lock.releaseLock();
   }
@@ -331,18 +331,13 @@ function leggiC1(cfg, limite) {
   const segna = (k) => props.setProperty("C1_" + k, "1");
   const daLeggere = [];
 
-  // 1) cartella Drive
-  let pagina = null;
-  do {
-    const q = encodeURIComponent("'" + cfg.c1Cartella + "' in parents and mimeType = 'application/pdf' and trashed = false");
-    const r = api("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=200&orderBy=modifiedTime%20desc"
-      + (pagina ? "&pageToken=" + pagina : ""));
-    (r.files || []).forEach((f) => {
-      const chiave = f.id + "_" + f.modifiedTime.replace(/\D/g, "");
-      if (!fatti(chiave)) daLeggere.push({ chiave: chiave, nome: f.name, fonte: "drive", fonte_id: f.id, scarica: () => apiBlob("https://www.googleapis.com/drive/v3/files/" + f.id + "?alt=media") });
-    });
-    pagina = r.nextPageToken;
-  } while (pagina);
+  // 1) cartella Drive (servizio DriveApp incluso in Apps Script, in sola lettura)
+  const file = DriveApp.getFolderById(cfg.c1Cartella).getFilesByType(MimeType.PDF);
+  while (file.hasNext()) {
+    const f = file.next();
+    const chiave = f.getId() + "_" + f.getLastUpdated().getTime();
+    if (!fatti(chiave)) daLeggere.push({ chiave: chiave, nome: f.getName(), fonte: "drive", fonte_id: f.getId(), scarica: () => f.getBlob() });
+  }
 
   // 2) allegati email
   const lista = Gmail.Users.Messages.list("me", { q: C1_RICERCA_EMAIL, maxResults: 50 });
@@ -360,48 +355,136 @@ function leggiC1(cfg, limite) {
   });
 
   const eventi = [];
-  let letti = 0;
+  let letti = 0, scartati = 0;
   for (const f of daLeggere) {
     if (letti >= limite) break;
     letti++;
     try {
-      const testo = testoDaPdf(f.scarica(), f.nome);
-      analizzaC1(testo).filter((e) => e.data >= C1_DAL).forEach((e) => eventi.push(Object.assign(e, { fonte: f.fonte, fonte_id: f.fonte_id, file_nome: f.nome })));
+      const trovati = analizzaC1(testoDaPdfLocale(f.scarica().getBytes()));
+      if (!trovati.length) scartati++;
+      trovati.filter((e) => e.data >= C1_DAL).forEach((e) => eventi.push(Object.assign(e, { fonte: f.fonte, fonte_id: f.fonte_id, file_nome: f.nome })));
       segna(f.chiave);
     } catch (err) {
       Logger.log("C1 non letto: " + f.nome + " → " + err.message);
     }
   }
   const esito = eventi.length ? rpc(cfg, "sync_c1_push", { p_items: eventi }) : { c1: 0 };
-  Logger.log("C1: file letti " + letti + " di " + daLeggere.length + " da leggere, serate trovate " + eventi.length + " → " + JSON.stringify(esito));
+  Logger.log("C1: file letti " + letti + " di " + daLeggere.length + " da leggere (" + scartati + " non sono C1), serate dal 2026 trovate " + eventi.length + " → " + JSON.stringify(esito));
 }
 
-// trasforma il PDF in testo: lo carico come documento Google temporaneo, ne leggo il testo e lo cancello
-function testoDaPdf(blob, nome) {
-  const confine = "c1" + Date.now();
-  const meta = JSON.stringify({ name: "tmp C1 " + nome, mimeType: "application/vnd.google-apps.document" });
-  const corpo = Utilities.newBlob("--" + confine + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta
-    + "\r\n--" + confine + "\r\nContent-Type: application/pdf\r\n\r\n").getBytes()
-    .concat(blob.getBytes())
-    .concat(Utilities.newBlob("\r\n--" + confine + "--").getBytes());
-  const doc = api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=it&fields=id", {
-    method: "post", contentType: "multipart/related; boundary=" + confine, payload: corpo,
-  });
-  try {
-    return apiTesto("https://www.googleapis.com/drive/v3/files/" + doc.id + "/export?mimeType=text/plain");
-  } finally {
-    api("https://www.googleapis.com/drive/v3/files/" + doc.id, { method: "delete" });
+// ---- decompressore DEFLATE minimo (formato zlib/FlateDecode), per leggere i PDF senza servizi esterni ----
+function inflaZlib(dati) {
+  const src = dati, out = [];
+  let pos = 2, bitBuf = 0, bitCnt = 0; // salto l'intestazione zlib (2 byte)
+  const bit = (n) => { while (bitCnt < n) { if (pos >= src.length) throw new Error("PDF troncato"); bitBuf |= (src[pos++] & 255) << bitCnt; bitCnt += 8; } const v = bitBuf & ((1 << n) - 1); bitBuf >>>= n; bitCnt -= n; return v; };
+  const costruisci = (lunghezze) => {
+    const conta = new Array(16).fill(0), offs = new Array(16).fill(0), simboli = [];
+    lunghezze.forEach((l) => conta[l]++); conta[0] = 0;
+    for (let i = 1; i < 16; i++) offs[i] = offs[i - 1] + conta[i - 1];
+    lunghezze.forEach((l, s) => { if (l) simboli[offs[l]++] = s; });
+    return { conta, simboli };
+  };
+  const decodifica = (t) => {
+    let codice = 0, primo = 0, indice = 0;
+    for (let l = 1; l < 16; l++) {
+      codice |= bit(1); const c = t.conta[l];
+      if (codice - c < primo) return t.simboli[indice + (codice - primo)];
+      indice += c; primo += c; primo <<= 1; codice <<= 1;
+    }
+    throw new Error("Codice non valido nel PDF");
+  };
+  const BASE_L = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+  const EXTRA_L = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+  const BASE_D = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  const EXTRA_D = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+  const fissaL = costruisci(Array.from({ length: 288 }, (_, i) => (i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8)));
+  const fissaD = costruisci(new Array(30).fill(5));
+  let ultimo = 0;
+  while (!ultimo) {
+    ultimo = bit(1);
+    const tipo = bit(2);
+    if (tipo === 0) {
+      bitBuf = 0; bitCnt = 0;
+      const len = (src[pos] & 255) | ((src[pos + 1] & 255) << 8); pos += 4;
+      for (let i = 0; i < len; i++) out.push(src[pos++] & 255);
+      continue;
+    }
+    let tl, td;
+    if (tipo === 1) { tl = fissaL; td = fissaD; }
+    else if (tipo === 2) {
+      const hl = bit(5) + 257, hd = bit(5) + 1, hc = bit(4) + 4;
+      const ordine = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+      const lc = new Array(19).fill(0);
+      for (let i = 0; i < hc; i++) lc[ordine[i]] = bit(3);
+      const tc = costruisci(lc), lens = [];
+      while (lens.length < hl + hd) {
+        const s = decodifica(tc);
+        if (s < 16) lens.push(s);
+        else if (s === 16) { const p = lens[lens.length - 1]; for (let r = bit(2) + 3; r > 0; r--) lens.push(p); }
+        else if (s === 17) { for (let r = bit(3) + 3; r > 0; r--) lens.push(0); }
+        else { for (let r = bit(7) + 11; r > 0; r--) lens.push(0); }
+      }
+      tl = costruisci(lens.slice(0, hl)); td = costruisci(lens.slice(hl));
+    } else throw new Error("Blocco compresso non valido");
+    for (;;) {
+      let s = decodifica(tl);
+      if (s < 256) { out.push(s); continue; }
+      if (s === 256) break;
+      s -= 257;
+      const len = BASE_L[s] + bit(EXTRA_L[s]);
+      const ds = decodifica(td), dist = BASE_D[ds] + bit(EXTRA_D[ds]);
+      for (let i = 0; i < len; i++) out.push(out[out.length - dist]);
+    }
   }
+  return out;
 }
 
-function apiRisposta(url, opzioni) {
-  const res = UrlFetchApp.fetch(url, Object.assign({ muteHttpExceptions: true, headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() } }, opzioni || {}));
-  if (res.getResponseCode() >= 300) throw new Error("Google Drive → HTTP " + res.getResponseCode() + ": " + res.getContentText().slice(0, 300));
-  return res;
+// estrae il testo dai PDF semplici (come i C1 di Cinebot/JasperReports): ricompone le righe in base alla posizione
+function testoDaPdfLocale(byte) {
+  const b = Array.from(byte, (x) => x & 255);
+  const latin = (arr) => arr.map((c) => String.fromCharCode(c)).join("");
+  const testo = latin(b);
+  const pezzi = [];
+  const reStream = /<<([^]*?)>>\s*stream\r?\n/g;
+  let m;
+  while ((m = reStream.exec(testo))) {
+    const inizio = reStream.lastIndex, fine = testo.indexOf("endstream", inizio);
+    if (fine < 0) break;
+    let dati = b.slice(inizio, fine);
+    if (/FlateDecode/.test(m[1])) { try { dati = inflaZlib(dati); } catch (e) { continue; } }
+    else if (/\/Filter/.test(m[1])) continue;
+    pezzi.push(latin(dati));
+  }
+  const voci = [];
+  pezzi.forEach((p) => {
+    const blocchi = p.split(/\bBT\b/).slice(1);
+    blocchi.forEach((bl) => {
+      const corpo = bl.split(/\bET\b/)[0];
+      let x = 0, y = 0;
+      const tm = corpo.match(/([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm/);
+      if (tm) { x = +tm[5]; y = +tm[6]; }
+      const td = corpo.match(/([-\d.]+)\s+([-\d.]+)\s+Td/);
+      if (!tm && td) { x = +td[1]; y = +td[2]; }
+      let s = "";
+      const reStr = /\((?:\\.|[^\\)])*\)\s*Tj|\[(?:[^\]]*)\]\s*TJ/g;
+      let k;
+      while ((k = reStr.exec(corpo))) {
+        const parti = k[0].match(/\((?:\\.|[^\\)])*\)/g) || [];
+        s += parti.map((q) => q.slice(1, -1).replace(/\\([nrtbf()\\]|\d{1,3})/g, (_, e) => ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" }[e] || String.fromCharCode(parseInt(e, 8))))).join("");
+      }
+      if (s.trim()) voci.push({ x, y, s: s.trim() });
+    });
+  });
+  // righe dall'alto in basso, parole da sinistra a destra (tolleranza di 3 punti sull'altezza)
+  voci.sort((a, c) => c.y - a.y || a.x - c.x);
+  const righe = [];
+  voci.forEach((v) => {
+    const r = righe.find((rr) => Math.abs(rr.y - v.y) <= 3);
+    if (r) r.v.push(v); else righe.push({ y: v.y, v: [v] });
+  });
+  righe.sort((a, c) => c.y - a.y);
+  return righe.map((r) => r.v.sort((a, c) => a.x - c.x).map((v) => v.s).join(" ")).join("\n");
 }
-function api(url, opzioni) { const t = apiRisposta(url, opzioni).getContentText(); return t ? JSON.parse(t) : {}; }
-function apiTesto(url) { return apiRisposta(url).getContentText("UTF-8"); }
-function apiBlob(url) { return apiRisposta(url).getBlob(); }
 
 // riconosce uno o più eventi in un riepilogo C1 (testo estratto dal PDF)
 const NUM = "\\d{1,3}(?:\\.\\d{3})*,\\d{2}";
@@ -449,17 +532,19 @@ function analizzaC1(testoGrezzo) {
   return eventi;
 }
 
-// da eseguire a mano: legge subito fino a 40 C1 e mostra nel log il testo del primo, utile se qualcosa non torna
+// da eseguire a mano: mostra cosa legge dal C1 più recente, poi legge subito fino a 60 C1
 function provaC1() {
   const cfg = leggiImpostazioni();
   Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("c1") === -1 ? "  ← manca «+c1»: la lettura automatica non partirà" : ""));
-  const r = api("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + cfg.c1Cartella + "' in parents and mimeType = 'application/pdf' and trashed = false") + "&fields=files(id,name)&pageSize=1&orderBy=modifiedTime%20desc");
-  if (r.files && r.files[0]) {
-    const testo = testoDaPdf(apiBlob("https://www.googleapis.com/drive/v3/files/" + r.files[0].id + "?alt=media"), r.files[0].name);
-    Logger.log("Esempio (" + r.files[0].name + "): " + testo.replace(/\s+/g, " ").slice(0, 1500));
-    Logger.log("Riconosciuto: " + JSON.stringify(analizzaC1(testo)));
+  const it = DriveApp.getFolderById(cfg.c1Cartella).getFilesByType(MimeType.PDF);
+  let ultimo = null;
+  while (it.hasNext()) { const f = it.next(); if (!ultimo || f.getLastUpdated() > ultimo.getLastUpdated()) ultimo = f; }
+  if (ultimo) {
+    const testo = testoDaPdfLocale(ultimo.getBlob().getBytes());
+    Logger.log("Esempio (" + ultimo.getName() + "): " + testo.replace(/\s+/g, " ").slice(0, 700));
+    Logger.log("Riconosciuto: " + JSON.stringify(analizzaC1(testo).map((e) => ({ titolo: e.titolo, data: e.data, ora: e.ora, spettatori: e.spettatori, lordo: e.lordo }))));
   } else Logger.log("Nella cartella C1 non trovo PDF: controlla C1_CARTELLA");
-  leggiC1(cfg, 40);
+  leggiC1(cfg, 60);
 }
 
 /* ---------------- email ---------------- */

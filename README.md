@@ -118,8 +118,8 @@ all'ora. Supporto, prova e note scritti nell'app non vengono mai sovrascritti.
 ## Incassi C1
 Esegui `supabase/006_c1.sql` nel SQL Editor (si può rieseguire). Con `+c1` nella proprietà `MODALITA` dello script Google
 (es. `lettura+email+cinema+c1`) lo script legge i riepiloghi C1 in PDF dalla cartella Drive dei C1 e dagli allegati
-delle email degli ultimi 60 giorni, dal 2026 in poi; ogni PDF viene letto una volta sola. Il PDF viene trasformato in
-testo con un documento Google temporaneo, subito cancellato. Nell'app, in **Cinema → Incassi C1**, ci sono spettatori,
+delle email degli ultimi 60 giorni, dal 2026 in poi; ogni PDF viene letto una volta sola. Il testo viene estratto dal PDF
+direttamente dallo script, in sola lettura. Nell'app, in **Cinema → Incassi C1**, ci sono spettatori,
 incasso lordo, netto IVA e IVA per proiezione, per film e per mese, con il confronto con la Cassa della stessa serata;
 il confronto compare anche nella sezione Cassa. Per controllare la lettura esegui a mano la funzione `provaC1`.
 
