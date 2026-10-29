@@ -61,6 +61,27 @@ In GitHub: **Settings → Secrets and variables → Actions → New repository s
 `SUPABASE_URL` e `SUPABASE_ANON_KEY` con gli stessi valori di `config.js`.
 L'azione «Mantieni attivo Supabase» farà una piccola richiesta ogni 3 giorni.
 
+## Automatismi: Google Calendar e Gmail
+
+Lo script `google-apps-script/Sincronizzazione.gs` gira gratis dentro Google ogni 15 minuti:
+
+- **Calendario nei due sensi** (account della sala): gli eventi del Google Calendar compaiono nell'app,
+  e le prenotazioni create o modificate nell'app finiscono nel calendario. Nel titolo, «Ref. Nome 333-…»
+  diventa referente e telefono; «EVENTO DA PERFEZIONARE» e «OPZIONE –» diventano stato *Opzione*.
+  Gli eventi ricorrenti (es. cineforum) si modificano solo da Google Calendar.
+- **Email**: le email che chiedono la sala compaiono in **Richieste**, con data e ora riconosciute quando
+  scritte per esteso. Ricevono l'etichetta Gmail «Sala/Richieste»; un'email con quell'etichetta, messa a mano,
+  entra sempre.
+
+### Installazione
+1. In Supabase esegui `supabase/002_sincronizzazione.sql` nel SQL Editor e copia il **codice di sincronizzazione** che compare.
+2. Entra in https://script.google.com con l'account **salatommasomoro@gmail.com** → **Nuovo progetto**,
+   cancella il contenuto e incolla `google-apps-script/Sincronizzazione.gs`. Salva.
+3. **Impostazioni progetto** (ingranaggio) → **Proprietà script** → aggiungi:
+   `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1), `MODALITA` = `calendario+email`.
+4. Torna all'editor, scegli la funzione **installa** e premi **Esegui**; accetta i permessi.
+5. Ripeti i punti 2–4 con l'account **santifabio93@gmail.com**, con `MODALITA` = `email`.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

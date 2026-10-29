@@ -239,4 +239,21 @@ img { max-width: 100% }
 .role { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted) }
 .mine { display: flex; flex-direction: column; gap: 8px }
 .mine .row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; margin-bottom: 6px; cursor: pointer }
+.check input { width: 16px; height: 16px; accent-color: var(--accent) }
+.req { display: flex; flex-direction: column; gap: 8px }
+.req .top-line { display: flex; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; align-items: baseline }
+.req .from { font-weight: 700; overflow-wrap: anywhere }
+.req .subj { font-weight: 600 }
+.req details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: .85rem }
+.req pre { white-space: pre-wrap; font: inherit; font-size: .88rem; color: var(--muted); margin: 6px 0 0; max-height: 320px; overflow: auto; background: var(--sunk); padding: 10px; border-radius: 8px }
+.req .snippet { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere }
+.req .btns { display: flex; gap: 6px; flex-wrap: wrap; align-items: center }
+.badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--due-fg); color: var(--surface); font-size: .7rem; margin-left: 4px; font-variant-numeric: tabular-nums }
+.invite-form { display: flex; flex-direction: column; gap: 8px }
+.invite-form textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 10px; min-height: 64px; resize: vertical; width: 100% }
+.invite-form select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 8px }
 .users td select { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 8px }
+
+a.btn { text-decoration: none; color: inherit }
+a.btn.primary { color: var(--accent-ink) }

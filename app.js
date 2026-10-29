@@ -19,6 +19,7 @@ const DEFAULT_RATES = { tariffaOra: 25, tariffaMezza: 80, tariffaGiorno: 150 };
 const VIEWS = {
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
+  richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   economia: { label: "Economia", roles: ["admin"] },
   utenti: { label: "Persone", roles: ["admin"] },
@@ -33,7 +34,8 @@ const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType
 
 const S = {
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
-  bookings: [], expenses: [], signups: [], profiles: [], rates: { ...DEFAULT_RATES },
+  bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], rates: { ...DEFAULT_RATES }, sync: {},
+  reqFilter: "nuove", fromRequest: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -101,15 +103,22 @@ async function loadAll() {
       S.isAdmin ? sb.from("expenses").select("*") : null,
       S.canWrite ? sb.from("settings").select("*").eq("id", 1).maybeSingle() : null,
       S.isAdmin ? sb.from("profiles").select("*").order("creato") : null,
+      S.canWrite ? sb.from("richieste").select("*").order("ricevuta", { ascending: false }).limit(300) : null,
+      S.isAdmin ? sb.from("inviti").select("*").order("creato") : null,
     ];
-    const [b, s, e, st, p] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
-    if (st.data) S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
+    if (st.data) {
+      S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email };
+    }
     if (p.data) S.profiles = p.data;
+    if (rq.data) S.requests = rq.data;
+    if (inv.data) S.invites = inv.data;
     render();
   })();
   try { await loading; } finally { loading = null; }
@@ -120,7 +129,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -147,6 +156,13 @@ function payState(b) {
   if (i > 0) return ["acconto", "Acconto " + money(i)];
   if (p > 0) return ["dapagare", "Da pagare"];
   return null;
+}
+const orario = (b) => (b.giornata_intera ? "Tutto il giorno" : `${b.inizio}–${b.fine}`);
+const isRecurring = (b) => (b.gcal_id || "").includes("|");
+function ago(ts) {
+  if (!ts) return "";
+  const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+  return m < 1 ? "adesso" : m < 60 ? `${m} min fa` : m < 1440 ? `${Math.round(m / 60)} ore fa` : new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 }
 const byWhen = (a, b) => (a.data + a.inizio).localeCompare(b.data + b.inizio);
 const onDay = (d) => S.bookings.filter((b) => b.data === d).sort(byWhen);
@@ -180,21 +196,24 @@ const isMine = (x) => x.uid && x.uid === S.me?.id;
 function render() {
   if (!S.role) return;
   document.querySelectorAll("#tabs a").forEach((a) => { if (a.dataset.v === S.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  const nReq = S.requests.filter((r) => r.stato === "nuova").length, tabReq = document.querySelector('#tabs a[data-v="richieste"]');
+  if (tabReq) tabReq.innerHTML = "Richieste" + (nReq ? `<span class="badge">${nReq}</span>` : "");
   Object.keys(VIEWS).forEach((v) => ($("#view-" + v).hidden = v !== S.view));
   $("#btn-new").hidden = !S.canWrite;
   renderKpis();
   if (S.view === "calendario") { renderCalendar(); renderDay(); }
   if (S.view === "prenotazioni") renderList();
+  if (S.view === "richieste") renderRequests();
   if (S.view === "turni") renderShifts();
   if (S.view === "economia") renderEconomy();
-  if (S.view === "utenti") renderUsers();
+  if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
 function renderKpis() {
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
   const next = upcoming[0];
   const scoperti = upcoming.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
-  const nextTile = `<div class="kpi"><span class="eyebrow">Prossimo evento</span><b>${next ? esc(fmtShort(next.data)) : "Nessuno"}</b><small>${next ? esc(next.titolo) + " · " + next.inizio : "La sala è libera"}</small></div>`;
+  const nextTile = `<div class="kpi"><span class="eyebrow">Prossimo evento</span><b>${next ? esc(fmtShort(next.data)) : "Nessuno"}</b><small>${next ? esc(next.titolo) + " · " + (next.giornata_intera ? "tutto il giorno" : next.inizio) : "La sala è libera"}</small></div>`;
   if (!S.canWrite) {
     const ids = new Set(upcoming.map((b) => b.id));
     const mine = S.signups.filter((x) => isMine(x) && ids.has(x.bookingId));
@@ -231,7 +250,7 @@ function renderCalendar() {
     if (i === 35 && d.getMonth() !== m.getMonth()) break;
     const s = iso(d), list = onDay(s);
     const cls = ["day", d.getMonth() !== m.getMonth() && "out", s === TODAY && "today", s === S.selected && "sel"].filter(Boolean).join(" ");
-    const chips = list.slice(0, 3).map((b) => `<span class="chip ${b.stato}">${b.inizio} ${esc(b.titolo)}</span>`).join("");
+    const chips = list.slice(0, 3).map((b) => `<span class="chip ${b.stato}">${b.giornata_intera ? "" : b.inizio + " "}${esc(b.titolo)}</span>`).join("");
     const more = list.length > 3 ? `<span class="more">+${list.length - 3} altre</span>` : "";
     const dots = list.length ? `<span class="dots">${list.map((b) => `<i class="dot ${b.stato}"></i>`).join("")}</span>` : "";
     const label = `${fmtDay(s)}${list.length ? ", " + list.length + " prenotazioni" : ", libero"}`;
@@ -239,6 +258,7 @@ function renderCalendar() {
   }
   const g = $("#cal-grid");
   g.innerHTML = html;
+  $("#cal-sync").textContent = S.canWrite && S.sync.calendario ? `Google Calendar della sala sincronizzato ${ago(S.sync.calendario)}` : "";
   g.querySelectorAll("[data-day]").forEach((b) => (b.onclick = () => {
     S.selected = b.dataset.day;
     const d = parse(S.selected);
@@ -254,7 +274,7 @@ function bookingCard(b, showDate) {
     <div><div class="t">${esc(b.titolo)}</div>
       <div class="m">${esc([b.referente, b.tipo].filter(Boolean).join(" · "))}</div>
       ${b.note ? `<div class="m">${esc(b.note)}</div>` : ""}</div>
-    <div class="r"><span class="when">${showDate ? esc(fmtShort(b.data)) + " · " : ""}${b.inizio}–${b.fine}</span>
+    <div class="r"><span class="when">${showDate ? esc(fmtShort(b.data)) + " · " : ""}${orario(b)}</span>
       <span class="pill ${b.stato}">${STATI[b.stato]}</span>
       ${ps ? `<span class="pill ${ps[0]}">${esc(ps[1])}</span>` : ""}
       ${c.need && active(b) ? `<span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">Turni ${c.have}/${c.need}</span>` : ""}</div>
@@ -273,7 +293,7 @@ function renderDay() {
   const el = $("#daypanel");
   el.innerHTML = `<span class="eyebrow">${s === TODAY ? "Oggi" : s < TODAY ? "Giorno passato" : "Giorno selezionato"}</span>
     <h3>${esc(fmtDay(s))}</h3>
-    ${act.length ? `<div class="busy">Occupata: ${act.map((b) => `${b.inizio}–${b.fine}`).join(", ")}</div>` : `<div class="free">La sala è libera per tutta la giornata.</div>`}
+    ${act.length ? `<div class="busy">Occupata: ${act.map((b) => (b.giornata_intera ? `tutto il giorno (${esc(b.titolo)})` : `${b.inizio}–${b.fine}`)).join(", ")}</div>` : `<div class="free">La sala è libera per tutta la giornata.</div>`}
     <div class="blist">${list.map((b) => bookingCard(b, false)).join("")}</div>
     ${S.canWrite ? `<div style="margin-top:14px"><button type="button" class="btn primary" id="book-day">Prenota questa data</button></div>` : ""}`;
   wireCards(el);
@@ -402,21 +422,97 @@ function renderUsers() {
   }));
 }
 
+function renderInvites() {
+  const el = $("#invites");
+  el.innerHTML = S.invites.length
+    ? `<table><thead><tr><th>Email</th><th>Ruolo</th><th>Stato</th><th></th></tr></thead><tbody>${S.invites.map((i) => {
+        const joined = S.profiles.some((p) => (p.email || "").toLowerCase() === i.email);
+        return `<tr><td>${esc(i.email)}</td><td>${RUOLI[i.ruolo]}</td><td>${joined ? '<span class="pill saldato">Ha già fatto l\'accesso</span>' : '<span class="hint">In attesa del primo accesso</span>'}</td><td class="n"><button class="btn ghost sm" type="button" data-inv="${esc(i.email)}" aria-label="Togli ${esc(i.email)}">✕</button></td></tr>`;
+      }).join("")}</tbody></table>`
+    : `<div class="hint">Nessuna email pre-approvata.</div>`;
+  el.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await run(sb.from("inviti").delete().eq("email", b.dataset.inv), "Email tolta dall'elenco"); } catch (e) { toast(errText(e)); b.disabled = false; }
+  }));
+}
+$("#invite-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const emails = [...new Set($("#inv-emails").value.toLowerCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))];
+  if (!emails.length) { toast("Scrivi almeno un indirizzo email valido"); return; }
+  try {
+    await run(sb.from("inviti").upsert(emails.map((email) => ({ email, ruolo: $("#inv-ruolo").value }))), `${emails.length} email aggiunte`);
+    $("#inv-emails").value = "";
+  } catch (x) { toast(errText(x)); }
+});
+
+/* ---------- richieste da email ---------- */
+const REQ_FILTERS = [["nuove", "Da gestire", "nuova"], ["convertite", "Diventate prenotazioni", "convertita"], ["scartate", "Scartate", "scartata"]];
+function renderRequests() {
+  $("#req-filters").innerHTML = REQ_FILTERS.map(([k, l, st]) => `<button type="button" data-f="${k}" aria-pressed="${S.reqFilter === k}">${l}<span class="c">${S.requests.filter((r) => r.stato === st).length}</span></button>`).join("");
+  $("#req-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.reqFilter = b.dataset.f; renderRequests(); }));
+  $("#req-sync").textContent = S.sync.email ? `Email controllate ${ago(S.sync.email)}` : "Le email arrivano qui quando lo script Google è attivo";
+  const st = REQ_FILTERS.find((x) => x[0] === S.reqFilter)[2];
+  const list = S.requests.filter((r) => r.stato === st);
+  const el = $("#requests");
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">${st === "nuova" ? "Nessuna nuova richiesta. Le email che chiedono la sala compaiono qui da sole." : "Nessuna richiesta in questo elenco."}</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="blist">${list.map((r) => {
+    const quando = r.data_proposta ? `${fmtShort(r.data_proposta)}${r.ora_proposta ? " · ore " + hm(r.ora_proposta) : ""}` : "";
+    const busy = r.data_proposta ? S.bookings.filter((b) => active(b) && b.data === r.data_proposta) : [];
+    const linked = r.booking_id && S.bookings.find((b) => b.id === r.booking_id);
+    return `<article class="panel req">
+      <div class="top-line"><span class="from">${esc(r.mittente)}${r.mittente_email && r.mittente_email !== r.mittente ? ` <span class="hint">${esc(r.mittente_email)}</span>` : ""}</span>
+        <span class="hint">ricevuta ${esc(new Date(r.ricevuta).toLocaleDateString("it-IT", { day: "numeric", month: "short" }))} · ${esc(r.account)}</span></div>
+      <div class="subj">${esc(r.oggetto || "(senza oggetto)")}</div>
+      ${quando ? `<div><span class="pill ${busy.length ? "dapagare" : "saldato"}">Data trovata: ${esc(quando)}${busy.length ? " · già occupata" : " · sala libera"}</span>${busy.length ? ` <span class="hint">${busy.map((b) => esc(b.titolo)).join(", ")}</span>` : ""}</div>` : `<div class="hint">Nessuna data riconosciuta nel testo</div>`}
+      <div class="snippet">${esc(r.testo.slice(0, 260))}${r.testo.length > 260 ? "…" : ""}</div>
+      ${r.testo.length > 260 ? `<details><summary>Leggi tutta l'email</summary><pre>${esc(r.testo)}</pre></details>` : ""}
+      <div class="btns">
+        ${r.stato === "nuova" ? `<button class="btn primary sm" type="button" data-conv="${esc(r.id)}">Crea prenotazione</button><button class="btn sm" type="button" data-skip="${esc(r.id)}">Scarta</button>` : ""}
+        ${r.stato === "scartata" ? `<button class="btn sm" type="button" data-back="${esc(r.id)}">Rimetti tra quelle da gestire</button>` : ""}
+        ${linked ? `<button class="btn sm" type="button" data-open="${esc(linked.id)}">Apri prenotazione</button>` : ""}
+        ${r.link ? `<a class="btn ghost sm" href="${esc(r.link)}" target="_blank" rel="noopener">Apri in Gmail</a>` : ""}
+      </div>
+    </article>`;
+  }).join("")}</div>`;
+  const setState = async (id, stato, msg) => { try { await run(sb.from("richieste").update({ stato }).eq("id", id), msg); } catch (e) { toast(errText(e)); } };
+  el.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.skip, "scartata", "Richiesta scartata"); }));
+  el.querySelectorAll("[data-back]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.back, "nuova", "Richiesta rimessa tra quelle da gestire"); }));
+  el.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openBooking(S.bookings.find((x) => x.id === b.dataset.open))));
+  el.querySelectorAll("[data-conv]").forEach((b) => (b.onclick = () => {
+    const r = S.requests.find((x) => x.id === b.dataset.conv);
+    const ini = r.ora_proposta ? hm(r.ora_proposta) : "20:30";
+    S.fromRequest = r.id;
+    openBooking(null, r.data_proposta || TODAY, {
+      titolo: r.oggetto.replace(/^(re|fwd?|i|r):\s*/i, "").slice(0, 120), referente: r.mittente, email: r.mittente_email,
+      inizio: ini, fine: addMin(ini, 150), tipo: "", note: `Richiesta arrivata per email il ${new Date(r.ricevuta).toLocaleDateString("it-IT")}.`,
+    });
+  }));
+}
+
 /* ---------- prenotazione ---------- */
 const dlgB = $("#dlg-booking"), dlgE = $("#dlg-expense"), dlgC = $("#dlg-copy");
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));
 
-function openBooking(b, date) {
+function openBooking(b, date, prefill) {
   if (!S.canWrite) return;
   S.editing = b ? b.id : null;
-  const v = b || { titolo: "", referente: "", tipo: "Festa privata", telefono: "", email: "", data: date || S.selected || TODAY, inizio: "16:00", fine: "20:00", prezzo: "", incassato: 0, stato: "opzione", note: "", turni: [] };
+  const v = b || { titolo: "", referente: "", tipo: "Festa privata", telefono: "", email: "", data: date || S.selected || TODAY, inizio: "16:00", fine: "20:00", prezzo: "", incassato: 0, stato: "opzione", note: "", turni: [], ...(prefill || {}) };
+  if (!prefill) S.fromRequest = null;
   $("#b-head").textContent = b ? "Prenotazione" : "Nuova prenotazione";
   for (const k of ["titolo", "referente", "tipo", "telefono", "email", "data", "inizio", "fine", "prezzo", "incassato", "stato", "note"]) $("#b-" + k).value = v[k] ?? "";
   if (!b) $("#b-prezzo").value = suggestPrice(v.inizio, v.fine) || "";
   S.draftTurni = turni(v).map((t) => ({ ...t }));
   renderSlotEditor();
+  $("#b-giornata").checked = !!v.giornata_intera;
+  syncAllDay();
+  $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
+    : isRecurring(b) ? "Evento ricorrente di Google Calendar: titolo, data e orario si modificano dal calendario; qui puoi gestire prezzo, turni e note."
+    : b.gcal_id ? "Sincronizzata con il Google Calendar della sala: le modifiche arrivano anche lì entro 15 minuti." : "";
   $("#b-error").innerHTML = "";
-  renderDeleteArea("#b-delete-area", !!b, async () => { await run(sb.from("bookings").delete().eq("id", b.id), "Prenotazione eliminata"); dlgB.close(); });
+  renderDeleteArea("#b-delete-area", !!b && !isRecurring(b), async () => { await run(sb.from("bookings").delete().eq("id", b.id), "Prenotazione eliminata"); dlgB.close(); });
   checkAvail();
   dlgB.showModal();
 }
@@ -431,13 +527,14 @@ function renderDeleteArea(sel, showIt, onDelete) {
   };
 }
 function checkAvail() {
-  const d = $("#b-data").value, i = $("#b-inizio").value, f = $("#b-fine").value, el = $("#b-avail");
+  const all = $("#b-giornata").checked;
+  const d = $("#b-data").value, i = all ? "00:00" : $("#b-inizio").value, f = all ? "23:59" : $("#b-fine").value, el = $("#b-avail");
   if (!d || !i || !f) { el.innerHTML = ""; return; }
   if (f <= i) { el.innerHTML = `<div class="warn">L'orario di fine deve essere dopo l'inizio.</div>`; return; }
   const c = $("#b-stato").value === "annullata" ? [] : conflicts(d, i, f, S.editing);
   el.innerHTML = c.length
-    ? `<div class="warn">Sovrapposizione con: ${c.map((b) => `${esc(b.titolo)} (${b.inizio}–${b.fine}, ${STATI[b.stato].toLowerCase()})`).join("; ")}</div>`
-    : `<div class="ok-note">Sala libera in questo orario · ${hours(i, f).toLocaleString("it-IT")} ore</div>`;
+    ? `<div class="warn">Sovrapposizione con: ${c.map((b) => `${esc(b.titolo)} (${orario(b).toLowerCase()}, ${STATI[b.stato].toLowerCase()})`).join("; ")}</div>`
+    : `<div class="ok-note">Sala libera ${all ? "per tutto il giorno" : `in questo orario · ${hours(i, f).toLocaleString("it-IT")} ore`}</div>`;
 }
 function renderSlotEditor() {
   const el = $("#b-turni");
@@ -475,6 +572,12 @@ $("#b-turni-std").onclick = () => {
   renderSlotEditor();
 };
 ["#b-data", "#b-inizio", "#b-fine", "#b-stato"].forEach((s) => $(s).addEventListener("input", checkAvail));
+function syncAllDay() {
+  const all = $("#b-giornata").checked;
+  $("#b-inizio").disabled = all; $("#b-fine").disabled = all;
+  checkAvail();
+}
+$("#b-giornata").addEventListener("change", syncAllDay);
 $("#b-suggest").onclick = () => { $("#b-prezzo").value = suggestPrice($("#b-inizio").value, $("#b-fine").value) || ""; };
 $("#b-saldo").onclick = () => { $("#b-incassato").value = $("#b-prezzo").value || 0; };
 
@@ -483,7 +586,8 @@ $("#booking-form").addEventListener("submit", async (e) => {
   const g = (k) => $("#b-" + k).value.trim();
   const rec = {
     titolo: g("titolo"), referente: g("referente"), tipo: g("tipo"), telefono: g("telefono"), email: g("email"),
-    data: g("data"), inizio: g("inizio"), fine: g("fine"),
+    data: g("data"), giornata_intera: $("#b-giornata").checked,
+    inizio: $("#b-giornata").checked ? "00:00" : g("inizio"), fine: $("#b-giornata").checked ? "23:59" : g("fine"),
     prezzo: Number(g("prezzo")) || 0, incassato: Number(g("incassato")) || 0, stato: g("stato"), note: g("note"),
     turni: S.draftTurni.filter((t) => t.label.trim() || t.inizio).map((t) => ({ id: t.id, label: t.label.trim() || "Turno", inizio: t.inizio, fine: t.fine, posti: Math.max(1, Number(t.posti) || 1) })),
   };
@@ -492,10 +596,20 @@ $("#booking-form").addEventListener("submit", async (e) => {
   if (err) { $("#b-error").innerHTML = `<div class="warn">${err}</div>`; return; }
   const btn = $("#b-submit"); btn.disabled = true;
   try {
-    if (S.editing) await run(sb.from("bookings").update({ ...rec, aggiornato: new Date().toISOString() }).eq("id", S.editing), "Prenotazione aggiornata");
-    else await run(sb.from("bookings").insert(rec), "Prenotazione salvata");
+    if (S.editing) {
+      const prev = S.bookings.find((x) => x.id === S.editing);
+      if (prev && isRecurring(prev)) for (const k of ["titolo", "data", "inizio", "fine", "giornata_intera"]) delete rec[k];
+      await run(sb.from("bookings").update(rec).eq("id", S.editing), "Prenotazione aggiornata");
+    } else {
+      const { data: created, error } = await sb.from("bookings").insert({ ...rec, origine: S.fromRequest ? "email" : "app" }).select("id").single();
+      if (error) throw error;
+      if (S.fromRequest) await sb.from("richieste").update({ stato: "convertita", booking_id: created.id }).eq("id", S.fromRequest);
+      S.fromRequest = null;
+      toast("Prenotazione salvata");
+      await loadAll();
+    }
     dlgB.close();
-    S.selected = rec.data; S.month = new Date(parse(rec.data).getFullYear(), parse(rec.data).getMonth(), 1);
+    if (rec.data) { S.selected = rec.data; S.month = new Date(parse(rec.data).getFullYear(), parse(rec.data).getMonth(), 1); }
     render();
   } catch (x) {
     $("#b-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`;
@@ -581,7 +695,7 @@ function shiftEvent(b) {
     </div>`;
   }).join("");
   return `<article class="panel shift-event">
-    <header><div><h3>${esc(b.titolo)}</h3><div class="when">${esc(fmtDay(b.data))} · ${b.inizio}–${b.fine}</div></div>
+    <header><div><h3>${esc(b.titolo)}</h3><div class="when">${esc(fmtDay(b.data))} · ${orario(b)}</div></div>
       <div class="btns"><span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">${c.have >= c.need ? "Turni coperti" : `Mancano ${c.need - c.have}`}</span>
         <button class="btn sm" type="button" data-wa="${esc(b.id)}">Testo per WhatsApp</button>
         ${S.canWrite ? `<button class="btn sm" type="button" data-edit="${esc(b.id)}">Modifica turni</button>` : ""}</div></header>
@@ -589,7 +703,7 @@ function shiftEvent(b) {
   </article>`;
 }
 function waText(b) {
-  const lines = [`*Turni volontari · ${b.titolo}*`, `${fmtDay(b.data)}, ${b.inizio}–${b.fine}`, ""];
+  const lines = [`*Turni volontari · ${b.titolo}*`, `${fmtDay(b.data)}, ${orario(b).toLowerCase()}`, ""];
   for (const t of turni(b)) {
     const ppl = signupsFor(b.id, t.id), n = Number(t.posti) || 0, miss = n - ppl.length;
     lines.push(`▪️ *${t.label}* ${t.inizio}–${t.fine} (${ppl.length}/${n})`);

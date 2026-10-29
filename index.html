@@ -81,6 +81,7 @@
           </div>
         </div>
         <div class="grid" id="cal-grid"></div>
+        <div class="hint" id="cal-sync" style="margin-top:10px"></div>
         <div class="legend">
           <span><span class="pill opzione">Opzione</span> in attesa di conferma</span>
           <span><span class="pill confermata">Confermata</span></span>
@@ -97,6 +98,14 @@
       <input type="search" class="search" id="q" placeholder="Cerca evento o referente…" aria-label="Cerca">
     </div>
     <div id="list"></div>
+  </main>
+
+  <main id="view-richieste" hidden>
+    <div class="toolbar">
+      <div class="seg" id="req-filters" role="group" aria-label="Filtro richieste"></div>
+      <span class="hint" id="req-sync"></span>
+    </div>
+    <div id="requests"></div>
   </main>
 
   <main id="view-turni" hidden>
@@ -156,6 +165,14 @@
     <div class="toolbar"><h2>Persone e ruoli</h2><span class="hint">Chi accede con Google per la prima volta compare qui «In attesa»</span></div>
     <div class="panel"><div class="tbl-wrap users" id="users"></div></div>
     <div class="panel" style="margin-top:14px">
+      <div class="section-head"><h3>Email pre-approvate</h3><span class="hint">Chi è in elenco entra subito con il ruolo indicato al primo accesso con Google</span></div>
+      <form id="invite-form" class="invite-form">
+        <textarea id="inv-emails" placeholder="Una o più email Gmail, separate da virgola o una per riga" aria-label="Email da pre-approvare"></textarea>
+        <div class="actions"><select id="inv-ruolo" aria-label="Ruolo"><option value="volontario">Volontario</option><option value="coordinatore">Coordinatore</option><option value="admin">Amministratore</option></select><button class="btn" type="submit">Aggiungi</button></div>
+      </form>
+      <div class="tbl-wrap" id="invites" style="margin-top:10px"></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
       <h3>Cosa può fare ogni ruolo</h3>
       <table style="margin-top:8px"><tbody>
         <tr><td><b>Amministratore</b></td><td>Tutto: prenotazioni, economia, tariffe, turni, persone e ruoli.</td></tr>
@@ -174,13 +191,13 @@
       <div class="field"><label for="b-titolo">Evento</label><input id="b-titolo" required placeholder="Es. Festa di compleanno, Assemblea condominiale"></div>
       <div class="field h"><label for="b-referente">Referente</label><input id="b-referente" placeholder="Nome e cognome"></div>
       <div class="field h"><label for="b-tipo">Tipo</label>
-        <select id="b-tipo"><option>Festa privata</option><option>Riunione / assemblea</option><option>Corso / laboratorio</option><option>Attività parrocchiale</option><option>Spettacolo / concerto</option><option>Altro</option></select></div>
+        <select id="b-tipo"><option>Festa privata</option><option>Riunione / assemblea</option><option>Conferenza / incontro</option><option>Cinema / proiezione</option><option>Spettacolo / concerto</option><option>Corso / laboratorio</option><option>Attività parrocchiale</option><option>Altro</option><option value="">Non specificato</option></select></div>
       <div class="field h"><label for="b-telefono">Telefono</label><input id="b-telefono" type="tel" inputmode="tel"></div>
       <div class="field h"><label for="b-email">Email</label><input id="b-email" type="email"></div>
       <div class="field t"><label for="b-data">Data</label><input id="b-data" type="date" required></div>
       <div class="field t"><label for="b-inizio">Dalle</label><input id="b-inizio" type="time" required value="16:00"></div>
       <div class="field t"><label for="b-fine">Alle</label><input id="b-fine" type="time" required value="20:00"></div>
-      <div class="field"><div id="b-avail"></div></div>
+      <div class="field"><label class="check"><input type="checkbox" id="b-giornata"> Tutto il giorno</label><div id="b-avail"></div></div>
       <div class="field t"><label for="b-prezzo">Prezzo (€)</label><input id="b-prezzo" type="number" min="0" step="1" inputmode="decimal">
         <button class="linkbtn" type="button" id="b-suggest">Applica tariffa</button></div>
       <div class="field t"><label for="b-incassato">Incassato (€)</label><input id="b-incassato" type="number" min="0" step="1" inputmode="decimal" value="0">
@@ -192,6 +209,7 @@
         <div class="actions"><button class="btn sm" type="button" id="b-turni-std">Proponi turni</button><button class="btn sm" type="button" id="b-turni-add">+ Fascia</button></div></div>
       <div class="field"><div class="slot-rows" id="b-turni"></div></div>
     </div>
+    <div id="b-origin" class="hint"></div>
     <div id="b-error"></div>
     <div class="dlg-foot">
       <div id="b-delete-area"></div>
