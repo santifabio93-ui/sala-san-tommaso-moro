@@ -354,7 +354,7 @@ function leggiC1(cfg, limite) {
     if (!allegati.length) { segna("mail_" + m.id); return; }
     allegati.forEach((a, i) => daLeggere.push({
       chiave: i === allegati.length - 1 ? "mail_" + m.id : "mail_" + m.id + "_" + i, nome: a.filename, fonte: "email", fonte_id: m.id,
-      scarica: () => Utilities.newBlob(Utilities.base64DecodeWebSafe(Gmail.Users.Messages.Attachments.get("me", m.id, a.body.attachmentId).data), "application/pdf", a.filename),
+      scarica: () => Utilities.newBlob(byteDaGmail(Gmail.Users.Messages.Attachments.get("me", m.id, a.body.attachmentId).data), "application/pdf", a.filename),
     }));
   });
 
@@ -494,9 +494,18 @@ function leggiEmail(cfg) {
   Logger.log("Email: controllate " + items.length + ", nuove richieste " + nuove);
 }
 
+// il servizio Gmail di Apps Script restituisce i contenuti a volte già come byte, a volte come testo base64
+function byteDaGmail(d) {
+  if (Array.isArray(d)) return d;
+  if (d && typeof d === "object" && typeof d.length === "number") return Array.prototype.slice.call(d);
+  let t = String(d || "").replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  while (t.length % 4) t += "=";
+  return Utilities.base64Decode(t);
+}
+
 // testo semplice dell'email: la parte text/plain, altrimenti l'HTML ripulito
 function corpoTesto(parte) {
-  const decodifica = (d) => Utilities.newBlob(Utilities.base64DecodeWebSafe(d)).getDataAsString("UTF-8");
+  const decodifica = (d) => Utilities.newBlob(byteDaGmail(d)).getDataAsString("UTF-8");
   const trova = (p, tipo) => {
     if (p.mimeType === tipo && p.body && p.body.data) return decodifica(p.body.data);
     for (const sub of p.parts || []) { const r = trova(sub, tipo); if (r) return r; }
