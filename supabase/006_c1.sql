@@ -86,6 +86,9 @@ end $$;
 revoke all on function public.sync_c1_push(text, jsonb) from public;
 grant execute on function public.sync_c1_push(text, jsonb) to anon;
 
+-- fa vedere subito le funzioni nuove all'app
+notify pgrst, 'reload schema';
+
 -- controllo finale: devono risultare tutte «true»
 select
   to_regclass('public.c1') is not null as tabella_c1,

@@ -251,3 +251,6 @@ grant execute on function public.sync_email_push(text, text, jsonb) to anon;
 
 -- ---------- il codice da copiare nello script Google ----------
 select token as "CODICE DI SINCRONIZZAZIONE (copialo nello script Google)" from public.sync_tokens;
+
+-- fa vedere subito le funzioni nuove all'app
+notify pgrst, 'reload schema';

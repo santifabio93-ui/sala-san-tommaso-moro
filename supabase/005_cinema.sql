@@ -122,3 +122,6 @@ select
   to_regclass('public.proiezioni') is not null as tabella_proiezioni,
   exists (select 1 from pg_proc where proname = 'sync_cinebot_push') as funzione_cinebot,
   exists (select 1 from information_schema.columns where table_name = 'settings' and column_name = 'sync_cinebot') as colonna_sync;
+
+-- fa vedere subito le funzioni nuove all'app
+notify pgrst, 'reload schema';
