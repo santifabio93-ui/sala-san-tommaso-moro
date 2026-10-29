@@ -21,6 +21,7 @@ const VIEWS = {
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
+  cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   economia: { label: "Economia", roles: ["admin"] },
   utenti: { label: "Persone", roles: ["admin"] },
 };
@@ -30,12 +31,13 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
   show("setup");
   throw new Error("config.js non compilato");
 }
+const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
 const S = {
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
   bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], rates: { ...DEFAULT_RATES }, sync: {},
-  reqFilter: "nuove", fromRequest: null,
+  reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -79,10 +81,11 @@ async function start() {
   S.isAdmin = S.role === "admin";
   S.canWrite = S.isAdmin || S.role === "coordinatore";
   S.canSign = true;
+  S.canCassa = S.canWrite || !!me.cassa;
   $("#me-name").textContent = me.nome || me.email;
   $("#me-role").textContent = RUOLI[S.role];
   if (me.avatar) { $("#me-avatar").src = me.avatar; $("#me-avatar").hidden = false; }
-  $("#tabs").innerHTML = Object.entries(VIEWS).filter(([, v]) => v.roles.includes(S.role)).map(([k, v]) => `<a href="#${k}" data-v="${k}">${v.label}</a>`).join("");
+  $("#tabs").innerHTML = Object.keys(VIEWS).filter(canSee).map((k) => [k, VIEWS[k]]).map(([k, v]) => `<a href="#${k}" data-v="${k}">${v.label}</a>`).join("");
   show("app");
   route();
   await loadAll();
@@ -101,13 +104,14 @@ async function loadAll() {
       S.canWrite ? sb.from("bookings").select("*") : sb.from("eventi").select("*"),
       sb.from("signups").select("*"),
       S.isAdmin ? sb.from("expenses").select("*") : null,
-      S.canWrite ? sb.from("settings").select("*").eq("id", 1).maybeSingle() : null,
+      S.canWrite || S.canCassa ? sb.from("settings").select("*").eq("id", 1).maybeSingle() : null,
       S.isAdmin ? sb.from("profiles").select("*").order("creato") : null,
       S.canWrite ? sb.from("richieste").select("*").order("ricevuta", { ascending: false }).limit(300) : null,
       S.isAdmin ? sb.from("inviti").select("*").order("creato") : null,
+      S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
     ];
-    const [b, s, e, st, p, rq, inv] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, ca] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, ca].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
@@ -115,10 +119,12 @@ async function loadAll() {
     if (st.data) {
       S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email };
+      S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
     }
     if (p.data) S.profiles = p.data;
     if (rq.data) S.requests = rq.data;
     if (inv.data) S.invites = inv.data;
+    if (ca.data) S.cassa = ca.data.map(mapCassa);
     render();
   })();
   try { await loading; } finally { loading = null; }
@@ -129,7 +135,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -208,6 +214,7 @@ function render() {
   if (S.view === "richieste") renderRequests();
   if (S.view === "turni") renderShifts();
   if (S.view === "economia") renderEconomy();
+  if (S.view === "cassa") renderCassa();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -230,7 +237,7 @@ function renderKpis() {
   let econ = "";
   if (S.isAdmin) {
     const y = String(new Date().getFullYear());
-    const inc = S.bookings.filter((b) => b.data.startsWith(y)).reduce((s, b) => s + b.incassato, 0);
+    const inc = S.bookings.filter((b) => b.data.startsWith(y)).reduce((s, b) => s + b.incassato, 0) + bigliettiDal(y);
     const spe = S.expenses.filter((e) => e.data.startsWith(y)).reduce((s, e) => s + e.importo, 0);
     econ = `<div class="kpi"><span class="eyebrow">Saldo ${y}</span><b>${money(inc - spe)}</b><small>${money(inc)} incassati − ${money(spe)} spese</small></div>`;
   } else {
@@ -297,9 +304,10 @@ function renderDay() {
     <h3>${esc(fmtDay(s))}</h3>
     ${act.length ? `<div class="busy">Occupata: ${act.map((b) => (b.giornata_intera ? `tutto il giorno (${esc(b.titolo)})` : `${b.inizio}–${b.fine}`)).join(", ")}</div>` : `<div class="free">La sala è libera per tutta la giornata.</div>`}
     <div class="blist">${list.map((b) => bookingCard(b, false)).join("")}</div>
-    ${S.canWrite ? `<div style="margin-top:14px"><button type="button" class="btn primary" id="book-day">Prenota questa data</button></div>` : ""}`;
+    ${S.canWrite || (S.canCassa && act.length) ? `<div class="actions" style="margin-top:14px">${S.canWrite ? `<button type="button" class="btn primary" id="book-day">Prenota questa data</button>` : ""}${S.canCassa && act.length ? `<button type="button" class="btn" id="cassa-day">Cassa di questa data</button>` : ""}</div>` : ""}`;
   wireCards(el);
   const bd = $("#book-day"); if (bd) bd.onclick = () => openBooking(null, s);
+  const cd = $("#cassa-day"); if (cd) cd.onclick = () => openCassaFor(s);
 }
 
 const FILTERS = [
@@ -344,9 +352,10 @@ function renderEconomy() {
   const Y = String(S.year);
   const months = MESI.map((label, i) => {
     const k = `${Y}-${pad(i + 1)}`;
-    const inc = S.bookings.filter((b) => b.data.startsWith(k)).reduce((s, b) => s + b.incassato, 0);
+    const aff = S.bookings.filter((b) => b.data.startsWith(k)).reduce((s, b) => s + b.incassato, 0);
+    const big = bigliettiDal(k);
     const spe = S.expenses.filter((e) => e.data.startsWith(k)).reduce((s, e) => s + e.importo, 0);
-    return { label, full: parse(k + "-01").toLocaleDateString("it-IT", { month: "long" }), inc, spe };
+    return { label, full: parse(k + "-01").toLocaleDateString("it-IT", { month: "long" }), aff, big, inc: aff + big, spe };
   });
 
   const W = 720, H = 250, L = 52, R = 8, T = 12, B = 26;
@@ -373,7 +382,7 @@ function renderEconomy() {
   chart.querySelectorAll(".hit").forEach((h) => {
     const showTip = () => {
       const m = months[+h.dataset.i], rect = svgEl.getBoundingClientRect(), k = rect.width / W;
-      tip.innerHTML = `<b>${esc(m.full)} ${Y}</b><br><i style="background:var(--accent)"></i>Entrate ${money(m.inc)}<br><i style="background:var(--spese)"></i>Spese ${money(m.spe)}<br>Saldo ${money(m.inc - m.spe)}`;
+      tip.innerHTML = `<b>${esc(m.full)} ${Y}</b><br><i style="background:var(--accent)"></i>Entrate ${money(m.inc)}${m.big ? ` <span style="opacity:.75">(biglietti ${money(m.big)})</span>` : ""}<br><i style="background:var(--spese)"></i>Spese ${money(m.spe)}<br>Saldo ${money(m.inc - m.spe)}`;
       tip.style.left = Math.max(70, Math.min(rect.width - 70, (L + gw * +h.dataset.i + gw / 2) * k)) + "px";
       tip.style.top = (y(Math.max(m.inc, m.spe)) * k - 8) + "px";
       tip.hidden = false;
@@ -384,9 +393,10 @@ function renderEconomy() {
     h.addEventListener("mouseleave", () => { tip.hidden = true; h.setAttribute("fill", "transparent"); });
   });
   const tI = months.reduce((s, m) => s + m.inc, 0), tS = months.reduce((s, m) => s + m.spe, 0);
-  $("#chart-table").innerHTML = `<table><thead><tr><th>Mese</th><th class="n">Entrate</th><th class="n">Spese</th><th class="n">Saldo</th></tr></thead><tbody>
-    ${months.map((m) => `<tr><td class="cap">${esc(m.full)}</td><td class="n">${money(m.inc)}</td><td class="n">${money(m.spe)}</td><td class="n">${money(m.inc - m.spe)}</td></tr>`).join("")}
-    <tr><th>Totale ${Y}</th><th class="n">${money(tI)}</th><th class="n">${money(tS)}</th><th class="n">${money(tI - tS)}</th></tr></tbody></table>`;
+  const tA = months.reduce((s, m) => s + m.aff, 0), tB = months.reduce((s, m) => s + m.big, 0);
+  $("#chart-table").innerHTML = `<table><thead><tr><th>Mese</th><th class="n">Prenotazioni</th><th class="n">Biglietti</th><th class="n">Spese</th><th class="n">Saldo</th></tr></thead><tbody>
+    ${months.map((m) => `<tr><td class="cap">${esc(m.full)}</td><td class="n">${money(m.aff)}</td><td class="n">${money(m.big)}</td><td class="n">${money(m.spe)}</td><td class="n">${money(m.inc - m.spe)}</td></tr>`).join("")}
+    <tr><th>Totale ${Y}</th><th class="n">${money(tA)}</th><th class="n">${money(tB)}</th><th class="n">${money(tS)}</th><th class="n">${money(tI - tS)}</th></tr></tbody></table>`;
   $("#chart-table").hidden = !S.showTable;
   $("#toggle-table").textContent = S.showTable ? "Nascondi tabella" : "Mostra tabella";
 
@@ -404,19 +414,25 @@ function renderEconomy() {
   $("#expenses").querySelectorAll("[data-e]").forEach((r) => (r.onclick = () => openExpense(S.expenses.find((e) => e.id === r.dataset.e))));
 
   const fill = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v ?? ""; };
-  fill("#r-ora", S.rates.tariffaOra); fill("#r-mezza", S.rates.tariffaMezza); fill("#r-giorno", S.rates.tariffaGiorno);
+  fill("#r-ora", S.rates.tariffaOra); fill("#r-mezza", S.rates.tariffaMezza); fill("#r-giorno", S.rates.tariffaGiorno); fill("#r-biglietto", S.prezzoBiglietto);
 }
 
 /* ---------- persone ---------- */
 function renderUsers() {
   const list = [...S.profiles].sort((a, b) => (a.ruolo === "in_attesa" ? -1 : 0) - (b.ruolo === "in_attesa" ? -1 : 0));
   $("#users").innerHTML = list.length
-    ? `<table><thead><tr><th>Nome</th><th>Email</th><th>Ruolo</th></tr></thead><tbody>${list.map((p) => `<tr>
+    ? `<table><thead><tr><th>Nome</th><th>Email</th><th>Ruolo</th><th>Fa cassa</th></tr></thead><tbody>${list.map((p) => `<tr>
         <td>${esc(p.nome)}${p.id === S.me.id ? ' <span class="hint">(tu)</span>' : ""}</td>
         <td>${esc(p.email)}</td>
         <td><select data-u="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}"${p.id === S.me.id ? " disabled" : ""}>${Object.entries(RUOLI).map(([k, l]) => `<option value="${k}"${p.ruolo === k ? " selected" : ""}>${l}</option>`).join("")}</select>
-          ${p.ruolo === "in_attesa" ? ' <span class="pill acconto">Da approvare</span>' : ""}</td></tr>`).join("")}</tbody></table>`
+          ${p.ruolo === "in_attesa" ? ' <span class="pill acconto">Da approvare</span>' : ""}</td>
+        <td>${["admin", "coordinatore"].includes(p.ruolo) ? '<span class="hint">sempre</span>' : p.ruolo === "volontario" ? `<label class="check"><input type="checkbox" data-cassa="${esc(p.id)}"${p.cassa ? " checked" : ""}> abilitato</label>` : ""}</td></tr>`).join("")}</tbody></table>`
     : `<div class="empty">Nessuna persona registrata.</div>`;
+  $("#users").querySelectorAll("[data-cassa]").forEach((cb) => (cb.onchange = async () => {
+    cb.disabled = true;
+    try { await run(sb.from("profiles").update({ cassa: cb.checked }).eq("id", cb.dataset.cassa), cb.checked ? "Abilitato alla cassa" : "Non fa più cassa"); }
+    catch (e) { toast(errText(e)); render(); }
+  }));
   $("#users").querySelectorAll("[data-u]").forEach((sel) => (sel.onchange = async () => {
     sel.disabled = true;
     try { await run(sb.from("profiles").update({ ruolo: sel.value }).eq("id", sel.dataset.u), "Ruolo aggiornato"); }
@@ -719,8 +735,9 @@ function waText(b) {
   lines.push("", `Per segnarti: ${location.origin + location.pathname}#turni`);
   return lines.join("\n");
 }
-function openCopy(b) {
-  $("#copy-text").value = waText(b);
+function openCopy(b) { openCopyText(waText(b)); }
+function openCopyText(text) {
+  $("#copy-text").value = text;
   $("#copy-status").textContent = "";
   updateWaLink();
   dlgC.showModal();
@@ -733,6 +750,205 @@ $("#copy-btn").onclick = () => {
   try { navigator.clipboard.writeText(ta.value).then(() => { $("#copy-status").textContent = "Copiato. Ora incollalo nel gruppo WhatsApp."; }, fallback); }
   catch (e) { fallback(); }
 };
+
+/* ---------- cassa ---------- */
+const CASSA_NUM = ["fondo_iniziale", "online_euro", "contanti_euro", "pos_euro", "contati", "prelievo", "fondo_finale"];
+const CASSA_INT = ["online_n", "contanti_n", "pos_n", "omaggi_n"];
+const TAGLI = [100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05];
+const mapCassa = (r) => {
+  const c = { ...r, conteggio: r.conteggio || {} };
+  for (const k of CASSA_NUM) c[k] = r[k] == null ? null : Number(r[k]);
+  for (const k of CASSA_INT) c[k] = Number(r[k]) || 0;
+  return c;
+};
+const totBiglietti = (c) => (c.online_euro || 0) + (c.contanti_euro || 0) + (c.pos_euro || 0);
+const spettatori = (c) => c.online_n + c.contanti_n + c.pos_n + c.omaggi_n;
+const bigliettiDal = (prefix) => S.cassa.filter((c) => c.data.startsWith(prefix)).reduce((s, c) => s + totBiglietti(c), 0);
+const r2 = (v) => Math.round(v * 100) / 100;
+const latestClosed = (exceptId) => S.cassa.filter((c) => c.stato === "chiusa" && c.id !== exceptId)
+  .sort((a, b) => (b.data + (b.chiuso_il || b.creato)).localeCompare(a.data + (a.chiuso_il || a.creato)))[0];
+const cassaTitle = (c) => c.titolo || (S.bookings.find((b) => b.id === c.booking_id) || {}).titolo || "Cassa";
+function quadratura(c) {
+  if (c.contati == null) return null;
+  return r2(c.contati - ((c.fondo_iniziale || 0) + (c.contanti_euro || 0)));
+}
+
+function renderCassa() {
+  const last = latestClosed();
+  const open = S.cassa.filter((c) => c.stato === "aperta");
+  $("#fondo-attuale").textContent = money(last ? last.fondo_finale : 0);
+  $("#fondo-hint").textContent = last ? `dopo la chiusura del ${fmtShort(last.data)} · ${cassaTitle(last)}` : "nessuna cassa chiusa finora";
+  if (open.length) $("#fondo-hint").textContent += ` · ${open.length} ${open.length > 1 ? "casse aperte" : "cassa aperta"}`;
+  const el = $("#cassa-list");
+  if (!S.cassa.length) {
+    el.innerHTML = `<div class="empty">Nessuna cassa registrata. A inizio serata premi «+ Apri cassa»: il fondo iniziale viene proposto in automatico.</div>`;
+    return;
+  }
+  const rows = [...S.cassa].sort((a, b) => (b.data + b.creato).localeCompare(a.data + a.creato));
+  el.innerHTML = `<table><thead><tr><th>Data</th><th>Evento</th><th class="n">Spett.</th><th class="n">Online</th><th class="n">Contanti</th><th class="n">POS</th><th class="n">Totale</th><th>Quadratura</th><th class="n">Nuovo saldo</th></tr></thead><tbody>
+    ${rows.map((c) => {
+      const q = quadratura(c);
+      const pill = c.stato === "aperta" ? '<span class="pill acconto">Aperta</span>'
+        : q == null ? '<span class="pill annullata">Non contata</span>'
+        : Math.abs(q) < 0.005 ? '<span class="pill saldato">Quadra</span>'
+        : `<span class="pill dapagare">${q > 0 ? "+" : "−"}${money(Math.abs(q))}</span>`;
+      return `<tr class="click" data-c="${esc(c.id)}"><td>${esc(fmtShort(c.data))}</td><td>${esc(cassaTitle(c))}</td><td class="n">${spettatori(c)}</td><td class="n">${money(c.online_euro)}</td><td class="n">${money(c.contanti_euro)}</td><td class="n">${money(c.pos_euro)}</td><td class="n"><b>${money(totBiglietti(c))}</b></td><td>${pill}</td><td class="n">${c.stato === "chiusa" ? money(c.fondo_finale) : "—"}</td></tr>`;
+    }).join("")}</tbody></table>`;
+  el.querySelectorAll("[data-c]").forEach((r) => (r.onclick = () => openCassa(S.cassa.find((c) => c.id === r.dataset.c))));
+}
+
+const dlgK = $("#dlg-cassa");
+const numVal = (id) => { const v = $(id).value; return v === "" ? null : Number(v); };
+function fillEventOptions(date, selectedId) {
+  const evs = S.bookings.filter((b) => b.data === date && active(b)).sort(byWhen);
+  $("#c-evento").innerHTML = evs.map((b) => `<option value="${esc(b.id)}"${b.id === selectedId ? " selected" : ""}>${esc(b.titolo)}${b.giornata_intera ? "" : " · " + b.inizio}</option>`).join("")
+    + `<option value=""${!selectedId && evs.length ? "" : " selected"}>Altro (scrivi il titolo)</option>`;
+  if (!selectedId && evs.length) $("#c-evento").value = evs[0].id;
+  $("#c-titolo-wrap").hidden = $("#c-evento").value !== "";
+}
+function openCassaFor(date) {
+  const existing = S.cassa.find((c) => c.data === date && c.stato === "aperta");
+  openCassa(existing || null, date);
+}
+function openCassa(c, date) {
+  if (!S.canCassa) return;
+  S.editingCassa = c ? c.id : null;
+  const prev = latestClosed(c && c.id);
+  const v = c || { data: date || TODAY, booking_id: null, titolo: "", fondo_iniziale: prev ? prev.fondo_finale : 0, online_n: 0, online_euro: 0, contanti_n: 0, contanti_euro: 0, pos_n: 0, pos_euro: 0, omaggi_n: 0, contati: null, conteggio: {}, prelievo: 0, note: "", stato: "aperta" };
+  $("#c-head").textContent = c ? `Cassa · ${fmtShort(v.data)}` : "Apri cassa";
+  $("#c-data").value = v.data;
+  fillEventOptions(v.data, v.booking_id);
+  $("#c-titolo").value = v.titolo || "";
+  for (const k of ["fondo_iniziale", ...CASSA_INT, "online_euro", "contanti_euro", "pos_euro", "prelievo"]) {
+    const el = $("#c-" + (k === "fondo_iniziale" ? "fondo" : k));
+    el.value = v[k] || v[k] === 0 ? (v[k] === 0 && !c && k !== "fondo_iniziale" && k !== "prelievo" ? "" : v[k]) : "";
+    el.dataset.manual = c ? "1" : "";
+  }
+  $("#c-contati").value = v.contati == null ? "" : v.contati;
+  $("#c-note").value = v.note || "";
+  $("#c-fondo-hint").textContent = c ? "" : prev ? `Proposto dal saldo della cassa del ${fmtShort(prev.data)}` : "Prima cassa: inserisci quanto c'è nel cassetto";
+  $("#c-prezzo-hint").textContent = S.prezzoBiglietto ? `Con il numero di biglietti l'importo si calcola a ${money(S.prezzoBiglietto)} l'uno; puoi correggerlo` : "";
+  renderConteggio(v.conteggio || {});
+  $("#c-conteggio").hidden = !Object.values(v.conteggio || {}).some((n) => n > 0);
+  const locked = c && c.stato === "chiusa" && !S.isAdmin;
+  dlgK.querySelectorAll("input,select,textarea").forEach((el) => (el.disabled = locked));
+  $("#c-save").hidden = locked; $("#c-close").hidden = locked || (c && c.stato === "chiusa");
+  $("#c-save").textContent = c && c.stato === "chiusa" ? "Salva modifiche" : "Salva";
+  $("#c-status").textContent = c && c.stato === "chiusa"
+    ? `Chiusa il ${new Date(c.chiuso_il || c.aggiornato).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${S.isAdmin ? " · da amministratore puoi ancora correggerla" : ""}` : "";
+  $("#c-error").innerHTML = "";
+  renderDeleteArea("#c-delete-area", !!c && S.isAdmin, async () => { await run(sb.from("cassa").delete().eq("id", c.id), "Cassa eliminata"); dlgK.close(); });
+  calcCassa();
+  dlgK.showModal();
+}
+function renderConteggio(cont) {
+  $("#c-conteggio").innerHTML = TAGLI.map((t) => `<label><span>${t >= 1 ? t + " €" : Math.round(t * 100) + " cent"}</span>× <input type="number" min="0" step="1" inputmode="numeric" data-taglio="${t}" value="${cont[t] || ""}" aria-label="Pezzi da ${t} euro"></label>`).join("")
+    + `<div class="tot"><span>Totale contato: <b id="c-cont-tot" class="num"></b></span><button class="btn sm" type="button" id="c-cont-use">Usa come contanti contati</button></div>`;
+  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => i.addEventListener("input", () => { updateConteggio(true); }));
+  $("#c-cont-use").onclick = () => { updateConteggio(true); };
+  updateConteggio(false);
+}
+function readConteggio() {
+  const out = {};
+  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => { const n = Number(i.value) || 0; if (n > 0) out[i.dataset.taglio] = n; });
+  return out;
+}
+function updateConteggio(apply) {
+  const tot = r2(Object.entries(readConteggio()).reduce((s, [t, n]) => s + Number(t) * n, 0));
+  $("#c-cont-tot").textContent = money(tot);
+  if (apply && tot > 0) { $("#c-contati").value = tot; calcCassa(); }
+}
+$("#c-conta-toggle").onclick = () => { $("#c-conteggio").hidden = !$("#c-conteggio").hidden; };
+function readCassa() {
+  const g = (k) => numVal("#c-" + k) || 0;
+  const rec = {
+    data: $("#c-data").value, booking_id: $("#c-evento").value || null,
+    titolo: $("#c-evento").value ? "" : $("#c-titolo").value.trim(),
+    fondo_iniziale: g("fondo"), online_n: g("online_n"), online_euro: g("online_euro"), contanti_n: g("contanti_n"), contanti_euro: g("contanti_euro"),
+    pos_n: g("pos_n"), pos_euro: g("pos_euro"), omaggi_n: g("omaggi_n"),
+    contati: numVal("#c-contati"), conteggio: readConteggio(), prelievo: g("prelievo"), note: $("#c-note").value.trim(),
+  };
+  const attesi = r2(rec.fondo_iniziale + rec.contanti_euro);
+  rec.fondo_finale = r2((rec.contati == null ? attesi : rec.contati) - rec.prelievo);
+  return rec;
+}
+function calcCassa() {
+  const c = readCassa();
+  const attesi = r2(c.fondo_iniziale + c.contanti_euro);
+  $("#c-tot-n").textContent = `${spettatori(c)} spett.`;
+  $("#c-tot-euro").textContent = money(totBiglietti(c));
+  $("#c-attesi").textContent = money(attesi);
+  const box = $("#c-diff-box");
+  box.classList.remove("ok", "ko");
+  if (c.contati == null) { $("#c-diff").textContent = "—"; $("#c-diff-txt").textContent = "inserisci i contanti contati"; }
+  else {
+    const d = r2(c.contati - attesi);
+    $("#c-diff").textContent = Math.abs(d) < 0.005 ? "Quadra" : (d > 0 ? "+" : "−") + money(Math.abs(d));
+    $("#c-diff-txt").textContent = Math.abs(d) < 0.005 ? "i contanti corrispondono" : d > 0 ? "in cassa ci sono più soldi del previsto" : "in cassa mancano dei soldi";
+    box.classList.add(Math.abs(d) < 0.005 ? "ok" : "ko");
+  }
+  $("#c-saldo").textContent = money(c.fondo_finale);
+}
+["online", "contanti", "pos"].forEach((k) => {
+  $(`#c-${k}_n`).addEventListener("input", () => {
+    const e = $(`#c-${k}_euro`);
+    if (S.prezzoBiglietto && !e.dataset.manual) e.value = r2((Number($(`#c-${k}_n`).value) || 0) * S.prezzoBiglietto) || "";
+    calcCassa();
+  });
+  $(`#c-${k}_euro`).addEventListener("input", (ev) => { ev.target.dataset.manual = ev.target.value === "" ? "" : "1"; calcCassa(); });
+});
+["#c-fondo", "#c-omaggi_n", "#c-contati", "#c-prelievo"].forEach((id) => $(id).addEventListener("input", calcCassa));
+$("#c-data").addEventListener("change", () => fillEventOptions($("#c-data").value, null));
+$("#c-evento").addEventListener("change", () => { $("#c-titolo-wrap").hidden = $("#c-evento").value !== ""; });
+
+async function saveCassa(close) {
+  const rec = readCassa();
+  const prevRec = S.cassa.find((c) => c.id === S.editingCassa);
+  if (!rec.data) { $("#c-error").innerHTML = `<div class="warn">Scegli la data.</div>`; return; }
+  if (!rec.booking_id && !rec.titolo) { $("#c-error").innerHTML = `<div class="warn">Scegli l'evento o scrivi un titolo.</div>`; return; }
+  if (close && rec.contati == null) { $("#c-error").innerHTML = `<div class="warn">Per chiudere la cassa inserisci i contanti contati.</div>`; $("#c-contati").focus(); return; }
+  if (close) Object.assign(rec, { stato: "chiusa", chiuso_da: S.me.id, chiuso_il: new Date().toISOString() });
+  rec.aggiornato = new Date().toISOString();
+  const btns = [$("#c-save"), $("#c-close")]; btns.forEach((b) => (b.disabled = true));
+  try {
+    if (prevRec) await run(sb.from("cassa").update(rec).eq("id", prevRec.id), close ? "Cassa chiusa" : "Cassa salvata");
+    else {
+      const { data, error } = await sb.from("cassa").insert({ ...rec, creato_da: S.me.id }).select("id").single();
+      if (error) throw error;
+      S.editingCassa = data.id;
+      toast(close ? "Cassa chiusa" : "Cassa aperta e salvata");
+      await loadAll();
+    }
+    if (close) { dlgK.close(); openCopyText(riepilogoCassa(S.cassa.find((c) => c.id === S.editingCassa) || { ...rec, id: S.editingCassa })); }
+    else dlgK.close();
+  } catch (x) { $("#c-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+  finally { btns.forEach((b) => (b.disabled = false)); }
+}
+$("#cassa-form").addEventListener("submit", (e) => { e.preventDefault(); saveCassa(false); });
+$("#c-close").onclick = () => saveCassa(true);
+$("#c-copy").onclick = () => { const c = readCassa(); openCopyText(riepilogoCassa({ ...c, stato: "bozza" })); };
+$("#btn-cassa").onclick = () => openCassaFor(TODAY);
+
+function riepilogoCassa(c) {
+  const q = quadratura(c);
+  return [
+    `*Cassa · ${cassaTitle(c)}*`,
+    fmtDay(c.data),
+    "",
+    `Fondo iniziale: ${money(c.fondo_iniziale)}`,
+    `Online: ${c.online_n} biglietti · ${money(c.online_euro)}`,
+    `Botteghino contanti: ${c.contanti_n} · ${money(c.contanti_euro)}`,
+    `Botteghino POS: ${c.pos_n} · ${money(c.pos_euro)}`,
+    c.omaggi_n ? `Omaggi: ${c.omaggi_n}` : null,
+    `*Totale incasso: ${money(totBiglietti(c))}* · ${spettatori(c)} spettatori`,
+    "",
+    `Contanti attesi: ${money((c.fondo_iniziale || 0) + (c.contanti_euro || 0))}`,
+    c.contati == null ? "Contanti contati: da contare" : `Contanti contati: ${money(c.contati)} (${Math.abs(q) < 0.005 ? "quadra" : (q > 0 ? "+" : "−") + money(Math.abs(q))})`,
+    c.prelievo ? `Prelevato: ${money(c.prelievo)}` : null,
+    `*Nuovo saldo cassa: ${money(c.fondo_finale)}*`,
+    c.note ? `Note: ${c.note}` : null,
+  ].filter((x) => x !== null).join("\n");
+}
 
 /* ---------- spese e tariffe ---------- */
 function openExpense(x) {
@@ -757,7 +973,7 @@ $("#expense-form").addEventListener("submit", async (e) => {
 });
 $("#rates-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const r = { tariffa_ora: Number($("#r-ora").value) || 0, tariffa_mezza: Number($("#r-mezza").value) || 0, tariffa_giorno: Number($("#r-giorno").value) || 0 };
+  const r = { tariffa_ora: Number($("#r-ora").value) || 0, tariffa_mezza: Number($("#r-mezza").value) || 0, tariffa_giorno: Number($("#r-giorno").value) || 0, prezzo_biglietto: $("#r-biglietto").value === "" ? null : Number($("#r-biglietto").value) };
   try { await run(sb.from("settings").update(r).eq("id", 1), "Tariffe salvate"); } catch (x) { toast(errText(x)); }
 });
 
@@ -770,7 +986,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");
@@ -787,7 +1003,7 @@ $("#q").addEventListener("input", (e) => { S.q = e.target.value; renderList(); }
 $("#toggle-table").onclick = () => { S.showTable = !S.showTable; renderEconomy(); };
 function route() {
   const h = location.hash.slice(1);
-  S.view = VIEWS[h] && VIEWS[h].roles.includes(S.role) ? h : "calendario";
+  S.view = VIEWS[h] && canSee(h) ? h : "calendario";
   render();
 }
 addEventListener("hashchange", route);

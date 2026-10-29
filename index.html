@@ -116,6 +116,14 @@
     <div id="shifts"></div>
   </main>
 
+  <main id="view-cassa" hidden>
+    <div class="toolbar">
+      <div class="fondo"><span class="eyebrow">Fondo cassa attuale</span><b id="fondo-attuale" class="num"></b><span class="hint" id="fondo-hint"></span></div>
+      <button class="btn primary" id="btn-cassa" type="button">+ Apri cassa</button>
+    </div>
+    <div class="panel"><div class="tbl-wrap" id="cassa-list"></div></div>
+  </main>
+
   <main id="view-economia" hidden>
     <div class="toolbar">
       <div class="seg" id="years" role="group" aria-label="Anno"></div>
@@ -152,6 +160,7 @@
               <div class="field"><label for="r-ora">All'ora (€)</label><input id="r-ora" type="number" min="0" step="1" inputmode="decimal"></div>
               <div class="field"><label for="r-mezza">Mezza giornata (€)</label><input id="r-mezza" type="number" min="0" step="1" inputmode="decimal"></div>
               <div class="field"><label for="r-giorno">Giornata intera (€)</label><input id="r-giorno" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-biglietto">Biglietto (€)</label><input id="r-biglietto" type="number" min="0" step="0.5" inputmode="decimal" placeholder="es. 6"></div>
             </div>
             <div class="hint">Fino a 4 ore si applica il minore tra tariffa oraria e mezza giornata; oltre, il minore tra oraria e giornata intera.</div>
             <div><button class="btn" type="submit" id="r-save">Salva tariffe</button></div>
@@ -244,11 +253,63 @@
 
 <dialog id="dlg-copy">
   <div class="dlg">
-    <div class="dlg-head"><h2>Messaggio per WhatsApp</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
-    <p class="hint" style="margin:0">Copia il testo e incollalo nel gruppo dei volontari. Puoi modificarlo qui prima di copiarlo.</p>
+    <div class="dlg-head"><h2>Testo da condividere</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" style="margin:0">Copia il testo e incollalo dove ti serve, ad esempio nel gruppo WhatsApp. Puoi modificarlo qui prima di copiarlo.</p>
     <textarea class="copy-text" id="copy-text" aria-label="Testo del messaggio"></textarea>
     <div class="dlg-foot"><span class="hint" id="copy-status"></span><div class="right"><a class="btn" id="wa-open" target="_blank" rel="noopener">Apri WhatsApp</a><button class="btn primary" type="button" id="copy-btn">Copia testo</button></div></div>
   </div>
+</dialog>
+
+<dialog id="dlg-cassa">
+  <form class="dlg" id="cassa-form" novalidate>
+    <div class="dlg-head"><h2 id="c-head">Cassa</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field t"><label for="c-data">Data</label><input id="c-data" type="date" required></div>
+      <div class="field q"><label for="c-evento">Evento</label><select id="c-evento"></select></div>
+      <div class="field" id="c-titolo-wrap"><label for="c-titolo">Titolo</label><input id="c-titolo" placeholder="Es. Cineforum – titolo del film"></div>
+      <div class="field t"><label for="c-fondo">Fondo cassa iniziale (€)</label><input id="c-fondo" type="number" min="0" step="0.01" inputmode="decimal"></div>
+      <div class="field q"><span class="hint" id="c-fondo-hint"></span></div>
+    </div>
+
+    <div class="subsec"><h3>Biglietti</h3><span class="hint" id="c-prezzo-hint"></span></div>
+    <div class="tbl-wrap">
+      <table class="cassa-tbl">
+        <thead><tr><th></th><th class="n">Biglietti</th><th class="n">Importo (€)</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Online</th><td><input id="c-online_n" type="number" min="0" step="1" inputmode="numeric" aria-label="Biglietti online"></td><td><input id="c-online_euro" type="number" min="0" step="0.01" inputmode="decimal" aria-label="Importo online"></td></tr>
+          <tr><th scope="row">Botteghino · contanti</th><td><input id="c-contanti_n" type="number" min="0" step="1" inputmode="numeric" aria-label="Biglietti in contanti"></td><td><input id="c-contanti_euro" type="number" min="0" step="0.01" inputmode="decimal" aria-label="Importo in contanti"></td></tr>
+          <tr><th scope="row">Botteghino · POS</th><td><input id="c-pos_n" type="number" min="0" step="1" inputmode="numeric" aria-label="Biglietti con POS"></td><td><input id="c-pos_euro" type="number" min="0" step="0.01" inputmode="decimal" aria-label="Importo con POS"></td></tr>
+          <tr><th scope="row">Omaggi</th><td><input id="c-omaggi_n" type="number" min="0" step="1" inputmode="numeric" aria-label="Biglietti omaggio"></td><td class="hint">gratuiti</td></tr>
+        </tbody>
+        <tfoot><tr><th scope="row">Totale</th><td class="n" id="c-tot-n"></td><td class="n" id="c-tot-euro"></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="subsec"><h3>Chiusura</h3><span class="hint">Conta i contanti a fine serata</span></div>
+    <div class="close-grid">
+      <div class="calc"><span>Contanti attesi in cassa</span><b id="c-attesi" class="num"></b><small>fondo iniziale + biglietti in contanti</small></div>
+      <div class="field"><label for="c-contati">Contanti contati (€)</label><input id="c-contati" type="number" min="0" step="0.01" inputmode="decimal" placeholder="da contare">
+        <button class="linkbtn" type="button" id="c-conta-toggle">Conta banconote e monete</button></div>
+      <div class="calc" id="c-diff-box"><span>Quadratura</span><b id="c-diff" class="num"></b><small id="c-diff-txt"></small></div>
+    </div>
+    <div class="conteggio" id="c-conteggio" hidden></div>
+    <div class="close-grid">
+      <div class="field"><label for="c-prelievo">Prelevato dalla cassa (€)</label><input id="c-prelievo" type="number" min="0" step="0.01" inputmode="decimal" value="0">
+        <span class="hint">es. versamento in banca o busta per il parroco</span></div>
+      <div class="calc strong"><span>Nuovo saldo</span><b id="c-saldo" class="num"></b><small>diventa il fondo della prossima cassa</small></div>
+    </div>
+    <div class="field"><label for="c-note">Note</label><textarea id="c-note" placeholder="Es. 2 biglietti ridotti, POS non funzionante per 10 minuti…"></textarea></div>
+    <div id="c-status" class="hint"></div>
+    <div id="c-error"></div>
+    <div class="dlg-foot">
+      <div id="c-delete-area"></div>
+      <div class="right">
+        <button class="btn" type="button" id="c-copy">Riepilogo</button>
+        <button class="btn" type="submit" id="c-save">Salva</button>
+        <button class="btn primary" type="button" id="c-close">Chiudi cassa</button>
+      </div>
+    </div>
+  </form>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>

@@ -239,6 +239,28 @@ img { max-width: 100% }
 .role { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted) }
 .mine { display: flex; flex-direction: column; gap: 8px }
 .mine .row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.field.q { grid-column: span 4 }
+@media (max-width: 520px) { .field.q { grid-column: span 6 } }
+.fondo { display: flex; flex-direction: column; gap: 2px }
+.fondo b { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums }
+.subsec { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px }
+.cassa-tbl th[scope="row"] { font-size: .88rem; text-transform: none; letter-spacing: 0; color: var(--ink); font-weight: 600; white-space: nowrap }
+.cassa-tbl input { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 8px; width: 100%; min-width: 70px; text-align: right; font-variant-numeric: tabular-nums }
+.cassa-tbl tfoot th, .cassa-tbl tfoot td { font-weight: 700; border-bottom: 0; font-size: .95rem }
+.close-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start }
+@media (max-width: 560px) { .close-grid { grid-template-columns: minmax(0, 1fr) } }
+.calc { background: var(--sunk); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.calc span { font-size: .78rem; font-weight: 600; color: var(--muted) }
+.calc b { font-size: 1.25rem; font-variant-numeric: tabular-nums }
+.calc small { color: var(--muted); font-size: .76rem }
+.calc.strong { background: var(--accent-soft) }
+.calc.ok { background: var(--ok-bg) } .calc.ok b { color: var(--ok-fg) }
+.calc.ko { background: var(--due-bg) } .calc.ko b { color: var(--due-fg) }
+.conteggio { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; background: var(--sunk); border-radius: 8px; padding: 12px }
+.conteggio label { display: flex; align-items: center; gap: 6px; font-size: .85rem; font-weight: 600; font-variant-numeric: tabular-nums }
+.conteggio label span { min-width: 46px; text-align: right }
+.conteggio input { width: 56px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 6px; text-align: right }
+.conteggio .tot { grid-column: 1 / -1; font-weight: 700; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: .88rem; font-weight: 600; margin-bottom: 6px; cursor: pointer }
 .check input { width: 16px; height: 16px; accent-color: var(--accent) }
 .req { display: flex; flex-direction: column; gap: 8px }
@@ -257,3 +279,5 @@ img { max-width: 100% }
 
 a.btn { text-decoration: none; color: inherit }
 a.btn.primary { color: var(--accent-ink) }
+.close-grid .field { grid-column: auto }
+#cassa-list td:first-child { white-space: nowrap }

@@ -92,6 +92,13 @@ script installato in quell'account con `MODALITA` = `email`.
 Prima di passare a `calendario+email` (scrittura sul calendario), fai un backup:
 Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 
+## Cassa
+Esegui una volta `supabase/003_cassa.sql` nel SQL Editor. Nella sezione **Cassa** chi fa cassa registra per ogni serata
+biglietti online, botteghino in contanti e con POS, omaggi; conta i contanti (anche per taglio), vede se la cassa quadra,
+indica quanto preleva e ottiene il nuovo saldo, che diventa il fondo della cassa successiva. Gli incassi dei biglietti
+entrano in **Economia**. Fanno cassa amministratori, coordinatori e i volontari abilitati in **Persone** («Fa cassa»).
+Una cassa chiusa la può correggere solo un amministratore. Il prezzo proposto del biglietto si imposta in Economia → Tariffe.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
