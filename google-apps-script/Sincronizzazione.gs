@@ -47,14 +47,27 @@ function sincronizza() {
   const cfg = leggiImpostazioni();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
+  // ogni parte va avanti anche se un'altra dà errore; gli errori finiscono nel log e alla fine fanno fallire l'esecuzione
+  const errori = [];
+  const prova = (nome, fn) => { try { fn(); } catch (e) { errori.push(nome + ": " + e.message); Logger.log("ERRORE " + nome + ": " + e.message); } };
   try {
+    Logger.log("Modalità: " + cfg.modalita);
     const scrivi = cfg.modalita.indexOf("calendario") !== -1;
-    if (scrivi || cfg.modalita.indexOf("lettura") !== -1) sincronizzaCalendario(cfg, scrivi);
-    if (cfg.modalita.indexOf("email") !== -1) leggiEmail(cfg);
-    if (cfg.modalita.indexOf("cinema") !== -1) leggiCinebotSeServe(cfg);
+    if (scrivi || cfg.modalita.indexOf("lettura") !== -1) prova("calendario", () => sincronizzaCalendario(cfg, scrivi));
+    if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
+    if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
   } finally {
     lock.releaseLock();
   }
+  if (errori.length) throw new Error(errori.join(" | "));
+}
+
+// da eseguire a mano per verificare la lettura di Cinebot: ignora il limite di una volta all'ora
+function provaCinebot() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Modalità: " + cfg.modalita + (cfg.modalita.indexOf("cinema") === -1 ? "  ← manca «+cinema»: la lettura automatica non partirà" : ""));
+  leggiCinebot(cfg);
+  PropertiesService.getScriptProperties().setProperty("CINEBOT_ULTIMA", String(Date.now()));
 }
 
 function leggiImpostazioni() {
@@ -233,8 +246,11 @@ function leggiCinebotSeServe(cfg) {
 }
 
 function scaricaPagina(percorso) {
-  const res = UrlFetchApp.fetch(CINEBOT_SITO + percorso, { muteHttpExceptions: true, followRedirects: true });
-  if (res.getResponseCode() !== 200) throw new Error("Cinebot " + percorso + " → HTTP " + res.getResponseCode());
+  const res = UrlFetchApp.fetch(CINEBOT_SITO + percorso, {
+    muteHttpExceptions: true, followRedirects: true,
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; SalaSanTommasoMoro/1.0)", "Accept-Language": "it-IT,it;q=0.9" },
+  });
+  if (res.getResponseCode() !== 200) throw new Error("Cinebot " + percorso + " → HTTP " + res.getResponseCode() + " " + res.getContentText().slice(0, 200));
   return res.getContentText("UTF-8");
 }
 
@@ -255,6 +271,7 @@ function leggiCinebot(cfg) {
   const oggi = new Date();
   const home = scaricaPagina(CINEBOT_SALA);
   const films = {};
+  Logger.log("Cinebot: pagina scaricata, " + home.length + " caratteri");
   const blocchi = home.match(/<a href="\/s\.tommasomoro\/(?:evento|titolo)\/\d+_[^"]*" class="eventi-item[\s\S]*?<\/a>/g) || [];
   blocchi.forEach((blk) => {
     const link = blk.match(/href="(\/s\.tommasomoro\/(evento|titolo)\/(\d+)_[^"]*)"/);
