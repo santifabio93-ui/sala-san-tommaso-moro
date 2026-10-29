@@ -28,6 +28,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
+const VERSIONE_SCRIPT = "2026-10-30.4"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -53,7 +54,7 @@ function sincronizza() {
   const errori = [];
   const prova = (nome, fn) => { try { fn(); } catch (e) { errori.push(nome + ": " + e.message); Logger.log("ERRORE " + nome + ": " + e.message); } };
   try {
-    Logger.log("Modalità: " + cfg.modalita);
+    Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita);
     const scrivi = cfg.modalita.indexOf("calendario") !== -1;
     if (scrivi || cfg.modalita.indexOf("lettura") !== -1) prova("calendario", () => sincronizzaCalendario(cfg, scrivi));
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
@@ -451,7 +452,7 @@ function analizzaC1(testoGrezzo) {
 // da eseguire a mano: legge subito fino a 40 C1 e mostra nel log il testo del primo, utile se qualcosa non torna
 function provaC1() {
   const cfg = leggiImpostazioni();
-  Logger.log("Modalità: " + cfg.modalita + (cfg.modalita.indexOf("c1") === -1 ? "  ← manca «+c1»: la lettura automatica non partirà" : ""));
+  Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("c1") === -1 ? "  ← manca «+c1»: la lettura automatica non partirà" : ""));
   const r = api("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + cfg.c1Cartella + "' in parents and mimeType = 'application/pdf' and trashed = false") + "&fields=files(id,name)&pageSize=1&orderBy=modifiedTime%20desc");
   if (r.files && r.files[0]) {
     const testo = testoDaPdf(apiBlob("https://www.googleapis.com/drive/v3/files/" + r.files[0].id + "?alt=media"), r.files[0].name);
@@ -505,7 +506,10 @@ function byteDaGmail(d) {
 
 // testo semplice dell'email: la parte text/plain, altrimenti l'HTML ripulito
 function corpoTesto(parte) {
-  const decodifica = (d) => Utilities.newBlob(byteDaGmail(d)).getDataAsString("UTF-8");
+  const decodifica = (d) => {
+    try { return Utilities.newBlob(byteDaGmail(d)).getDataAsString("UTF-8"); }
+    catch (e) { Logger.log("Testo email non decodificato (tipo " + typeof d + (d && d.length ? ", lunghezza " + d.length : "") + "): uso l'anteprima"); return ""; }
+  };
   const trova = (p, tipo) => {
     if (p.mimeType === tipo && p.body && p.body.data) return decodifica(p.body.data);
     for (const sub of p.parts || []) { const r = trova(sub, tipo); if (r) return r; }
