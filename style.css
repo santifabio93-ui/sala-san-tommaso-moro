@@ -313,3 +313,4 @@ a.btn { text-decoration: none; color: inherit }
 a.btn.primary { color: var(--accent-ink) }
 .close-grid .field { grid-column: auto }
 #cassa-list td:first-child { white-space: nowrap }
+.version { text-align: center; color: var(--muted); font-size: .72rem; padding-block: 0 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
