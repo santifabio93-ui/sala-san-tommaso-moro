@@ -8,6 +8,11 @@
         "userSymbol": "Gmail",
         "serviceId": "gmail",
         "version": "v1"
+      },
+      {
+        "userSymbol": "Drive",
+        "serviceId": "drive",
+        "version": "v3"
       }
     ]
   },
