@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.2";
+const VERSIONE = "2026-10-30.3";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -25,6 +25,7 @@ const VIEWS = {
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
+  stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   economia: { label: "Economia", roles: ["admin"] },
@@ -41,9 +42,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
-  { label: "Cinema", children: ["cinema", "c1"] }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -53,7 +54,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null,
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m",
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -260,6 +261,7 @@ function render() {
   if (S.view === "sopralluoghi") renderSopralluoghi();
   if (S.view === "cinema") renderCinema();
   if (S.view === "c1") renderC1();
+  if (S.view === "stats") renderStats();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -868,6 +870,7 @@ function renderCinema() {
         <div class="t">${esc(f.titolo)}</div>
         <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
         ${(() => { const cs = c1OfFilm(f); return cs.length && S.canWrite ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
+        ${S.canWrite && upcoming[0] ? (() => { const st = stimaSpettatori(upcoming[0]); return st ? `<div class="stima">Stima per ${esc(fmtShort(upcoming[0].data))}: circa <b>${st.n}</b> spettatori <span title="${esc(st.base)}">ⓘ</span></div>` : ""; })() : ""}
         <div class="meta"><span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}</div>
       </div>
     </button>`;
@@ -1020,6 +1023,162 @@ function renderC1() {
       ${S.c1Open === c.id ? `<tr class="c1-row-detail"><td colspan="6"><div class="righe">${c.righe.map((r) => `<span>${esc(r.descrizione || r.codice)} ${r.prezzo ? money(r.prezzo) : "omaggio"}: <b>${r.n}</b>${r.lordo ? ` = ${money(r.lordo)}` : ""}${r.iva_preassolta ? " (abbonamento)" : ""}</span>`).join("")}</div>
         <div class="hint" style="margin-top:6px">${esc([c.autore && "Regia: " + c.autore, c.nazionalita, c.file_nome && "da " + c.file_nome].filter(Boolean).join(" · "))}</div></td></tr>` : ""}`).join("")}</tbody></table>`;
   el.querySelectorAll("[data-c1]").forEach((r) => (r.onclick = () => { S.c1Open = S.c1Open === r.dataset.c1 ? null : r.dataset.c1; renderC1(); }));
+}
+
+/* ---------- statistiche (dai C1) ---------- */
+const CAPIENZA_SALA = 322;
+const GIORNI = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+const ORDINE_GIORNI = [1, 2, 3, 4, 5, 6, 0];
+const capienza = (c) => Math.max(0, ...(c.righe || []).map((r) => r.capienza || 0)) || CAPIENZA_SALA;
+const fascia = (ora) => (ora < "18:00" ? "pomeriggio" : "sera");
+const giorno = (c) => parse(c.data).getDay();
+const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0);
+const pct = (x) => Math.round(x * 100) + "%";
+const fill = (c) => c.spettatori / capienza(c);
+// colore della cella: un solo tono, più scuro = più pubblico
+const shade = (t) => `color-mix(in oklab, var(--accent) ${Math.round(12 + t * 78)}%, var(--surface))`;
+const inkOn = (t) => (t > 0.55 ? "var(--accent-ink)" : "var(--ink)");
+
+function c1Periodo() {
+  const all = S.c1.filter((c) => c.spettatori > 0 || c.lordo > 0);
+  if (S.stPeriod === "tutto") return { list: all, prev: [], label: "da sempre" };
+  if (S.stPeriod === "12m") {
+    const da = addDays(TODAY, -365), daPrev = addDays(TODAY, -730);
+    return { list: all.filter((c) => c.data > da && c.data <= TODAY), prev: all.filter((c) => c.data > daPrev && c.data <= da), label: "ultimi 12 mesi" };
+  }
+  const y = String(S.stPeriod);
+  return { list: all.filter((c) => c.data.startsWith(y)), prev: all.filter((c) => c.data.startsWith(String(+y - 1))), label: y };
+}
+// stima per una proiezione futura: media dei C1 dello stesso film, poi dello stesso giorno e fascia, poi generale
+function stimaSpettatori(p) {
+  const passati = S.c1.filter((c) => c.data < TODAY && c.spettatori > 0);
+  if (passati.length < 3) return null;
+  const f = S.films.find((x) => x.id === p.film_id);
+  const g = parse(p.data).getDay(), fa = fascia(p.ora);
+  const stessoSlot = passati.filter((c) => giorno(c) === g && fascia(c.ora) === fa);
+  const stessaFascia = passati.filter((c) => fascia(c.ora) === fa);
+  const base = stessoSlot.length >= 2 ? stessoSlot : stessaFascia.length >= 3 ? stessaFascia : passati;
+  let n = mean(base.map((c) => c.spettatori));
+  const filmPrec = f ? c1OfFilm(f).filter((c) => c.data < TODAY) : [];
+  if (filmPrec.length) n = 0.5 * n + 0.5 * mean(filmPrec.map((c) => c.spettatori));
+  const descr = (stessoSlot.length >= 2 ? `media di ${stessoSlot.length} proiezioni di ${GIORNI[g]} ${fa}` : stessaFascia.length >= 3 ? `media di ${stessaFascia.length} proiezioni di ${fa}` : `media di ${passati.length} proiezioni`) + (filmPrec.length ? `, corretta con le ${filmPrec.length} proiezioni già fatte di questo film` : "");
+  return { n: Math.round(n), base: "Stima dai C1: " + descr };
+}
+
+function barChart(el, labels, series, fmtV) {
+  const W = 720, H = 230, L = 44, R = 8, T = 12, B = 26;
+  const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values)));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const gw = (W - L - R) / labels.length, nb = series.length, bw = Math.min(18, (gw - 8) / nb - 2);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((s) => s.name).join(" e "))} per mese">`;
+  [0, .5, 1].map((t) => t * max).forEach((t) => { svg += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"${t ? ' stroke-dasharray="2 3"' : ""}/><text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${esc(fmtV(t))}</text>`; });
+  labels.forEach((lb, i) => {
+    const x0 = L + gw * i + (gw - nb * (bw + 2)) / 2;
+    series.forEach((s, j) => {
+      const v = s.values[i]; if (!(v > 0)) return;
+      const top = y(v), x = x0 + j * (bw + 2), r = Math.min(4, y(0) - top, bw / 2);
+      svg += `<path fill="${s.color}" d="M${x},${y(0)} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${y(0)} Z"/>`;
+    });
+    svg += `<text x="${L + gw * i + gw / 2}" y="${H - 8}" text-anchor="middle">${esc(lb)}</text><rect class="hit" data-i="${i}" x="${L + gw * i}" y="${T}" width="${gw}" height="${H - T - B}" fill="transparent"/>`;
+  });
+  el.innerHTML = svg + `</svg><div class="tip" hidden></div>`;
+  const tip = el.querySelector(".tip"), svgEl = el.querySelector("svg");
+  el.querySelectorAll(".hit").forEach((h) => {
+    const show = () => {
+      const i = +h.dataset.i, rect = svgEl.getBoundingClientRect(), k = rect.width / W;
+      tip.innerHTML = `<b>${esc(labels[i])}</b>` + series.map((s) => `<br><i style="background:${s.color}"></i>${esc(s.name)}: ${esc(fmtV(s.values[i] || 0))}${s.extra ? " · " + esc(s.extra[i] || "") : ""}`).join("");
+      tip.style.left = Math.max(80, Math.min(rect.width - 80, (L + gw * i + gw / 2) * k)) + "px";
+      tip.style.top = (y(Math.max(...series.map((s) => s.values[i] || 0))) * k - 8) + "px";
+      tip.hidden = false; h.setAttribute("fill", "var(--sunk)"); h.setAttribute("fill-opacity", ".35");
+    };
+    h.addEventListener("mouseenter", show); h.addEventListener("click", show);
+    h.addEventListener("mouseleave", () => { tip.hidden = true; h.setAttribute("fill", "transparent"); });
+  });
+}
+
+function renderStats() {
+  const years = [...new Set(S.c1.map((c) => +c.data.slice(0, 4)))].sort();
+  const opts = [["12m", "Ultimi 12 mesi"], ...years.map((y) => [String(y), String(y)]), ["tutto", "Tutto"]];
+  $("#st-period").innerHTML = opts.map(([k, l]) => `<button type="button" data-p="${k}" aria-pressed="${String(S.stPeriod) === k}">${l}</button>`).join("");
+  $("#st-period").querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { S.stPeriod = b.dataset.p; renderStats(); }));
+  const { list, prev, label } = c1Periodo();
+  $("#st-hint").textContent = `Calcolate dai C1 · ${list.length} proiezioni · ${label}`;
+  const el = $("#st-body");
+  if (list.length < 2) { el.innerHTML = `<div class="empty">Servono almeno due C1 nel periodo scelto. Le statistiche si riempiono da sole man mano che lo script legge i C1.</div>`; return; }
+
+  const spett = list.reduce((s, c) => s + c.spettatori, 0), lordo = list.reduce((s, c) => s + c.lordo, 0);
+  const paganti = list.reduce((s, c) => s + c.paganti, 0), omaggi = list.reduce((s, c) => s + c.omaggi, 0);
+  const media = spett / list.length, riemp = mean(list.map(fill));
+  const prevMedia = prev.length ? mean(prev.map((c) => c.spettatori)) : null;
+  const delta = prevMedia ? (media - prevMedia) / prevMedia : null;
+
+  // quando: giorno × fascia
+  const cell = (g, fa) => list.filter((c) => giorno(c) === g && fascia(c.ora) === fa);
+  const cells = ORDINE_GIORNI.flatMap((g) => ["pomeriggio", "sera"].map((fa) => ({ g, fa, cs: cell(g, fa) }))).filter((x) => x.cs.length);
+  cells.forEach((x) => (x.avg = mean(x.cs.map((c) => c.spettatori))));
+  const maxAvg = Math.max(1, ...cells.map((x) => x.avg));
+  // per le frasi di sintesi servono abbastanza proiezioni, altrimenti un caso isolato sembra una tendenza
+  const solide = cells.filter((x) => x.cs.length >= 3);
+  const best = [...(solide.length ? solide : cells)].sort((a, b) => b.avg - a.avg)[0];
+  const record = [...list].sort((a, b) => b.spettatori - a.spettatori)[0];
+  const pom = list.filter((c) => fascia(c.ora) === "pomeriggio"), ser = list.filter((c) => fascia(c.ora) === "sera");
+
+  // film
+  const byFilm = new Map();
+  list.forEach((c) => { const k = normT(c.titolo); if (!byFilm.has(k)) byFilm.set(k, { titolo: c.titolo, cs: [] }); byFilm.get(k).cs.push(c); });
+  const films = [...byFilm.values()].map((f) => ({ ...f, sp: f.cs.reduce((s, c) => s + c.spettatori, 0), lo: f.cs.reduce((s, c) => s + c.lordo, 0), media: mean(f.cs.map((c) => c.spettatori)) })).sort((a, b) => b.sp - a.sp);
+  const topMedia = [...(films.some((f) => f.cs.length >= 2) ? films.filter((f) => f.cs.length >= 2) : films)].sort((a, b) => b.media - a.media)[0];
+
+  // biglietti
+  const tipo = (r) => (r.iva_preassolta ? "Abbonamenti" : r.prezzo === 0 || /^O/.test(r.codice) ? "Omaggi" : /^I1/.test(r.codice) || /intero/i.test(r.descrizione) ? "Interi" : /stud/i.test(r.descrizione) || r.codice === "I2" ? "Studenti" : "Ridotti");
+  const mix = new Map();
+  list.forEach((c) => (c.righe || []).forEach((r) => { const t = tipo(r); const m = mix.get(t) || { n: 0, euro: 0 }; m.n += r.n; m.euro += r.lordo; mix.set(t, m); }));
+  const mixTot = [...mix.values()].reduce((s, m) => s + m.n, 0) || 1;
+
+  // mesi
+  const meseKey = (c) => c.data.slice(0, 7);
+  const mesi = [...new Set(list.map(meseKey))].sort();
+  const mesiLabel = mesi.map((k) => parse(k + "-01").toLocaleDateString("it-IT", { month: "short", year: mesi.length > 12 || S.stPeriod === "12m" ? "2-digit" : undefined }).replace(".", ""));
+  const sumBy = (arr, k, f) => arr.filter((c) => meseKey(c) === k).reduce((s, c) => s + f(c), 0);
+  const prevSameMonth = (k) => { const [yy, mm] = k.split("-"); return prev.filter((c) => c.data.startsWith(`${+yy - 1}-${mm}`)).reduce((s, c) => s + c.spettatori, 0); };
+
+  const fmtD = (c) => `${fmtShort(c.data)} ${c.ora}`;
+  const insights = [
+    best && `<div class="insight"><span class="k">Il momento migliore</span>Il <b>${GIORNI[best.g]} ${best.fa}</b> arrivano in media <b>${Math.round(best.avg)}</b> spettatori${media ? `, ${best.avg >= media * 1.15 ? `il ${pct(best.avg / media - 1)} in più` : "in linea con"} la media` : ""} (${best.cs.length} proiezioni).</div>`,
+    pom.length && ser.length && `<div class="insight"><span class="k">Pomeriggio o sera</span>Di pomeriggio <b>${Math.round(mean(pom.map((c) => c.spettatori)))}</b> spettatori a proiezione, di sera <b>${Math.round(mean(ser.map((c) => c.spettatori)))}</b>.</div>`,
+    record && `<div class="insight"><span class="k">Record</span><b>${esc(record.titolo)}</b> il ${esc(fmtD(record))}: <b>${record.spettatori}</b> spettatori, sala piena al <b>${pct(fill(record))}</b>.</div>`,
+    topMedia && films.length > 1 && `<div class="insight"><span class="k">Il film che ha reso di più</span><b>${esc(topMedia.titolo)}</b> con <b>${Math.round(topMedia.media)}</b> spettatori a proiezione${topMedia.cs.length > 1 ? ` su ${topMedia.cs.length} proiezioni` : ""}.</div>`,
+    delta !== null && `<div class="insight"><span class="k">Rispetto al periodo prima</span>Media a proiezione <b>${delta >= 0 ? "+" : "−"}${pct(Math.abs(delta))}</b>: da ${Math.round(prevMedia)} a ${Math.round(media)} spettatori.</div>`,
+  ].filter(Boolean).slice(0, 4).join("");
+
+  el.innerHTML = `
+    <section class="kpis" aria-label="In sintesi">
+      <div class="kpi"><span class="eyebrow">Spettatori</span><b>${spett.toLocaleString("it-IT")}</b><small>${Math.round(media)} a proiezione</small></div>
+      <div class="kpi"><span class="eyebrow">Riempimento medio</span><b>${pct(riemp)}</b><small>della sala (${capienza(list[0])} posti)</small></div>
+      <div class="kpi"><span class="eyebrow">Prezzo medio pagato</span><b>${money(paganti ? r2(lordo / paganti) : 0)}</b><small>${money(lordo)} da ${paganti} paganti</small></div>
+      <div class="kpi"><span class="eyebrow">Omaggi</span><b>${pct(omaggi / (spett || 1))}</b><small>${omaggi} ingressi gratuiti</small></div>
+    </section>
+    <div class="insights">${insights}</div>
+    <div class="panel"><h2>Spettatori mese per mese</h2><span class="hint">${prev.length ? "Barre scure: periodo scelto · barre chiare: stesso mese dell'anno prima" : "Tocca una barra per i dettagli"}</span>
+      ${prev.length ? `<div class="series-legend"><span><i class="sw" style="background:var(--accent)"></i>Periodo scelto</span><span><i class="sw" style="background:color-mix(in oklab, var(--accent) 35%, var(--surface))"></i>Anno prima</span></div>` : ""}
+      <div class="chart-wrap" id="st-chart"></div></div>
+    <div class="st-grid">
+      <div class="panel"><h2>Classifica dei film</h2><span class="hint">Spettatori totali · media a proiezione · riempimento</span>
+        <div class="hbars">${films.slice(0, 10).map((f) => `<div class="hbar"><span class="nm" title="${esc(f.titolo)}">${esc(f.titolo)}</span><span class="v">${f.sp} · ${Math.round(f.media)}/pr. · ${pct(mean(f.cs.map(fill)))}</span><div class="track"><div class="fill" style="width:${(f.sp / films[0].sp) * 100}%"></div></div></div>`).join("")}</div>
+        ${films.length > 10 ? `<div class="hint" style="margin-top:8px">e altri ${films.length - 10} titoli</div>` : ""}</div>
+      <div class="stack">
+        <div class="panel"><h2>Quando viene il pubblico</h2><span class="hint">Spettatori medi per giorno e fascia oraria</span>
+          <div class="heat"><span></span><span class="h">Pomeriggio</span><span class="h">Sera</span>
+            ${ORDINE_GIORNI.map((g) => `<span class="d">${GIORNI[g].slice(0, 3)}</span>${["pomeriggio", "sera"].map((fa) => { const x = cells.find((c) => c.g === g && c.fa === fa); if (!x) return `<div class="c empty"><small>—</small></div>`; const t = x.avg / maxAvg; return `<div class="c" style="background:${shade(t)};color:${inkOn(t)}" title="${esc(GIORNI[g])} ${fa}: ${x.cs.length} proiezioni"><b>${Math.round(x.avg)}</b><small>${x.cs.length} pr.</small></div>`; }).join("")}`).join("")}
+          </div></div>
+        <div class="panel"><h2>Tipi di biglietto</h2><span class="hint">Quota sugli ingressi e incasso</span>
+          <div class="hbars">${[...mix.entries()].sort((a, b) => b[1].n - a[1].n).map(([t, m]) => `<div class="hbar"><span class="nm">${t}</span><span class="v">${pct(m.n / mixTot)} · ${m.n} · ${money(r2(m.euro))}</span><div class="track"><div class="fill" style="width:${(m.n / mixTot) * 100}%"></div></div></div>`).join("")}</div></div>
+      </div>
+    </div>`;
+  barChart($("#st-chart"), mesiLabel, [
+    { name: "Spettatori", color: "var(--accent)", values: mesi.map((k) => sumBy(list, k, (c) => c.spettatori)), extra: mesi.map((k) => `${list.filter((c) => meseKey(c) === k).length} pr. · ${money(sumBy(list, k, (c) => c.lordo))}`) },
+    ...(prev.length ? [{ name: "Anno prima", color: "color-mix(in oklab, var(--accent) 35%, var(--surface))", values: mesi.map(prevSameMonth) }] : []),
+  ], (v) => Math.round(v).toLocaleString("it-IT"));
 }
 
 /* ---------- sopralluoghi ---------- */

@@ -123,6 +123,13 @@ testo con un documento Google temporaneo, subito cancellato. Nell'app, in **Cine
 incasso lordo, netto IVA e IVA per proiezione, per film e per mese, con il confronto con la Cassa della stessa serata;
 il confronto compare anche nella sezione Cassa. Per controllare la lettura esegui a mano la funzione `provaC1`.
 
+## Statistiche
+In **Cinema → Statistiche** (amministratori e coordinatori), calcolate dai C1: spettatori, riempimento medio della sala
+(capienza letta dai C1), prezzo medio pagato e quota di omaggi; frasi di sintesi (momento migliore, pomeriggio o sera,
+record, film che ha reso di più, confronto con il periodo precedente); spettatori mese per mese con l'anno prima;
+classifica dei film; mappa giorno × fascia oraria; tipi di biglietto. Nella Programmazione ogni film mostra una stima
+degli spettatori della prossima proiezione, ricavata dai C1 della stessa fascia e del film stesso.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

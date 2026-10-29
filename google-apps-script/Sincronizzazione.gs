@@ -427,7 +427,7 @@ function analizzaC1(testoGrezzo) {
     let m;
     while ((m = reRiga.exec(corpo))) {
       righe.push({
-        settore: m[1], codice: m[3], descrizione: (m[4] || "").trim(), prezzo: numIt(m[5]), n: Number(m[6]),
+        settore: m[1], capienza: Number(m[2]), codice: m[3], descrizione: (m[4] || "").trim(), prezzo: numIt(m[5]), n: Number(m[6]),
         lordo: numIt(m[7]), imponibile_iva: numIt(m[11]), iva: numIt(m[12]), annullati: Number(m[13]),
         iva_preassolta: preassolta >= 0 && m.index > preassolta,
       });
@@ -438,7 +438,7 @@ function analizzaC1(testoGrezzo) {
     eventi.push({
       titolo, autore, nazionalita: naz, tipo_evento: tipo.replace(/^\d+\s*-?\s*/, "").trim(),
       data: d[3] + "-" + d[2] + "-" + d[1], ora: o ? ("0" + o[1]).slice(-2) + ":" + o[2] : "00:00",
-      spettatori, omaggi, paganti: spettatori - omaggi,
+      spettatori, omaggi, paganti: spettatori - omaggi, capienza: righe.reduce((mx, r) => Math.max(mx, r.capienza || 0), 0),
       lordo: tot ? numIt(tot[2]) : righe.reduce((s, r) => s + r.lordo, 0),
       imponibile_iva: tot ? numIt(tot[6]) : righe.reduce((s, r) => s + r.imponibile_iva, 0),
       iva: tot ? numIt(tot[7]) : righe.reduce((s, r) => s + r.iva, 0),
