@@ -32,6 +32,13 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
   show("setup");
   throw new Error("config.js non compilato");
 }
+// menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
+const MENU = [
+  { k: "calendario" },
+  { label: "Prenotazioni", children: ["prenotazioni", "richieste", "sopralluoghi"] },
+  { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
+];
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -87,7 +94,6 @@ async function start() {
   $("#me-name").textContent = me.nome || me.email;
   $("#me-role").textContent = RUOLI[S.role];
   if (me.avatar) { $("#me-avatar").src = me.avatar; $("#me-avatar").hidden = false; }
-  $("#tabs").innerHTML = Object.keys(VIEWS).filter(canSee).map((k) => [k, VIEWS[k]]).map(([k, v]) => `<a href="#${k}" data-v="${k}">${v.label}</a>`).join("");
   show("app");
   route();
   await loadAll();
@@ -204,12 +210,30 @@ function addMin(t, m) {
 const uidv = () => Math.random().toString(36).slice(2, 9);
 const isMine = (x) => x.uid && x.uid === S.me?.id;
 
+/* ---------- menu ---------- */
+function renderTabs() {
+  const nReq = S.canWrite ? S.requests.filter((r) => r.stato === "nuova").length : 0;
+  const badge = (n) => (n ? `<span class="badge">${n}</span>` : "");
+  const cur = (on) => (on ? ' aria-current="page"' : "");
+  let sub = null;
+  $("#tabs").innerHTML = MENU.map((m) => {
+    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}</a>` : "";
+    const kids = m.children.filter(canSee);
+    if (!kids.length) return "";
+    if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}</a>`;
+    const inside = kids.includes(S.view);
+    if (inside) { sub = kids; S.lastSub = S.view; }
+    const target = kids.includes(S.lastSub) ? S.lastSub : kids[0];
+    return `<a href="#${target}"${cur(inside)}>${m.label}${kids.includes("richieste") ? badge(nReq) : ""}</a>`;
+  }).join("");
+  $("#subtabs").hidden = !sub;
+  $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : ""}</a>`).join("") : "";
+}
+
 /* ---------- render ---------- */
 function render() {
   if (!S.role) return;
-  document.querySelectorAll("#tabs a").forEach((a) => { if (a.dataset.v === S.view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-  const nReq = S.requests.filter((r) => r.stato === "nuova").length, tabReq = document.querySelector('#tabs a[data-v="richieste"]');
-  if (tabReq) tabReq.innerHTML = "Richieste" + (nReq ? `<span class="badge">${nReq}</span>` : "");
+  renderTabs();
   Object.keys(VIEWS).forEach((v) => ($("#view-" + v).hidden = v !== S.view));
   $("#btn-new").hidden = !S.canWrite;
   renderKpis();
