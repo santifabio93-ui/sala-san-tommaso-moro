@@ -99,6 +99,12 @@ indica quanto preleva e ottiene il nuovo saldo, che diventa il fondo della cassa
 entrano in **Economia**. Fanno cassa amministratori, coordinatori e i volontari abilitati in **Persone** («Fa cassa»).
 Una cassa chiusa la può correggere solo un amministratore. Il prezzo proposto del biglietto si imposta in Economia → Tariffe.
 
+## Sopralluoghi
+Esegui una volta `supabase/004_sopralluoghi.sql` nel SQL Editor. Nella voce di menu **Sopralluoghi** si fissano le visite
+alla sala (giorno, ora, chi viene, evento e data desiderata, chi accompagna, cosa vuole vedere), con controllo che la sala
+sia libera, messaggio di conferma da inviare e trasformazione in prenotazione. Si possono fissare anche dal calendario
+e da una richiesta arrivata per email. Un volontario vede solo i sopralluoghi in cui accompagna e può segnarli come fatti.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

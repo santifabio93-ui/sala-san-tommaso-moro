@@ -20,6 +20,7 @@ const VIEWS = {
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
+  sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   economia: { label: "Economia", roles: ["admin"] },
@@ -38,6 +39,7 @@ const S = {
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
   bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], rates: { ...DEFAULT_RATES }, sync: {},
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
+  sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -105,13 +107,14 @@ async function loadAll() {
       sb.from("signups").select("*"),
       S.isAdmin ? sb.from("expenses").select("*") : null,
       S.canWrite || S.canCassa ? sb.from("settings").select("*").eq("id", 1).maybeSingle() : null,
-      S.isAdmin ? sb.from("profiles").select("*").order("creato") : null,
+      S.canWrite ? sb.from("profiles").select("*").order("creato") : null,
       S.canWrite ? sb.from("richieste").select("*").order("ricevuta", { ascending: false }).limit(300) : null,
       S.isAdmin ? sb.from("inviti").select("*").order("creato") : null,
+      sb.from("sopralluoghi").select("*").order("data").order("ora"),
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
     ];
-    const [b, s, e, st, p, rq, inv, ca] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, ca].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
@@ -125,6 +128,7 @@ async function loadAll() {
     if (rq.data) S.requests = rq.data;
     if (inv.data) S.invites = inv.data;
     if (ca.data) S.cassa = ca.data.map(mapCassa);
+    if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
     render();
   })();
   try { await loading; } finally { loading = null; }
@@ -135,7 +139,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -215,6 +219,7 @@ function render() {
   if (S.view === "turni") renderShifts();
   if (S.view === "economia") renderEconomy();
   if (S.view === "cassa") renderCassa();
+  if (S.view === "sopralluoghi") renderSopralluoghi();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -260,10 +265,12 @@ function renderCalendar() {
     const s = iso(d), list = onDay(s);
     const cls = ["day", d.getMonth() !== m.getMonth() && "out", s === TODAY && "today", s === S.selected && "sel"].filter(Boolean).join(" ");
     const chips = list.slice(0, 3).map((b) => `<span class="chip ${b.stato}">${b.giornata_intera ? "" : b.inizio + " "}${esc(b.titolo)}</span>`).join("");
+    const sop = sopOnDay(s);
     const more = list.length > 3 ? `<span class="more">+${list.length - 3} altre</span>` : "";
-    const dots = list.length ? `<span class="dots">${list.map((b) => `<i class="dot ${b.stato}"></i>`).join("")}</span>` : "";
+    const sopChips = sop.slice(0, 2).map((x) => `<span class="chip sop ${x.stato}">${x.ora} Sopralluogo</span>`).join("");
+    const dots = list.length || sop.length ? `<span class="dots">${list.map((b) => `<i class="dot ${b.stato}"></i>`).join("")}${sop.map(() => `<i class="dot sop"></i>`).join("")}</span>` : "";
     const label = `${fmtDay(s)}${list.length ? ", " + list.length + " prenotazioni" : ", libero"}`;
-    html += `<button type="button" class="${cls}" data-day="${s}" aria-label="${esc(label)}"><span class="dnum">${d.getDate()}</span>${chips}${more}${dots}</button>`;
+    html += `<button type="button" class="${cls}" data-day="${s}" aria-label="${esc(label)}"><span class="dnum">${d.getDate()}</span>${chips}${more}${sopChips}${dots}</button>`;
   }
   const g = $("#cal-grid");
   g.innerHTML = html;
@@ -304,10 +311,13 @@ function renderDay() {
     <h3>${esc(fmtDay(s))}</h3>
     ${act.length ? `<div class="busy">Occupata: ${act.map((b) => (b.giornata_intera ? `tutto il giorno (${esc(b.titolo)})` : `${b.inizio}–${b.fine}`)).join(", ")}</div>` : `<div class="free">La sala è libera per tutta la giornata.</div>`}
     <div class="blist">${list.map((b) => bookingCard(b, false)).join("")}</div>
-    ${S.canWrite || (S.canCassa && act.length) ? `<div class="actions" style="margin-top:14px">${S.canWrite ? `<button type="button" class="btn primary" id="book-day">Prenota questa data</button>` : ""}${S.canCassa && act.length ? `<button type="button" class="btn" id="cassa-day">Cassa di questa data</button>` : ""}</div>` : ""}`;
+    ${sopOnDay(s).length ? `<div class="daysop">${sopOnDay(s).map((x) => `<button type="button" data-sop="${esc(x.id)}"><b>${x.ora}</b> · Sopralluogo con ${esc(x.nome)}${x.ente ? " (" + esc(x.ente) + ")" : ""}${x.stato !== "da_fare" ? ` · ${SOP_STATI[x.stato].toLowerCase()}` : ""}</button>`).join("")}</div>` : ""}
+    ${S.canWrite || (S.canCassa && act.length) ? `<div class="actions" style="margin-top:14px">${S.canWrite ? `<button type="button" class="btn primary" id="book-day">Prenota questa data</button><button type="button" class="btn" id="sop-day">+ Sopralluogo</button>` : ""}${S.canCassa && act.length ? `<button type="button" class="btn" id="cassa-day">Cassa di questa data</button>` : ""}</div>` : ""}`;
   wireCards(el);
   const bd = $("#book-day"); if (bd) bd.onclick = () => openBooking(null, s);
   const cd = $("#cassa-day"); if (cd) cd.onclick = () => openCassaFor(s);
+  const sd = $("#sop-day"); if (sd) sd.onclick = () => openSop(null, { data: s });
+  el.querySelectorAll("[data-sop]").forEach((b) => (b.onclick = () => openSop(S.sopralluoghi.find((x) => x.id === b.dataset.sop))));
 }
 
 const FILTERS = [
@@ -488,7 +498,7 @@ function renderRequests() {
       <div class="snippet">${esc(r.testo.slice(0, 260))}${r.testo.length > 260 ? "…" : ""}</div>
       ${r.testo.length > 260 ? `<details><summary>Leggi tutta l'email</summary><pre>${esc(r.testo)}</pre></details>` : ""}
       <div class="btns">
-        ${r.stato === "nuova" ? `<button class="btn primary sm" type="button" data-conv="${esc(r.id)}">Crea prenotazione</button><button class="btn sm" type="button" data-skip="${esc(r.id)}">Scarta</button>` : ""}
+        ${r.stato === "nuova" ? `<button class="btn primary sm" type="button" data-conv="${esc(r.id)}">Crea prenotazione</button><button class="btn sm" type="button" data-sopr="${esc(r.id)}">Fissa sopralluogo</button><button class="btn sm" type="button" data-skip="${esc(r.id)}">Scarta</button>` : ""}
         ${r.stato === "scartata" ? `<button class="btn sm" type="button" data-back="${esc(r.id)}">Rimetti tra quelle da gestire</button>` : ""}
         ${linked ? `<button class="btn sm" type="button" data-open="${esc(linked.id)}">Apri prenotazione</button>` : ""}
         ${r.link ? `<a class="btn ghost sm" href="${esc(r.link)}" target="_blank" rel="noopener">Apri in Gmail</a>` : ""}
@@ -499,6 +509,10 @@ function renderRequests() {
   el.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.skip, "scartata", "Richiesta scartata"); }));
   el.querySelectorAll("[data-back]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.back, "nuova", "Richiesta rimessa tra quelle da gestire"); }));
   el.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openBooking(S.bookings.find((x) => x.id === b.dataset.open))));
+  el.querySelectorAll("[data-sopr]").forEach((b) => (b.onclick = () => {
+    const r = S.requests.find((x) => x.id === b.dataset.sopr);
+    openSop(null, { nome: r.mittente, email: r.mittente_email, evento: r.oggetto.replace(/^(re|fwd?|i|r):\s*/i, "").slice(0, 120), data_evento: r.data_proposta || "", richiesta_id: r.id });
+  }));
   el.querySelectorAll("[data-conv]").forEach((b) => (b.onclick = () => {
     const r = S.requests.find((x) => x.id === b.dataset.conv);
     const ini = r.ora_proposta ? hm(r.ora_proposta) : "20:30";
@@ -515,6 +529,7 @@ const dlgB = $("#dlg-booking"), dlgE = $("#dlg-expense"), dlgC = $("#dlg-copy");
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));
 
 function openBooking(b, date, prefill) {
+  S.sopToBook = null;
   if (!S.canWrite) return;
   S.editing = b ? b.id : null;
   const v = b || { titolo: "", referente: "", tipo: "Festa privata", telefono: "", email: "", data: date || S.selected || TODAY, inizio: "16:00", fine: "20:00", prezzo: "", incassato: 0, stato: "opzione", note: "", turni: [], ...(prefill || {}) };
@@ -626,7 +641,8 @@ $("#booking-form").addEventListener("submit", async (e) => {
       const { data: created, error } = await sb.from("bookings").insert({ ...rec, origine: S.fromRequest ? "email" : "app" }).select("id").single();
       if (error) throw error;
       if (S.fromRequest) await sb.from("richieste").update({ stato: "convertita", booking_id: created.id }).eq("id", S.fromRequest);
-      S.fromRequest = null;
+      if (S.sopToBook) await sb.from("sopralluoghi").update({ booking_id: created.id }).eq("id", S.sopToBook);
+      S.fromRequest = null; S.sopToBook = null;
       toast("Prenotazione salvata");
       await loadAll();
     }
@@ -750,6 +766,149 @@ $("#copy-btn").onclick = () => {
   try { navigator.clipboard.writeText(ta.value).then(() => { $("#copy-status").textContent = "Copiato. Ora incollalo nel gruppo WhatsApp."; }, fallback); }
   catch (e) { fallback(); }
 };
+
+/* ---------- sopralluoghi ---------- */
+const SOP_STATI = { da_fare: "Da fare", fatto: "Fatto", annullato: "Annullato" };
+const ESIGENZE = ["Proiettore e schermo", "Audio e microfoni", "Luci di scena", "Palco", "Sedie e tavoli", "Accessibilità", "Riscaldamento / aria condizionata", "Spazio per rinfresco", "Parcheggio"];
+const INDIRIZZO = "via Roma 108, Piombino Dese";
+const sopOnDay = (d) => S.sopralluoghi.filter((x) => x.data === d && x.stato !== "annullato").sort((a, b) => a.ora.localeCompare(b.ora));
+const personName = (id) => { const p = S.profiles.find((x) => x.id === id); return p ? p.nome || p.email : id === S.me?.id ? S.me.nome || "tu" : ""; };
+const SOP_FILTERS = [
+  ["prossimi", "In programma", (x) => x.stato === "da_fare" && x.data >= TODAY],
+  ["fatti", "Fatti", (x) => x.stato === "fatto"],
+  ["scaduti", "Da aggiornare", (x) => x.stato === "da_fare" && x.data < TODAY],
+  ["annullati", "Annullati", (x) => x.stato === "annullato"],
+];
+function renderSopralluoghi() {
+  $("#btn-sop").hidden = !S.canWrite;
+  $("#sop-filters").innerHTML = SOP_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.sopFilter === k}">${l}<span class="c">${S.sopralluoghi.filter(f).length}</span></button>`).join("");
+  $("#sop-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.sopFilter = b.dataset.f; renderSopralluoghi(); }));
+  const list = S.sopralluoghi.filter(SOP_FILTERS.find((x) => x[0] === S.sopFilter)[2]).sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
+  if (S.sopFilter !== "prossimi") list.reverse();
+  const el = $("#sopralluoghi");
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">${S.sopFilter === "prossimi"
+      ? (S.canWrite ? "Nessun sopralluogo in programma. Fissane uno con «+ Nuovo sopralluogo», dal calendario o da una richiesta arrivata per email." : "Nessun sopralluogo in cui accompagni qualcuno.")
+      : "Nessun sopralluogo in questo elenco."}</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="blist">${list.map((x) => {
+    const d = parse(x.data);
+    const busy = x.data_evento ? S.bookings.filter((b) => active(b) && b.data === x.data_evento) : [];
+    const acc = x.accompagnatore_id ? personName(x.accompagnatore_id) : "";
+    return `<article class="panel sop-card">
+      <div class="sop-when"><span>${esc(d.toLocaleDateString("it-IT", { weekday: "short" }))}</span><b>${d.getDate()}</b><span>${esc(d.toLocaleDateString("it-IT", { month: "short" }))}</span><span class="h">${x.ora}</span></div>
+      <div class="sop-body">
+        <div class="t">${esc(x.nome)}${x.ente ? ` <span class="m">· ${esc(x.ente)}</span>` : ""}</div>
+        ${x.evento || x.data_evento ? `<div class="m">${esc(x.evento || "Evento")}${x.data_evento ? ` · ${esc(fmtShort(x.data_evento))} <span class="pill ${busy.length ? "dapagare" : "saldato"}">${busy.length ? "data già occupata" : "data libera"}</span>` : ""}</div>` : ""}
+        ${x.telefono || x.email ? `<div class="m">${esc([x.telefono, x.email].filter(Boolean).join(" · "))}</div>` : ""}
+        <div class="m">${acc ? `Accompagna: <b>${esc(acc)}</b>` : `<span style="color:var(--opz-fg)">Nessuno ancora incaricato di accompagnare</span>`} · ${x.durata_min} min</div>
+        ${x.esigenze.length ? `<div class="tags">${x.esigenze.map((e) => `<span class="tag">${esc(e)}</span>`).join("")}</div>` : ""}
+        ${x.esito ? `<div class="m">${esc(x.esito)}</div>` : ""}
+        <div class="btns" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span class="pill ${x.stato === "fatto" ? "saldato" : x.stato === "annullato" ? "annullata" : "dafare"}">${SOP_STATI[x.stato]}</span>
+          <button class="btn sm" type="button" data-open-sop="${esc(x.id)}">${S.canWrite || x.accompagnatore_id === S.me.id ? "Apri" : "Dettagli"}</button>
+          ${x.stato === "da_fare" && (S.canWrite || x.accompagnatore_id === S.me.id) ? `<button class="btn sm" type="button" data-done="${esc(x.id)}">Segna come fatto</button>` : ""}
+          ${S.canWrite && x.stato === "da_fare" ? `<button class="btn sm" type="button" data-msg="${esc(x.id)}">Messaggio di conferma</button>` : ""}
+          ${S.canWrite && !x.booking_id && x.stato !== "annullato" ? `<button class="btn sm" type="button" data-book="${esc(x.id)}">Crea prenotazione</button>` : ""}
+          ${x.booking_id ? `<span class="hint">Prenotazione creata</span>` : ""}
+        </div>
+      </div>
+    </article>`;
+  }).join("")}</div>`;
+  const find = (id) => S.sopralluoghi.find((x) => x.id === id);
+  el.querySelectorAll("[data-open-sop]").forEach((b) => (b.onclick = () => openSop(find(b.dataset.openSop))));
+  el.querySelectorAll("[data-done]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await run(sb.from("sopralluoghi").update({ stato: "fatto", aggiornato: new Date().toISOString() }).eq("id", b.dataset.done), "Sopralluogo segnato come fatto"); } catch (e) { b.disabled = false; toast(errText(e)); }
+  }));
+  el.querySelectorAll("[data-msg]").forEach((b) => (b.onclick = () => openCopyText(sopMessage(find(b.dataset.msg)))));
+  el.querySelectorAll("[data-book]").forEach((b) => (b.onclick = () => {
+    const x = find(b.dataset.book);
+    openBooking(null, x.data_evento || TODAY, {
+      titolo: x.evento || `Evento ${x.ente || x.nome}`, referente: x.nome, telefono: x.telefono, email: x.email, tipo: "",
+      note: [x.esigenze.length ? "Esigenze: " + x.esigenze.join(", ") + "." : "", x.esito].filter(Boolean).join("\n"),
+    });
+    S.sopToBook = x.id;
+  }));
+}
+function sopMessage(x) {
+  const giorno = fmtDay(x.data, { weekday: "long", day: "numeric", month: "long" });
+  const acc = x.accompagnatore_id ? personName(x.accompagnatore_id) : "";
+  const firma = (S.me.nome || "").split(" ")[0];
+  return [
+    `Buongiorno ${x.nome.split(" ")[0]},`,
+    `le confermo il sopralluogo alla Sala San Tommaso Moro (${INDIRIZZO}) ${giorno} alle ${x.ora}.`,
+    acc && acc !== S.me.nome ? `Ad accoglierla ci sarà ${acc}.` : "",
+    x.esigenze.length ? `Potremo vedere insieme: ${x.esigenze.join(", ").toLowerCase()}.` : "",
+    "Se dovesse cambiare qualcosa, può rispondere a questo messaggio.",
+    `Grazie, a presto${firma ? "\n" + firma : ""}`,
+  ].filter(Boolean).join("\n");
+}
+
+const dlgS = $("#dlg-sop");
+function openSop(x, prefill) {
+  if (!x && !S.canWrite) return;
+  S.editingSop = x ? x.id : null;
+  const v = x || { data: TODAY, ora: "17:00", durata_min: 30, nome: "", ente: "", telefono: "", email: "", evento: "", data_evento: "", accompagnatore_id: S.me.id, esigenze: [], stato: "da_fare", esito: "", richiesta_id: null, ...(prefill || {}) };
+  S.sopFromRequest = x ? null : v.richiesta_id || null;
+  $("#s-head").textContent = x ? `Sopralluogo · ${x.nome}` : "Nuovo sopralluogo";
+  for (const k of ["data", "ora", "nome", "ente", "telefono", "email", "evento", "data_evento", "stato", "esito"]) $("#s-" + k).value = v[k] ?? "";
+  $("#s-durata").value = String(v.durata_min || 30);
+  const people = S.profiles.filter((p) => ["admin", "coordinatore", "volontario"].includes(p.ruolo));
+  const opts = people.length ? people : [S.me];
+  $("#s-accomp").innerHTML = `<option value="">Da decidere</option>` + opts.map((p) => `<option value="${esc(p.id)}"${p.id === v.accompagnatore_id ? " selected" : ""}>${esc(p.nome || p.email)}</option>`).join("")
+    + (v.accompagnatore_id && !opts.some((p) => p.id === v.accompagnatore_id) ? `<option value="${esc(v.accompagnatore_id)}" selected>${esc(personName(v.accompagnatore_id) || "Volontario")}</option>` : "");
+  $("#s-esigenze").innerHTML = ESIGENZE.map((e, i) => `<label><input type="checkbox" id="s-es-${i}" value="${esc(e)}"${v.esigenze.includes(e) ? " checked" : ""}> ${esc(e)}</label>`).join("");
+  const readOnly = !S.canWrite && !(x && x.accompagnatore_id === S.me.id);
+  const volunteer = !S.canWrite;
+  dlgS.querySelectorAll("input,select,textarea").forEach((el) => (el.disabled = readOnly));
+  if (volunteer && !readOnly) ["#s-data", "#s-ora", "#s-durata", "#s-nome", "#s-ente", "#s-telefono", "#s-email", "#s-accomp"].forEach((id) => ($(id).disabled = true));
+  $("#s-submit").hidden = readOnly;
+  $("#s-error").innerHTML = "";
+  renderDeleteArea("#s-delete-area", !!x && S.canWrite, async () => { await run(sb.from("sopralluoghi").delete().eq("id", x.id), "Sopralluogo eliminato"); dlgS.close(); });
+  checkSop();
+  dlgS.showModal();
+}
+function checkSop() {
+  const d = $("#s-data").value, o = $("#s-ora").value, dur = Number($("#s-durata").value) || 30;
+  const fine = o ? addMin(o, dur) : "";
+  const clash = d && o ? S.bookings.filter((b) => active(b) && b.data === d && !b.giornata_intera && b.inizio < fine && o < b.fine) : [];
+  const allDay = d ? S.bookings.filter((b) => active(b) && b.data === d && b.giornata_intera) : [];
+  const other = d && o ? S.sopralluoghi.filter((x) => x.id !== S.editingSop && x.stato !== "annullato" && x.data === d && x.ora < fine && o < addMin(x.ora, x.durata_min)) : [];
+  $("#s-avail").innerHTML = clash.length || other.length
+    ? `<div class="warn">In quell'orario la sala è occupata: ${[...clash.map((b) => `${esc(b.titolo)} (${b.inizio}–${b.fine})`), ...other.map((x) => `sopralluogo con ${esc(x.nome)} alle ${x.ora}`)].join("; ")}</div>`
+    : d && o ? `<div class="ok-note">Sala libera dalle ${o} alle ${fine}${allDay.length ? ` · in giornata: ${allDay.map((b) => esc(b.titolo)).join(", ")}` : ""}</div>` : "";
+  const de = $("#s-data_evento").value;
+  const busy = de ? S.bookings.filter((b) => active(b) && b.data === de) : [];
+  $("#s-evento-avail").innerHTML = de ? (busy.length
+    ? `<div class="warn">Il ${esc(fmtShort(de))} la sala è già impegnata: ${busy.map((b) => `${esc(b.titolo)} (${orario(b).toLowerCase()})`).join("; ")}</div>`
+    : `<div class="ok-note">Il ${esc(fmtShort(de))} la sala è libera</div>`) : "";
+}
+["#s-data", "#s-ora", "#s-durata", "#s-data_evento"].forEach((id) => $(id).addEventListener("input", checkSop));
+$("#btn-sop").onclick = () => openSop(null);
+$("#sop-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const g = (k) => $("#s-" + k).value.trim();
+  const rec = {
+    data: g("data"), ora: g("ora"), durata_min: Number(g("durata")) || 30, nome: g("nome"), ente: g("ente"), telefono: g("telefono"), email: g("email"),
+    evento: g("evento"), data_evento: g("data_evento") || null, accompagnatore_id: $("#s-accomp").value || null, stato: g("stato"), esito: g("esito"),
+    esigenze: [...$("#s-esigenze").querySelectorAll("input:checked")].map((i) => i.value), aggiornato: new Date().toISOString(),
+  };
+  if (!S.canWrite) for (const k of ["data", "ora", "durata_min", "nome", "ente", "telefono", "email", "accompagnatore_id"]) delete rec[k];
+  const err = S.canWrite && !rec.nome ? "Scrivi chi viene al sopralluogo." : S.canWrite && (!rec.data || !rec.ora) ? "Scegli giorno e ora." : "";
+  if (err) { $("#s-error").innerHTML = `<div class="warn">${err}</div>`; return; }
+  const btn = $("#s-submit"); btn.disabled = true;
+  try {
+    if (S.editingSop) await run(sb.from("sopralluoghi").update(rec).eq("id", S.editingSop), "Sopralluogo aggiornato");
+    else {
+      await run(sb.from("sopralluoghi").insert({ ...rec, richiesta_id: S.sopFromRequest }), "Sopralluogo fissato");
+      if (S.sopFromRequest) await run(sb.from("richieste").update({ stato: "convertita" }).eq("id", S.sopFromRequest));
+    }
+    dlgS.close();
+  } catch (x) { $("#s-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+  finally { btn.disabled = false; }
+});
 
 /* ---------- cassa ---------- */
 const CASSA_NUM = ["fondo_iniziale", "online_euro", "contanti_euro", "pos_euro", "contati", "prelievo", "fondo_finale"];
@@ -986,7 +1145,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");

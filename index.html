@@ -108,6 +108,14 @@
     <div id="requests"></div>
   </main>
 
+  <main id="view-sopralluoghi" hidden>
+    <div class="toolbar">
+      <div class="seg" id="sop-filters" role="group" aria-label="Filtro sopralluoghi"></div>
+      <button class="btn primary" id="btn-sop" type="button">+ Nuovo sopralluogo</button>
+    </div>
+    <div id="sopralluoghi"></div>
+  </main>
+
   <main id="view-turni" hidden>
     <div class="toolbar">
       <div class="seg" id="shift-filters" role="group" aria-label="Filtro turni"></div>
@@ -258,6 +266,39 @@
     <textarea class="copy-text" id="copy-text" aria-label="Testo del messaggio"></textarea>
     <div class="dlg-foot"><span class="hint" id="copy-status"></span><div class="right"><a class="btn" id="wa-open" target="_blank" rel="noopener">Apri WhatsApp</a><button class="btn primary" type="button" id="copy-btn">Copia testo</button></div></div>
   </div>
+</dialog>
+
+<dialog id="dlg-sop">
+  <form class="dlg" id="sop-form" novalidate>
+    <div class="dlg-head"><h2 id="s-head">Nuovo sopralluogo</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field t"><label for="s-data">Giorno</label><input id="s-data" type="date" required></div>
+      <div class="field t"><label for="s-ora">Ora</label><input id="s-ora" type="time" required value="17:00"></div>
+      <div class="field t"><label for="s-durata">Durata</label>
+        <select id="s-durata"><option value="15">15 minuti</option><option value="30" selected>30 minuti</option><option value="45">45 minuti</option><option value="60">1 ora</option><option value="90">1 ora e mezza</option></select></div>
+      <div class="field"><div id="s-avail"></div></div>
+      <div class="field h"><label for="s-nome">Chi viene</label><input id="s-nome" required placeholder="Nome e cognome"></div>
+      <div class="field h"><label for="s-ente">Ente o associazione</label><input id="s-ente" placeholder="Facoltativo"></div>
+      <div class="field h"><label for="s-telefono">Telefono</label><input id="s-telefono" type="tel" inputmode="tel"></div>
+      <div class="field h"><label for="s-email">Email</label><input id="s-email" type="email"></div>
+      <div class="field q"><label for="s-evento">Evento che vorrebbe organizzare</label><input id="s-evento" placeholder="Es. Concerto di Natale del coro"></div>
+      <div class="field t"><label for="s-data_evento">Data dell'evento</label><input id="s-data_evento" type="date"></div>
+      <div class="field"><div id="s-evento-avail"></div></div>
+      <div class="field h"><label for="s-accomp">Chi accompagna</label><select id="s-accomp"></select></div>
+      <div class="field h"><label for="s-stato">Stato</label>
+        <select id="s-stato"><option value="da_fare">Da fare</option><option value="fatto">Fatto</option><option value="annullato">Annullato</option></select></div>
+      <div class="field"><span class="label-like">Cosa vuole vedere o gli serve</span><div class="esigenze" id="s-esigenze"></div></div>
+      <div class="field"><label for="s-esito">Note ed esito</label><textarea id="s-esito" placeholder="Cosa è emerso: numero di persone previste, allestimento, se conferma…"></textarea></div>
+    </div>
+    <div id="s-error"></div>
+    <div class="dlg-foot">
+      <div id="s-delete-area"></div>
+      <div class="right">
+        <button class="btn" type="button" data-close>Annulla</button>
+        <button class="btn primary" type="submit" id="s-submit">Salva</button>
+      </div>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="dlg-cassa">
