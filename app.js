@@ -35,7 +35,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
   { k: "calendario" },
-  { label: "Prenotazioni", children: ["prenotazioni", "richieste", "sopralluoghi"] },
+  { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
   { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi" };
