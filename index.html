@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-10-30.1">
+<link rel="stylesheet" href="style.css?v=2026-10-30.2">
 </head>
 <body>
 
@@ -123,6 +123,15 @@
       <div class="actions"><span class="hint" id="film-sync"></span><button class="btn primary" id="btn-film" type="button">+ Aggiungi film</button></div>
     </div>
     <div id="films"></div>
+  </main>
+
+  <main id="view-c1" hidden>
+    <div class="toolbar">
+      <div class="seg" id="c1-years" role="group" aria-label="Anno"></div>
+      <div class="actions"><div class="seg" id="c1-mode" role="group" aria-label="Vista"></div><span class="hint" id="c1-sync"></span></div>
+    </div>
+    <section class="kpis" id="c1-kpis" aria-label="Totali C1"></section>
+    <div class="panel"><div class="tbl-wrap" id="c1-list"></div></div>
   </main>
 
   <main id="view-turni" hidden>
@@ -417,7 +426,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-10-30.1"></script>
-<script type="module" src="app.js?v=2026-10-30.1"></script>
+<script src="config.js?v=2026-10-30.2"></script>
+<script type="module" src="app.js?v=2026-10-30.2"></script>
 </body>
 </html>

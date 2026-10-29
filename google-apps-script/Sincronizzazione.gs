@@ -16,7 +16,9 @@
  *   SUPABASE_KEY   la chiave pubblica (sb_publishable_...)
  *   SYNC_TOKEN     il codice di sincronizzazione mostrato dallo script SQL 002
  *   MODALITA       "lettura+email", "calendario+email" oppure "email"; aggiungi "+cinema" per leggere
- *                  anche la programmazione da Cinebot (es. "lettura+email+cinema")
+ *                  anche la programmazione da Cinebot (es. "lettura+email+cinema"); aggiungi "+c1" per leggere
+ *                  i riepiloghi C1 dalla cartella Drive e dagli allegati email (es. "lettura+email+cinema+c1")
+ *   C1_CARTELLA    (facoltativo) id della cartella Drive con i C1; se manca si usa quella della sala
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
  * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
@@ -56,6 +58,7 @@ function sincronizza() {
     if (scrivi || cfg.modalita.indexOf("lettura") !== -1) prova("calendario", () => sincronizzaCalendario(cfg, scrivi));
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
     if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
+    if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 12));
   } finally {
     lock.releaseLock();
   }
@@ -81,6 +84,7 @@ function leggiImpostazioni() {
     token: p.SYNC_TOKEN,
     modalita: (p.MODALITA || "email").toLowerCase(),
     calendario: p.CALENDARIO || "",
+    c1Cartella: p.C1_CARTELLA || C1_CARTELLA_SALA,
   };
 }
 
@@ -311,6 +315,150 @@ function leggiCinebot(cfg) {
   if (!elenco.length) { Logger.log("Cinebot: nessun film trovato, la pagina potrebbe essere cambiata"); return; }
   const esito = rpc(cfg, "sync_cinebot_push", { p_films: elenco });
   Logger.log("Cinebot: " + JSON.stringify(esito));
+}
+
+/* ---------------- C1 (riepiloghi SIAE) ---------------- */
+
+const C1_CARTELLA_SALA = "1LijEKEdzesBJlG57_fbOWlNcSnaQ05GL"; // cartella "C1" su Drive dell'account della sala
+const C1_DAL = "2026-01-01";
+const C1_RICERCA_EMAIL = "has:attachment filename:pdf newer_than:60d (C1 OR C1E OR riepilogo OR bordero OR borderò OR cinebot)";
+
+// legge i PDF non ancora letti (cartella Drive e allegati email), al massimo `limite` per volta
+function leggiC1(cfg, limite) {
+  const props = PropertiesService.getScriptProperties();
+  const fatti = (k) => props.getProperty("C1_" + k) === "1";
+  const segna = (k) => props.setProperty("C1_" + k, "1");
+  const daLeggere = [];
+
+  // 1) cartella Drive
+  let pagina = null;
+  do {
+    const q = encodeURIComponent("'" + cfg.c1Cartella + "' in parents and mimeType = 'application/pdf' and trashed = false");
+    const r = api("https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=200&orderBy=modifiedTime%20desc"
+      + (pagina ? "&pageToken=" + pagina : ""));
+    (r.files || []).forEach((f) => {
+      const chiave = f.id + "_" + f.modifiedTime.replace(/\D/g, "");
+      if (!fatti(chiave)) daLeggere.push({ chiave: chiave, nome: f.name, fonte: "drive", fonte_id: f.id, scarica: () => apiBlob("https://www.googleapis.com/drive/v3/files/" + f.id + "?alt=media") });
+    });
+    pagina = r.nextPageToken;
+  } while (pagina);
+
+  // 2) allegati email
+  const lista = Gmail.Users.Messages.list("me", { q: C1_RICERCA_EMAIL, maxResults: 50 });
+  (lista.messages || []).forEach((m) => {
+    if (fatti("mail_" + m.id)) return;
+    const msg = Gmail.Users.Messages.get("me", m.id, { format: "full" });
+    const allegati = [];
+    const cerca = (p) => { if (p.filename && /\.pdf$/i.test(p.filename) && p.body && p.body.attachmentId) allegati.push(p); (p.parts || []).forEach(cerca); };
+    cerca(msg.payload);
+    if (!allegati.length) { segna("mail_" + m.id); return; }
+    allegati.forEach((a, i) => daLeggere.push({
+      chiave: i === allegati.length - 1 ? "mail_" + m.id : "mail_" + m.id + "_" + i, nome: a.filename, fonte: "email", fonte_id: m.id,
+      scarica: () => Utilities.newBlob(Utilities.base64DecodeWebSafe(Gmail.Users.Messages.Attachments.get("me", m.id, a.body.attachmentId).data), "application/pdf", a.filename),
+    }));
+  });
+
+  const eventi = [];
+  let letti = 0;
+  for (const f of daLeggere) {
+    if (letti >= limite) break;
+    letti++;
+    try {
+      const testo = testoDaPdf(f.scarica(), f.nome);
+      analizzaC1(testo).filter((e) => e.data >= C1_DAL).forEach((e) => eventi.push(Object.assign(e, { fonte: f.fonte, fonte_id: f.fonte_id, file_nome: f.nome })));
+      segna(f.chiave);
+    } catch (err) {
+      Logger.log("C1 non letto: " + f.nome + " → " + err.message);
+    }
+  }
+  const esito = eventi.length ? rpc(cfg, "sync_c1_push", { p_items: eventi }) : { c1: 0 };
+  Logger.log("C1: file letti " + letti + " di " + daLeggere.length + " da leggere, serate trovate " + eventi.length + " → " + JSON.stringify(esito));
+}
+
+// trasforma il PDF in testo: lo carico come documento Google temporaneo, ne leggo il testo e lo cancello
+function testoDaPdf(blob, nome) {
+  const confine = "c1" + Date.now();
+  const meta = JSON.stringify({ name: "tmp C1 " + nome, mimeType: "application/vnd.google-apps.document" });
+  const corpo = Utilities.newBlob("--" + confine + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta
+    + "\r\n--" + confine + "\r\nContent-Type: application/pdf\r\n\r\n").getBytes()
+    .concat(blob.getBytes())
+    .concat(Utilities.newBlob("\r\n--" + confine + "--").getBytes());
+  const doc = api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=it&fields=id", {
+    method: "post", contentType: "multipart/related; boundary=" + confine, payload: corpo,
+  });
+  try {
+    return apiTesto("https://www.googleapis.com/drive/v3/files/" + doc.id + "/export?mimeType=text/plain");
+  } finally {
+    api("https://www.googleapis.com/drive/v3/files/" + doc.id, { method: "delete" });
+  }
+}
+
+function apiRisposta(url, opzioni) {
+  const res = UrlFetchApp.fetch(url, Object.assign({ muteHttpExceptions: true, headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() } }, opzioni || {}));
+  if (res.getResponseCode() >= 300) throw new Error("Google Drive → HTTP " + res.getResponseCode() + ": " + res.getContentText().slice(0, 300));
+  return res;
+}
+function api(url, opzioni) { const t = apiRisposta(url, opzioni).getContentText(); return t ? JSON.parse(t) : {}; }
+function apiTesto(url) { return apiRisposta(url).getContentText("UTF-8"); }
+function apiBlob(url) { return apiRisposta(url).getBlob(); }
+
+// riconosce uno o più eventi in un riepilogo C1 (testo estratto dal PDF)
+const NUM = "\\d{1,3}(?:\\.\\d{3})*,\\d{2}";
+function numIt(s) { return Number(String(s).replace(/\./g, "").replace(",", ".")) || 0; }
+function analizzaC1(testoGrezzo) {
+  const t = testoGrezzo.replace(/\s+/g, " ");
+  const parti = t.split(/Titolo dell'opera\s*\/\s*manifestazione:/i).slice(1);
+  const eventi = [];
+  const prima = t.split(/Titolo dell'opera\s*\/\s*manifestazione:/i);
+  parti.forEach((p, i) => {
+    const intestazione = prima[i];
+    const tipo = (intestazione.match(/Tipo evento \(1\):\s*([^:]*?)\s*$/i) || [])[1] || "";
+    const titolo = ((p.match(/^\s*(.*?)\s+Autore:/) || [])[1] || "").trim();
+    const autore = ((p.match(/Autore:\s*(.*?)\s+Esecutore:/) || [])[1] || "").trim();
+    const naz = ((p.match(/Nazionalit[àa]:\s*(.*?)\s+Numero opere/) || [])[1] || "").trim();
+    const d = p.match(/Data evento:\s*(\d{2})\/(\d{2})\/(\d{4})/);
+    const o = p.match(/Ora evento:\s*(\d{1,2})[.:,](\d{2})/);
+    if (!titolo || !d) return;
+    const fine = p.search(/TOTALE GENERALE:/i);
+    const corpo = fine >= 0 ? p.slice(0, fine + 200) : p;
+    const reRiga = new RegExp("\\b([A-Z]{2})\\s+(\\d+)\\s+([A-Z]\\d{1,2})\\s+(?:([A-Za-zÀ-ú][A-Za-zÀ-ú .'-]*?)\\s+)?(" + NUM + ")\\s+(\\d+)\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(\\d+)", "g");
+    const righe = [];
+    const preassolta = corpo.search(/TOTALE IVA da assolvere:/i);
+    let m;
+    while ((m = reRiga.exec(corpo))) {
+      righe.push({
+        settore: m[1], codice: m[3], descrizione: (m[4] || "").trim(), prezzo: numIt(m[5]), n: Number(m[6]),
+        lordo: numIt(m[7]), imponibile_iva: numIt(m[11]), iva: numIt(m[12]), annullati: Number(m[13]),
+        iva_preassolta: preassolta >= 0 && m.index > preassolta,
+      });
+    }
+    const tot = corpo.match(new RegExp("TOTALE GENERALE:\\s*(\\d+)\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")\\s+(" + NUM + ")", "i"));
+    const omaggi = righe.filter((r) => r.prezzo === 0 || /^O/.test(r.codice)).reduce((s, r) => s + r.n, 0);
+    const spettatori = tot ? Number(tot[1]) : righe.reduce((s, r) => s + r.n, 0);
+    eventi.push({
+      titolo, autore, nazionalita: naz, tipo_evento: tipo.replace(/^\d+\s*-?\s*/, "").trim(),
+      data: d[3] + "-" + d[2] + "-" + d[1], ora: o ? ("0" + o[1]).slice(-2) + ":" + o[2] : "00:00",
+      spettatori, omaggi, paganti: spettatori - omaggi,
+      lordo: tot ? numIt(tot[2]) : righe.reduce((s, r) => s + r.lordo, 0),
+      imponibile_iva: tot ? numIt(tot[6]) : righe.reduce((s, r) => s + r.imponibile_iva, 0),
+      iva: tot ? numIt(tot[7]) : righe.reduce((s, r) => s + r.iva, 0),
+      righe,
+    });
+  });
+  return eventi;
+}
+
+// da eseguire a mano: legge subito fino a 40 C1 e mostra nel log il testo del primo, utile se qualcosa non torna
+function provaC1() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Modalità: " + cfg.modalita + (cfg.modalita.indexOf("c1") === -1 ? "  ← manca «+c1»: la lettura automatica non partirà" : ""));
+  const r = api("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("'" + cfg.c1Cartella + "' in parents and mimeType = 'application/pdf' and trashed = false") + "&fields=files(id,name)&pageSize=1&orderBy=modifiedTime%20desc");
+  if (r.files && r.files[0]) {
+    const testo = testoDaPdf(apiBlob("https://www.googleapis.com/drive/v3/files/" + r.files[0].id + "?alt=media"), r.files[0].name);
+    Logger.log("Esempio (" + r.files[0].name + "): " + testo.replace(/\s+/g, " ").slice(0, 1500));
+    Logger.log("Riconosciuto: " + JSON.stringify(analizzaC1(testo)));
+  } else Logger.log("Nella cartella C1 non trovo PDF: controlla C1_CARTELLA");
+  leggiC1(cfg, 40);
 }
 
 /* ---------------- email ---------------- */

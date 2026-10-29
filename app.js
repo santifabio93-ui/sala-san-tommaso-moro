@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.1";
+const VERSIONE = "2026-10-30.2";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -24,6 +24,7 @@ const VIEWS = {
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
+  c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   economia: { label: "Economia", roles: ["admin"] },
@@ -40,9 +41,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
-  { k: "cinema" }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1"] }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -52,6 +53,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -76,8 +78,8 @@ sb.auth.onAuthStateChange((event, session) => {
   if (event === "SIGNED_OUT") { started = false; stopRealtime(); show("login"); return; }
   if (session && !started) { started = true; setTimeout(start, 0); }
 });
-const { data: { session: initial } } = await sb.auth.getSession();
-if (!initial) show("login");
+// senza attendere qui: il resto del modulo deve essere già pronto quando parte start()
+sb.auth.getSession().then(({ data }) => { if (!data.session) show("login"); });
 
 async function start() {
   const user = S.session?.user;
@@ -125,16 +127,17 @@ async function loadAll() {
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
       sb.from("films").select("*").order("titolo"),
       sb.from("proiezioni").select("*").order("data").order("ora"),
+      S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
-    const [b, s, e, st, p, rq, inv, so, ca, fi, pj] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
       S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
     }
     if (p.data) S.profiles = p.data;
@@ -143,6 +146,7 @@ async function loadAll() {
     if (ca.data) S.cassa = ca.data.map(mapCassa);
     if (fi.data) S.films = fi.data;
     if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
+    if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
     render();
   })();
@@ -154,7 +158,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -229,14 +233,15 @@ function renderTabs() {
     if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
-    if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}</a>`;
+    const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
+    if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}${groupBadge(kids)}</a>`;
     const inside = kids.includes(S.view);
     if (inside) { sub = kids; S.lastSub = S.view; }
     const target = kids.includes(S.lastSub) ? S.lastSub : kids[0];
-    return `<a href="#${target}"${cur(inside)}>${m.label}${kids.includes("richieste") ? badge(nReq) : ""}</a>`;
+    return `<a href="#${target}"${cur(inside)}>${m.label}${groupBadge(kids)}</a>`;
   }).join("");
   $("#subtabs").hidden = !sub;
-  $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : ""}</a>`).join("") : "";
+  $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : k === "cinema" ? badge(filmsToFix()) : ""}</a>`).join("") : "";
 }
 
 /* ---------- render ---------- */
@@ -254,6 +259,7 @@ function render() {
   if (S.view === "cassa") renderCassa();
   if (S.view === "sopralluoghi") renderSopralluoghi();
   if (S.view === "cinema") renderCinema();
+  if (S.view === "c1") renderC1();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -861,6 +867,7 @@ function renderCinema() {
       <div class="body">
         <div class="t">${esc(f.titolo)}</div>
         <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
+        ${(() => { const cs = c1OfFilm(f); return cs.length && S.canWrite ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
         <div class="meta"><span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}</div>
       </div>
     </button>`;
@@ -956,6 +963,64 @@ $("#film-form").addEventListener("submit", async (e) => {
   } catch (x) { $("#f-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
   finally { btn.disabled = false; }
 });
+
+/* ---------- incassi C1 ---------- */
+const normT = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+const c1OfFilm = (f) => S.c1.filter((c) => c.film_id === f.id || (!c.film_id && normT(c.titolo) === normT(f.titolo)));
+const filmOfC1 = (c) => S.films.find((f) => f.id === c.film_id) || S.films.find((f) => normT(f.titolo) === normT(c.titolo));
+// confronto tra i C1 e la Cassa di una stessa data (la cassa somma tutte le proiezioni della serata)
+function c1CheckDay(day) {
+  const cs = S.c1.filter((c) => c.data === day), ks = S.cassa.filter((k) => k.data === day);
+  if (!cs.length || !ks.length) return { stato: !cs.length ? "noc1" : "nocassa" };
+  const c1 = r2(cs.reduce((s, c) => s + c.lordo, 0)), cassa = r2(ks.reduce((s, k) => s + totBiglietti(k), 0));
+  return { stato: Math.abs(c1 - cassa) < 0.005 ? "ok" : "diff", c1, cassa, diff: r2(cassa - c1) };
+}
+function c1Pill(r) {
+  if (r.stato === "noc1") return '<span class="hint">C1 non ancora arrivato</span>';
+  if (r.stato === "nocassa") return '<span class="pill annullata">Nessuna cassa</span>';
+  if (r.stato === "ok") return '<span class="pill saldato">Cassa = C1</span>';
+  return `<span class="pill dapagare" title="Cassa ${money(r.cassa)} · C1 ${money(r.c1)}">Cassa ${r.diff > 0 ? "+" : "−"}${money(Math.abs(r.diff))}</span>`;
+}
+function renderC1() {
+  const years = new Set([new Date().getFullYear(), S.c1Year]);
+  S.c1.forEach((c) => years.add(+c.data.slice(0, 4)));
+  $("#c1-years").innerHTML = [...years].sort().map((y) => `<button type="button" data-y="${y}" aria-pressed="${S.c1Year === y}">${y}</button>`).join("");
+  $("#c1-years").querySelectorAll("[data-y]").forEach((b) => (b.onclick = () => { S.c1Year = +b.dataset.y; renderC1(); }));
+  $("#c1-mode").innerHTML = [["serate", "Per proiezione"], ["film", "Per film"], ["mesi", "Per mese"]].map(([k, l]) => `<button type="button" data-m="${k}" aria-pressed="${S.c1Mode === k}">${l}</button>`).join("");
+  $("#c1-mode").querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => { S.c1Mode = b.dataset.m; renderC1(); }));
+  $("#c1-sync").textContent = S.sync.c1 ? `C1 letti ${ago(S.sync.c1)}` : "I C1 arrivano qui quando lo script Google ha «+c1»";
+  const list = S.c1.filter((c) => c.data.startsWith(String(S.c1Year))).sort((a, b) => (b.data + b.ora).localeCompare(a.data + a.ora));
+  const sum = (arr, k) => arr.reduce((s, c) => s + (c[k] || 0), 0);
+  const spett = sum(list, "spettatori"), lordo = sum(list, "lordo");
+  $("#c1-kpis").innerHTML = `
+    <div class="kpi"><span class="eyebrow">Spettatori ${S.c1Year}</span><b>${spett.toLocaleString("it-IT")}</b><small>${sum(list, "paganti")} paganti · ${sum(list, "omaggi")} omaggi</small></div>
+    <div class="kpi"><span class="eyebrow">Incasso lordo</span><b>${money(lordo)}</b><small>da ${list.length} ${list.length === 1 ? "proiezione" : "proiezioni"}</small></div>
+    <div class="kpi"><span class="eyebrow">Netto IVA</span><b>${money(sum(list, "imponibile_iva"))}</b><small>IVA ${money(sum(list, "iva"))}</small></div>
+    <div class="kpi"><span class="eyebrow">Media a proiezione</span><b>${list.length ? Math.round(spett / list.length) : 0}</b><small>spettatori · ${money(list.length ? r2(lordo / list.length) : 0)}</small></div>`;
+  const el = $("#c1-list");
+  if (!list.length) { el.innerHTML = `<div class="empty">Nessun C1 per il ${S.c1Year}. Lo script Google li legge dalla cartella Drive dei C1 e dalle email di Cinebot.</div>`; return; }
+  const posterOf = (c) => { const f = filmOfC1(c); return f && f.locandina_url ? `<img class="thumb" src="${esc(f.locandina_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ""; };
+  if (S.c1Mode === "film") {
+    const groups = new Map();
+    list.forEach((c) => { const k = normT(c.titolo); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+    const rows = [...groups.values()].map((cs) => ({ cs, titolo: cs[0].titolo, sp: sum(cs, "spettatori"), lo: sum(cs, "lordo"), net: sum(cs, "imponibile_iva"), last: cs[0].data })).sort((a, b) => b.lo - a.lo);
+    el.innerHTML = `<table><thead><tr><th>Film</th><th class="n">Proiezioni</th><th class="n">Spettatori</th><th class="n">Media</th><th class="n">Lordo</th><th class="n">Netto IVA</th><th>Ultima</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td>${posterOf(r.cs[0])}${esc(r.titolo)}</td><td class="n">${r.cs.length}</td><td class="n">${r.sp}</td><td class="n">${Math.round(r.sp / r.cs.length)}</td><td class="n"><b>${money(r.lo)}</b></td><td class="n">${money(r.net)}</td><td>${esc(fmtShort(r.last))}</td></tr>`).join("")}</tbody></table>`;
+    return;
+  }
+  if (S.c1Mode === "mesi") {
+    const rows = MESI.map((m, i) => { const k = `${S.c1Year}-${pad(i + 1)}`; const cs = list.filter((c) => c.data.startsWith(k)); return { m: parse(k + "-01").toLocaleDateString("it-IT", { month: "long" }), cs }; }).filter((r) => r.cs.length);
+    el.innerHTML = `<table><thead><tr><th>Mese</th><th class="n">Proiezioni</th><th class="n">Spettatori</th><th class="n">Lordo</th><th class="n">Netto IVA</th><th class="n">IVA</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td class="cap">${esc(r.m)}</td><td class="n">${r.cs.length}</td><td class="n">${sum(r.cs, "spettatori")}</td><td class="n"><b>${money(sum(r.cs, "lordo"))}</b></td><td class="n">${money(sum(r.cs, "imponibile_iva"))}</td><td class="n">${money(sum(r.cs, "iva"))}</td></tr>`).join("")}
+      <tr><th>Totale</th><th class="n">${list.length}</th><th class="n">${spett}</th><th class="n">${money(lordo)}</th><th class="n">${money(sum(list, "imponibile_iva"))}</th><th class="n">${money(sum(list, "iva"))}</th></tr></tbody></table>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr><th>Data</th><th>Film</th><th class="n">Spettatori</th><th class="n">Lordo</th><th class="n">Netto IVA</th><th>Confronto con la Cassa</th></tr></thead><tbody>
+    ${list.map((c) => `<tr class="click" data-c1="${esc(c.id)}"><td style="white-space:nowrap">${esc(fmtShort(c.data))} · ${c.ora}</td><td>${posterOf(c)}${esc(c.titolo)}</td><td class="n">${c.spettatori}${c.omaggi ? ` <span class="hint">(${c.omaggi} om.)</span>` : ""}</td><td class="n"><b>${money(c.lordo)}</b></td><td class="n">${money(c.imponibile_iva)}</td><td>${c1Pill(c1CheckDay(c.data))}</td></tr>
+      ${S.c1Open === c.id ? `<tr class="c1-row-detail"><td colspan="6"><div class="righe">${c.righe.map((r) => `<span>${esc(r.descrizione || r.codice)} ${r.prezzo ? money(r.prezzo) : "omaggio"}: <b>${r.n}</b>${r.lordo ? ` = ${money(r.lordo)}` : ""}${r.iva_preassolta ? " (abbonamento)" : ""}</span>`).join("")}</div>
+        <div class="hint" style="margin-top:6px">${esc([c.autore && "Regia: " + c.autore, c.nazionalita, c.file_nome && "da " + c.file_nome].filter(Boolean).join(" · "))}</div></td></tr>` : ""}`).join("")}</tbody></table>`;
+  el.querySelectorAll("[data-c1]").forEach((r) => (r.onclick = () => { S.c1Open = S.c1Open === r.dataset.c1 ? null : r.dataset.c1; renderC1(); }));
+}
 
 /* ---------- sopralluoghi ---------- */
 const SOP_STATI = { da_fare: "Da fare", fatto: "Fatto", annullato: "Annullato" };
@@ -1134,14 +1199,14 @@ function renderCassa() {
     return;
   }
   const rows = [...S.cassa].sort((a, b) => (b.data + b.creato).localeCompare(a.data + a.creato));
-  el.innerHTML = `<table><thead><tr><th>Data</th><th>Evento</th><th class="n">Spett.</th><th class="n">Online</th><th class="n">Contanti</th><th class="n">POS</th><th class="n">Totale</th><th>Quadratura</th><th class="n">Nuovo saldo</th></tr></thead><tbody>
+  el.innerHTML = `<table><thead><tr><th>Data</th><th>Evento</th><th class="n">Spett.</th><th class="n">Online</th><th class="n">Contanti</th><th class="n">POS</th><th class="n">Totale</th><th>Quadratura</th>${S.canWrite ? "<th>C1</th>" : ""}<th class="n">Nuovo saldo</th></tr></thead><tbody>
     ${rows.map((c) => {
       const q = quadratura(c);
       const pill = c.stato === "aperta" ? '<span class="pill acconto">Aperta</span>'
         : q == null ? '<span class="pill annullata">Non contata</span>'
         : Math.abs(q) < 0.005 ? '<span class="pill saldato">Quadra</span>'
         : `<span class="pill dapagare">${q > 0 ? "+" : "−"}${money(Math.abs(q))}</span>`;
-      return `<tr class="click" data-c="${esc(c.id)}"><td>${esc(fmtShort(c.data))}</td><td>${esc(cassaTitle(c))}</td><td class="n">${spettatori(c)}</td><td class="n">${money(c.online_euro)}</td><td class="n">${money(c.contanti_euro)}</td><td class="n">${money(c.pos_euro)}</td><td class="n"><b>${money(totBiglietti(c))}</b></td><td>${pill}</td><td class="n">${c.stato === "chiusa" ? money(c.fondo_finale) : "—"}</td></tr>`;
+      return `<tr class="click" data-c="${esc(c.id)}"><td>${esc(fmtShort(c.data))}</td><td>${esc(cassaTitle(c))}</td><td class="n">${spettatori(c)}</td><td class="n">${money(c.online_euro)}</td><td class="n">${money(c.contanti_euro)}</td><td class="n">${money(c.pos_euro)}</td><td class="n"><b>${money(totBiglietti(c))}</b></td><td>${pill}</td>${S.canWrite ? `<td>${c1Pill(c1CheckDay(c.data))}</td>` : ""}<td class="n">${c.stato === "chiusa" ? money(c.fondo_finale) : "—"}</td></tr>`;
     }).join("")}</tbody></table>`;
   el.querySelectorAll("[data-c]").forEach((r) => (r.onclick = () => openCassa(S.cassa.find((c) => c.id === r.dataset.c))));
 }
@@ -1335,7 +1400,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");
