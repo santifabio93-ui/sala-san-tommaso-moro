@@ -15,7 +15,8 @@
  *   SUPABASE_URL   https://uayqjbzpumsnynuoeayo.supabase.co
  *   SUPABASE_KEY   la chiave pubblica (sb_publishable_...)
  *   SYNC_TOKEN     il codice di sincronizzazione mostrato dallo script SQL 002
- *   MODALITA       "lettura+email", "calendario+email" oppure "email"
+ *   MODALITA       "lettura+email", "calendario+email" oppure "email"; aggiungi "+cinema" per leggere
+ *                  anche la programmazione da Cinebot (es. "lettura+email+cinema")
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
  * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
@@ -50,6 +51,7 @@ function sincronizza() {
     const scrivi = cfg.modalita.indexOf("calendario") !== -1;
     if (scrivi || cfg.modalita.indexOf("lettura") !== -1) sincronizzaCalendario(cfg, scrivi);
     if (cfg.modalita.indexOf("email") !== -1) leggiEmail(cfg);
+    if (cfg.modalita.indexOf("cinema") !== -1) leggiCinebotSeServe(cfg);
   } finally {
     lock.releaseLock();
   }
@@ -213,6 +215,85 @@ function indovinaTipo(t) {
 
 function dataLocale(giorno, ora) {
   return Utilities.parseDate(giorno + " " + ora, FUSO, "yyyy-MM-dd HH:mm");
+}
+
+/* ---------------- cinema (Cinebot) ---------------- */
+
+const CINEBOT_SITO = "https://ticket.cinebot.it";
+const CINEBOT_SALA = "/s.tommasomoro/";
+const CINEBOT_OGNI_MINUTI = 60;
+
+// la programmazione cambia di rado: la leggo al massimo una volta all'ora
+function leggiCinebotSeServe(cfg) {
+  const props = PropertiesService.getScriptProperties();
+  const ultima = Number(props.getProperty("CINEBOT_ULTIMA") || 0);
+  if (Date.now() - ultima < CINEBOT_OGNI_MINUTI * 60000) return;
+  leggiCinebot(cfg);
+  props.setProperty("CINEBOT_ULTIMA", String(Date.now()));
+}
+
+function scaricaPagina(percorso) {
+  const res = UrlFetchApp.fetch(CINEBOT_SITO + percorso, { muteHttpExceptions: true, followRedirects: true });
+  if (res.getResponseCode() !== 200) throw new Error("Cinebot " + percorso + " → HTTP " + res.getResponseCode());
+  return res.getContentText("UTF-8");
+}
+
+function testoPulito(html) {
+  return html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"')
+    .replace(/&egrave;/g, "è").replace(/&agrave;/g, "à").replace(/&ograve;/g, "ò").replace(/&igrave;/g, "ì").replace(/&ugrave;/g, "ù").replace(/&eacute;/g, "é")
+    .replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// le date di Cinebot non hanno l'anno: scelgo l'anno che le rende più vicine a oggi (al massimo 2 mesi nel passato)
+function annoPer(giorno, mese, oggi) {
+  const y = oggi.getFullYear();
+  const d = new Date(y, mese - 1, giorno);
+  return d < new Date(y, oggi.getMonth() - 2, oggi.getDate()) ? y + 1 : y;
+}
+
+function leggiCinebot(cfg) {
+  const oggi = new Date();
+  const home = scaricaPagina(CINEBOT_SALA);
+  const films = {};
+  const blocchi = home.match(/<a href="\/s\.tommasomoro\/(?:evento|titolo)\/\d+_[^"]*" class="eventi-item[\s\S]*?<\/a>/g) || [];
+  blocchi.forEach((blk) => {
+    const link = blk.match(/href="(\/s\.tommasomoro\/(evento|titolo)\/(\d+)_[^"]*)"/);
+    const percorso = link[1], tipo = link[2], numero = link[3];
+    const loc = blk.match(/src="(\/s\.tommasomoro\/titolo\/(\d+)\/locandina)"/);
+    const idTitolo = loc ? loc[2] : (tipo === "titolo" ? numero : "evento-" + numero);
+    const titolo = testoPulito((blk.match(/<h4 class="title">([\s\S]*?)<\/h4>/) || [])[1] || "");
+    if (!titolo) return;
+    const f = films[idTitolo] || (films[idTitolo] = {
+      cinebot_id: idTitolo, titolo: titolo,
+      locandina: loc ? CINEBOT_SITO + loc[1] + "/hq" : "",
+      url: CINEBOT_SITO + (tipo === "titolo" ? percorso : percorso),
+      proiezioni: [],
+    });
+    const aggiungi = (key, data, ora) => { if (!f.proiezioni.some((p) => p.key === key)) f.proiezioni.push({ key: key, data: data, ora: ora }); };
+    if (tipo === "evento") {
+      // "Dom 01/11 21:00"
+      const q = blk.match(/fa-calendar"><\/i>\s*[A-Za-zÀ-ú]+\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}:\d{2})/);
+      if (q) {
+        const g = +q[1], m = +q[2];
+        aggiungi("ev" + numero, annoPer(g, m, oggi) + "-" + ("0" + m).slice(-2) + "-" + ("0" + g).slice(-2), ("0" + q[3]).slice(-5));
+      }
+    } else {
+      // pagina del titolo: una riga per ogni spettacolo, con data completa e ora
+      const pagina = scaricaPagina(percorso);
+      const righe = pagina.match(/<tr[^>]*data-date="\d{2}\/\d{2}\/\d{4}"[\s\S]*?<\/tr>/g) || [];
+      righe.forEach((r) => {
+        const d = r.match(/data-date="(\d{2})\/(\d{2})\/(\d{4})"/);
+        const ev = r.match(/\/evento\/(\d+)/);
+        const ora = r.match(/fa-clock"><\/i>\s*(\d{1,2}:\d{2})/);
+        if (d && ev && ora) aggiungi("ev" + ev[1], d[3] + "-" + d[2] + "-" + d[1], ("0" + ora[1]).slice(-5));
+      });
+      f.url = CINEBOT_SITO + percorso;
+    }
+  });
+  const elenco = Object.keys(films).map((k) => films[k]);
+  if (!elenco.length) { Logger.log("Cinebot: nessun film trovato, la pagina potrebbe essere cambiata"); return; }
+  const esito = rpc(cfg, "sync_cinebot_push", { p_films: elenco });
+  Logger.log("Cinebot: " + JSON.stringify(esito));
 }
 
 /* ---------------- email ---------------- */

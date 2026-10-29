@@ -111,6 +111,9 @@ e orari; per ognuno si segna il supporto (file, DVD, Blu-ray, link), se è già 
 proiezione. Il cartellino sulla locandina dice se il film è pronto o cosa manca, con la scadenza: la prova va fatta
 almeno 7 giorni prima della prima proiezione. Tutti gli approvati possono aggiornare supporto e prova; aggiungere o
 togliere film e orari spetta allo staff.
+Per leggere la programmazione da Cinebot (film, locandine, orari) aggiungi `+cinema` alla proprietà `MODALITA`
+dello script Google (es. `lettura+email+cinema`): lo script legge https://ticket.cinebot.it/s.tommasomoro/ una volta
+all'ora. Supporto, prova e note scritti nell'app non vengono mai sovrascritti.
 
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
