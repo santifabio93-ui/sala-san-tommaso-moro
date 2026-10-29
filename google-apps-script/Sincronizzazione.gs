@@ -28,7 +28,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.5"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-10-30.6"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -354,7 +354,7 @@ function leggiC1(cfg, limite) {
     }));
   });
 
-  const eventi = [];
+  const eventi = [], daSegnare = [];
   let letti = 0, scartati = 0;
   for (const f of daLeggere) {
     if (letti >= limite) break;
@@ -363,12 +363,18 @@ function leggiC1(cfg, limite) {
       const trovati = analizzaC1(testoDaPdfLocale(f.scarica().getBytes()));
       if (!trovati.length) scartati++;
       trovati.filter((e) => e.data >= C1_DAL).forEach((e) => eventi.push(Object.assign(e, { fonte: f.fonte, fonte_id: f.fonte_id, file_nome: f.nome })));
-      segna(f.chiave);
+      daSegnare.push(f.chiave);
     } catch (err) {
       Logger.log("C1 non letto: " + f.nome + " → " + err.message);
     }
   }
-  const esito = eventi.length ? rpc(cfg, "sync_c1_push", { p_items: eventi }) : { c1: 0 };
+  // i file si segnano come letti solo dopo che l'app ha ricevuto i dati: se l'invio fallisce, al giro dopo si riprova
+  let esito = { c1: 0 };
+  for (let i = 0; i < eventi.length; i += 25) {
+    const r = rpc(cfg, "sync_c1_push", { p_items: eventi.slice(i, i + 25) });
+    esito = { c1: esito.c1 + ((r && r.c1) || 0) };
+  }
+  daSegnare.forEach(segna);
   Logger.log("C1: file letti " + letti + " di " + daLeggere.length + " da leggere (" + scartati + " non sono C1), serate dal 2026 trovate " + eventi.length + " → " + JSON.stringify(esito));
 }
 
@@ -532,9 +538,18 @@ function analizzaC1(testoGrezzo) {
   return eventi;
 }
 
-// da eseguire a mano: mostra cosa legge dal C1 più recente, poi legge subito fino a 60 C1
+// dimentica quali C1 sono già stati letti: al prossimo giro vengono riletti tutti (nell'app non si duplicano)
+function azzeraC1() {
+  const props = PropertiesService.getScriptProperties();
+  const chiavi = Object.keys(props.getProperties()).filter((k) => k.indexOf("C1_") === 0 && k !== "C1_CARTELLA");
+  chiavi.forEach((k) => props.deleteProperty(k));
+  Logger.log("Memoria dei C1 azzerata (" + chiavi.length + " voci): verranno riletti tutti");
+}
+
+// da eseguire a mano: azzera la memoria, mostra cosa legge dal C1 più recente, poi legge subito fino a 60 C1
 function provaC1() {
   const cfg = leggiImpostazioni();
+  azzeraC1();
   Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("c1") === -1 ? "  ← manca «+c1»: la lettura automatica non partirà" : ""));
   const it = DriveApp.getFolderById(cfg.c1Cartella).getFilesByType(MimeType.PDF);
   let ultimo = null;
