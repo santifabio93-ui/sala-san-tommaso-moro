@@ -140,6 +140,12 @@ della struttura e quanto è coperto, settore migliore e in perdita, peso di nole
 pareggio in spettatori, mese di minima liquidità, eventi in perdita); entrate e uscite per mese, saldo cumulato,
 risultato per settore, uscite ed entrate per categoria, conto economico per evento con spettatori dai C1, elenco dei
 movimenti con filtro e ricerca.
+Sotto le frasi di sintesi ci sono gli **indicatori di gestione** (margine di contribuzione, punto di pareggio, margine di
+sicurezza, leva operativa, stima a fine anno; costi fissi, costo fisso per serata, autonomia finanziaria, dipendenza
+dalle donazioni, concentrazione del margine; riempimento della sala, prezzo medio, ricavo per posto offerto, quota al
+distributore, costo per spettatore; giorni di utilizzo e ricavo medio per affitto), ognuno con «come si calcola», e il
+**conto economico riclassificato** a margine di contribuzione. Sono costi variabili le categorie U01, U02, U03, U05,
+U06, U07, U15 (legate agli spettacoli); le altre uscite sono costi fissi di struttura (`CAT_VARIABILI` in `app.js`).
 
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni

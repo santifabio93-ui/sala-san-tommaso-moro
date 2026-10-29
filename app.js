@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.4";
+const VERSIONE = "2026-10-30.5";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1286,7 +1286,8 @@ function renderBilancio() {
       <div class="kpi"><span class="eyebrow">${spett ? "Incasso per spettatore" : "Margine attività"}</span><b>${spett ? money(r2(Ebig / spett)) : money(margAtt)}</b><small>${spett ? `${spett.toLocaleString("it-IT")} spettatori dai C1` : "cinema, teatro, danza…"}</small></div>
     </section>
     <div class="insights">${ins}</div>
-    <div class="panel"><h2>Entrate e uscite mese per mese</h2><span class="hint">Tocca una barra per i dettagli</span>
+    ${indicatoriGestione(list, all, { E, U, eventi, c1Anno, mesiTrascorsi })}
+    <div class="panel" style="margin-top:18px"><h2>Entrate e uscite mese per mese</h2><span class="hint">Tocca una barra per i dettagli</span>
       <div class="series-legend"><span><i class="sw" style="background:var(--accent)"></i>Entrate</span><span><i class="sw" style="background:var(--spese)"></i>Uscite</span></div>
       <div class="chart-wrap" id="pn-chart"></div></div>
     <div class="panel" style="margin-top:18px"><h2>Saldo cumulato</h2><span class="hint">Quanto è avanzato (o mancato) dall'inizio dell'anno: mostra i mesi in cui serve liquidità</span>
@@ -1320,6 +1321,91 @@ function renderBilancio() {
   $("#pn-sett").onchange = (e) => { S.pnSett = e.target.value; renderBilancio(); };
   const qi = $("#pn-q"); qi.oninput = () => { S.pnQ = qi.value; clearTimeout(S._pnT); S._pnT = setTimeout(() => { renderBilancio(); const n = $("#pn-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
   const more = $("#pn-more"); if (more) more.onclick = () => { S.pnTutti = true; renderBilancio(); };
+}
+
+// costi variabili: legati ai singoli spettacoli (crescono con l'attività); gli altri sono costi fissi di struttura
+const CAT_VARIABILI = /^(U01|U02|U03|U05|U06|U07|U15)$/i;
+const isVariabile = (r) => CAT_VARIABILI.test(r.cod_cat) || (!r.cod_cat && /noleggio|siae|commission|compagni|artist|service|extra/i.test(r.categoria));
+
+function indicatoriGestione(list, all, ctx) {
+  const { E, U, eventi, c1Anno, mesiTrascorsi } = ctx;
+  if (!E && !U) return "";
+  const pctS = (x) => (isFinite(x) ? (Math.round(x * 1000) / 10).toLocaleString("it-IT") + "%" : "—");
+  const num = (x) => (isFinite(x) ? Math.round(x).toLocaleString("it-IT") : "—");
+  const usc = list.filter((r) => r.uscite);
+  const cVar = sommaU(usc.filter(isVariabile)), cFix = r2(U - cVar);
+  const ricBig = sommaE(list.filter((r) => /^E01$/i.test(r.cod_cat))), ricAff = sommaE(list.filter((r) => /^E02$/i.test(r.cod_cat) || /affitt/i.test(r.categoria))),
+    ricDon = sommaE(list.filter((r) => /^E03$/i.test(r.cod_cat) || /donaz|liberal/i.test(r.categoria)));
+  const ricAltri = r2(E - ricBig - ricAff - ricDon);
+  const mdc = r2(E - cVar), mdcPct = E ? mdc / E : NaN, ro = r2(mdc - cFix);
+  const bep = mdcPct > 0 ? cFix / mdcPct : NaN, sicurezza = E && isFinite(bep) ? (E - bep) / E : NaN;
+  const dol = ro > 0 ? mdc / ro : NaN;
+  const autonomia = U ? (E - ricDon) / U : NaN;
+  // cinema e spettacoli dai C1
+  const cin = c1Anno.filter((c) => /cinema/i.test(c.tipo_evento || "cinema"));
+  const posti = c1Anno.reduce((s, c) => s + capienza(c), 0), spett = c1Anno.reduce((s, c) => s + c.spettatori, 0);
+  const paganti = c1Anno.reduce((s, c) => s + c.paganti, 0), lordoC1 = c1Anno.reduce((s, c) => s + c.lordo, 0);
+  const omaggi = c1Anno.reduce((s, c) => s + c.omaggi, 0);
+  const nettoCin = cin.reduce((s, c) => s + c.imponibile_iva, 0);
+  const noleggio = sommaU(usc.filter((r) => /^U01$/i.test(r.cod_cat) || /noleggio/i.test(r.categoria)));
+  const costiCinema = sommaU(usc.filter((r) => isAttivita(r) && isCinema(r)));
+  const spettCin = cin.reduce((s, c) => s + c.spettatori, 0);
+  const serate = new Set(c1Anno.map((c) => c.data)).size;
+  // uso della sala dal calendario
+  const Y = String(S.pnYear), fine = S.pnYear < new Date().getFullYear() ? `${Y}-12-31` : TODAY;
+  const giorniAnno = Math.round((parse(fine) - parse(`${Y}-01-01`)) / 864e5) + 1;
+  const giorniUsati = new Set(S.bookings.filter((b) => active(b) && b.data.startsWith(Y) && b.data <= fine).map((b) => b.data)).size;
+  const affittiN = list.filter((r) => r.entrate > 0 && (/^E02$/i.test(r.cod_cat) || /affitt/i.test(r.categoria))).length;
+  // concentrazione e stima
+  const positivi = eventi.filter((x) => x.m > 0).sort((a, b) => b.m - a.m), totPos = positivi.reduce((s, x) => s + x.m, 0);
+  const top3 = totPos ? positivi.slice(0, 3).reduce((s, x) => s + x.m, 0) / totPos : NaN;
+  const reali = list.filter((r) => !/previst/i.test(r.tipo_movimento));
+  const previsti = r2(sommaU(list) - sommaU(reali));
+  const mediaMese = (sommaE(reali) - sommaU(reali)) / mesiTrascorsi;
+  const stima = S.pnYear === new Date().getFullYear() ? r2(sommaE(reali) - sommaU(reali) + mediaMese * (12 - mesiTrascorsi) - previsti) : NaN;
+
+  const card = (nome, valore, cosa, come, neg) => `<div class="ind"><span class="nm">${nome}</span><b class="${neg ? "neg" : ""}">${valore}</b><p>${cosa}</p><details><summary>Come si calcola</summary><div>${come}</div></details></div>`;
+  const gruppo = (titolo, cards) => (cards.filter(Boolean).length ? `<div class="ind-group"><h3>${titolo}</h3><div class="ind-grid">${cards.filter(Boolean).join("")}</div></div>` : "");
+
+  const ceRiga = (nome, v, cls) => `<tr class="${cls || ""}"><td>${nome}</td><td class="n ${v < 0 ? "neg" : ""}">${money(v)}</td><td class="n">${E ? pctS(v / E) : ""}</td></tr>`;
+  const conto = `<div class="panel" style="margin-top:18px"><h2>Conto economico riclassificato</h2><span class="hint">A margine di contribuzione: prima i costi che dipendono dagli spettacoli, poi quelli della struttura · % sui ricavi</span>
+    <div class="tbl-wrap"><table class="ce"><tbody>
+      ${ceRiga("Ricavi da biglietteria", ricBig, "sub")}${ricAff ? ceRiga("Ricavi da affitti della sala", ricAff, "sub") : ""}${ricDon ? ceRiga("Erogazioni liberali e donazioni", ricDon, "sub") : ""}${ricAltri ? ceRiga("Altri ricavi", ricAltri, "sub") : ""}
+      ${ceRiga("Totale ricavi", E, "tot")}
+      ${[...raggruppa(usc.filter(isVariabile), "categoria").entries()].sort((a, b) => sommaU(b[1]) - sommaU(a[1])).map(([c, rs]) => ceRiga("− " + esc(c), -sommaU(rs), "sub")).join("")}
+      ${ceRiga("Margine di contribuzione", mdc, "tot")}
+      ${[...raggruppa(usc.filter((r) => !isVariabile(r)), "categoria").entries()].sort((a, b) => sommaU(b[1]) - sommaU(a[1])).map(([c, rs]) => ceRiga("− " + esc(c), -sommaU(rs), "sub")).join("")}
+      ${ceRiga("Risultato operativo", ro, "big")}
+      ${S.pnComp === "competenza" && all.some((r) => r.anno !== S.pnYear) ? ceRiga("Partite di anni precedenti (escluse sopra)", r2(sommaE(all.filter((r) => r.anno !== S.pnYear)) - sommaU(all.filter((r) => r.anno !== S.pnYear))), "sub") : ""}
+    </tbody></table></div></div>`;
+
+  return `<div class="panel" style="margin-top:18px"><h2>Indicatori di gestione</h2><span class="hint">Calcolati su ${S.pnComp === "competenza" ? "competenza " + Y : "tutti i movimenti del " + Y}; costi variabili = noleggio film, SIAE, commissioni, compagnie, service, extra serata</span>
+    ${gruppo("Redditività", [
+      card("Margine di contribuzione", `${money(mdc)} · ${pctS(mdcPct)}`, "Quanto resta dei ricavi dopo i costi legati agli spettacoli: è ciò che paga la struttura.", "Ricavi − costi variabili; in % sui ricavi."),
+      card("Punto di pareggio", isFinite(bep) ? money(Math.round(bep)) : "—", isFinite(bep) ? `Ricavi annui necessari per coprire tutti i costi. Oggi ne avete ${money(E)}.` : "Non calcolabile: il margine di contribuzione è negativo.", "Costi fissi ÷ margine di contribuzione %."),
+      card("Margine di sicurezza", pctS(sicurezza), isFinite(sicurezza) ? (sicurezza >= 0 ? "Di quanto potrebbero calare i ricavi prima di andare in perdita." : "Quanto mancano i ricavi per arrivare al pareggio.") : "", "(Ricavi − punto di pareggio) ÷ ricavi.", sicurezza < 0),
+      card("Leva operativa", isFinite(dol) ? dol.toLocaleString("it-IT", { maximumFractionDigits: 1 }) + "×" : "—", isFinite(dol) ? `Se i ricavi crescono del 10%, il risultato cresce di circa il ${Math.round(dol * 10)}%.` : "Si calcola solo con risultato operativo positivo.", "Margine di contribuzione ÷ risultato operativo."),
+      isFinite(stima) && card("Stima a fine anno", money(stima), "Proiezione del risultato al 31/12 con l'andamento medio dei mesi passati, meno i costi già previsti. È indicativa: non tiene conto della stagionalità.", "Risultato dei movimenti effettivi + media mensile × mesi mancanti − costi previsti.", stima < 0),
+    ])}
+    ${gruppo("Struttura dei costi e delle entrate", [
+      card("Costi fissi", `${money(cFix)} · ${pctS(cFix / (U || 1))}`, `Circa ${money(Math.round(cFix / mesiTrascorsi))} al mese, anche senza spettacoli.`, "Uscite non legate ai singoli spettacoli (energia, acqua, assicurazioni, manutenzioni…)."),
+      serate && card("Costo fisso per serata", money(Math.round(cFix / serate)), `Quanto pesa la struttura su ognuna delle ${serate} serate con biglietteria.`, "Costi fissi ÷ giorni con almeno un C1."),
+      card("Autonomia finanziaria", pctS(autonomia), "Quanta parte dei costi è coperta con ricavi propri, senza donazioni.", "(Ricavi − donazioni) ÷ uscite totali.", autonomia < 1),
+      card("Dipendenza dalle donazioni", pctS(ricDon / (E || 1)), "Quota delle entrate che arriva da erogazioni liberali.", "Donazioni ÷ ricavi."),
+      isFinite(top3) && card("Concentrazione del margine", pctS(top3), `I 3 eventi migliori producono questa quota del margine degli eventi in attivo${top3 > 0.5 ? ": molto dipende da pochi titoli" : ""}.`, "Margine dei primi 3 eventi ÷ margine di tutti gli eventi in attivo."),
+    ])}
+    ${c1Anno.length ? gruppo("Biglietteria e cinema (dai C1)", [
+      card("Riempimento sala", pctS(spett / (posti || 1)), `${num(spett)} spettatori su ${num(posti)} posti offerti in ${c1Anno.length} spettacoli.`, "Spettatori ÷ (capienza × numero di spettacoli)."),
+      card("Prezzo medio del biglietto", money(r2(lordoC1 / (paganti || 1))), `Su ${num(paganti)} paganti; omaggi ${pctS(omaggi / (spett || 1))} degli ingressi.`, "Incasso lordo C1 ÷ spettatori paganti."),
+      card("Ricavo per posto offerto", money(r2(lordoC1 / (posti || 1))), "Quanto rende ogni poltrona messa a disposizione: unisce prezzo e riempimento.", "Incasso lordo C1 ÷ (capienza × spettacoli)."),
+      nettoCin > 0 && card("Quota al distributore", pctS(noleggio / nettoCin), "Parte dell'incasso netto IVA del cinema che va ai distributori per il noleggio dei film.", "Noleggio film ÷ incasso netto IVA dei C1 di cinema."),
+      spettCin > 0 && card("Costo per spettatore (cinema)", money(r2(costiCinema / spettCin)), `Costi diretti dei settori cinema divisi per i ${num(spettCin)} spettatori dei film.`, "Uscite dei settori cinema ÷ spettatori C1 di cinema."),
+    ]) : ""}
+    ${S.bookings.length ? gruppo("Uso della sala", [
+      card("Giorni di utilizzo", pctS(giorniUsati / giorniAnno), `${giorniUsati} giorni con almeno un evento su ${giorniAnno} trascorsi.`, "Giorni con eventi in calendario ÷ giorni dell'anno trascorsi."),
+      ricAff > 0 && affittiN > 0 && card("Ricavo medio per affitto", money(Math.round(ricAff / affittiN)), `${affittiN} incassi da affitto registrati in prima nota.`, "Ricavi da affitti ÷ numero di incassi da affitto in prima nota."),
+    ]) : ""}
+  </div>${conto}`;
 }
 
 /* ---------- sopralluoghi ---------- */
