@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.3";
+const VERSIONE = "2026-10-30.4";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -28,6 +28,7 @@ const VIEWS = {
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
+  bilancio: { label: "Bilancio", roles: ["admin"] },
   economia: { label: "Economia", roles: ["admin"] },
   utenti: { label: "Persone", roles: ["admin"] },
 };
@@ -42,9 +43,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
-  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -54,7 +55,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m",
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -128,17 +129,18 @@ async function loadAll() {
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
       sb.from("films").select("*").order("titolo"),
       sb.from("proiezioni").select("*").order("data").order("ora"),
+      S.isAdmin ? sb.from("prima_nota").select("*").order("data").order("n").limit(10000) : null,
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
-    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, c1r].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
       S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1 };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
     }
     if (p.data) S.profiles = p.data;
@@ -147,6 +149,7 @@ async function loadAll() {
     if (ca.data) S.cassa = ca.data.map(mapCassa);
     if (fi.data) S.films = fi.data;
     if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
+    if (pn.data) S.primaNota = pn.data.map((r) => ({ ...r, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
     if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
     render();
@@ -262,6 +265,7 @@ function render() {
   if (S.view === "cinema") renderCinema();
   if (S.view === "c1") renderC1();
   if (S.view === "stats") renderStats();
+  if (S.view === "bilancio") renderBilancio();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -1181,6 +1185,143 @@ function renderStats() {
   ], (v) => Math.round(v).toLocaleString("it-IT"));
 }
 
+/* ---------- bilancio (dalla prima nota) ---------- */
+// settori: codici < 100 sono la struttura (affitti, donazioni, costi fissi), da 100 in su le attività
+const isAttivita = (r) => (r.cod_settore || 0) >= 100;
+const isCinema = (r) => /cine|film/i.test(r.settore);
+const sommaE = (a) => r2(a.reduce((s, r) => s + r.entrate, 0));
+const sommaU = (a) => r2(a.reduce((s, r) => s + r.uscite, 0));
+const raggruppa = (a, k) => { const m = new Map(); a.forEach((r) => { const key = typeof k === "function" ? k(r) : r[k]; if (!m.has(key)) m.set(key, []); m.get(key).push(r); }); return m; };
+
+function lineChart(el, labels, values, fmtV) {
+  const W = 720, H = 200, L = 64, R = 12, T = 14, B = 26;
+  const lo = Math.min(0, ...values), hi = Math.max(0, ...values);
+  const min = lo < 0 ? -niceMax(-lo) : 0, max = hi > 0 ? niceMax(hi) : lo < 0 ? 0 : 1;
+  const y = (v) => T + (H - T - B) * (1 - (v - min) / (max - min || 1));
+  const x = (i) => L + ((W - L - R) * (i + 0.5)) / labels.length;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Saldo cumulato mese per mese">`;
+  [min, (min + max) / 2, max].forEach((t) => { svg += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"${t ? ' stroke-dasharray="2 3"' : ""}/><text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${esc(fmtV(t))}</text>`; });
+  svg += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--muted)"/>`;
+  const pts = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  svg += `<polygon points="${x(0)},${y(0)} ${pts} ${x(values.length - 1)},${y(0)}" fill="var(--accent)" fill-opacity=".12"/>`;
+  svg += `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+  values.forEach((v, i) => { svg += `<circle cx="${x(i)}" cy="${y(v)}" r="${i === values.length - 1 ? 5 : 3.5}" fill="${v < 0 ? "var(--due-fg)" : "var(--accent)"}" stroke="var(--surface)" stroke-width="2"/><text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(labels[i])}</text><rect class="hit" data-i="${i}" x="${x(i) - (W - L - R) / labels.length / 2}" y="${T}" width="${(W - L - R) / labels.length}" height="${H - T - B}" fill="transparent"/>`; });
+  el.innerHTML = svg + `</svg><div class="tip" hidden></div>`;
+  const tip = el.querySelector(".tip"), svgEl = el.querySelector("svg");
+  el.querySelectorAll(".hit").forEach((h) => {
+    const show = () => { const i = +h.dataset.i, k = svgEl.getBoundingClientRect().width / W; tip.innerHTML = `<b>${esc(labels[i])}</b><br>Saldo cumulato: ${esc(fmtV(values[i]))}`; tip.style.left = Math.max(80, Math.min(svgEl.getBoundingClientRect().width - 80, x(i) * k)) + "px"; tip.style.top = (y(values[i]) * k - 10) + "px"; tip.hidden = false; };
+    h.addEventListener("mouseenter", show); h.addEventListener("click", show); h.addEventListener("mouseleave", () => (tip.hidden = true));
+  });
+}
+
+function renderBilancio() {
+  const years = [...new Set([...S.primaNota.map((r) => +r.data.slice(0, 4)), new Date().getFullYear()])].sort();
+  $("#pn-years").innerHTML = years.map((y) => `<button type="button" data-y="${y}" aria-pressed="${S.pnYear === y}">${y}</button>`).join("");
+  $("#pn-years").querySelectorAll("[data-y]").forEach((b) => (b.onclick = () => { S.pnYear = +b.dataset.y; renderBilancio(); }));
+  $("#pn-comp").innerHTML = [["competenza", `Solo competenza ${S.pnYear}`], ["tutti", "Tutti i movimenti"]].map(([k, l]) => `<button type="button" data-c="${k}" aria-pressed="${S.pnComp === k}">${l}</button>`).join("");
+  $("#pn-comp").querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => { S.pnComp = b.dataset.c; renderBilancio(); }));
+  $("#pn-hint").textContent = S.sync.primaNota ? `Dalla prima nota «${S.sync.primaNotaFile || ""}», letta ${ago(S.sync.primaNota)}. I dati si cambiano nel file Excel: l'app si aggiorna da sola.` : "";
+  const el = $("#pn-body");
+  const Y = String(S.pnYear);
+  const all = S.primaNota.filter((r) => r.data.startsWith(Y));
+  const list = S.pnComp === "competenza" ? all.filter((r) => r.anno === S.pnYear) : all;
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">${S.primaNota.length ? `Nessun movimento nel ${Y}.` : "La prima nota non è ancora arrivata. Nello script Google aggiungi «+primanota» alla proprietà MODALITA ed esegui provaPrimaNota."}</div>`;
+    return;
+  }
+  const E = sommaE(list), U = sommaU(list), ris = r2(E - U);
+  const previsti = list.filter((r) => /previst/i.test(r.tipo_movimento));
+  const prevU = sommaU(previsti);
+  const anniPrec = all.filter((r) => r.anno !== S.pnYear);
+  const att = list.filter(isAttivita), strutt = list.filter((r) => !isAttivita(r) && r.uscite > 0 && r.entrate === 0);
+  const affitti = list.filter((r) => !isAttivita(r) && /affitt/i.test(r.settore)), donaz = list.filter((r) => !isAttivita(r) && /donaz|liberal/i.test(r.settore + r.categoria));
+  const margAtt = r2(sommaE(att) - sommaU(att)), costoStrutt = sommaU(strutt);
+  const copertura = costoStrutt ? (margAtt + sommaE(affitti) + sommaE(donaz)) / costoStrutt : 0;
+  const mesiTrascorsi = S.pnYear < new Date().getFullYear() ? 12 : new Date().getMonth() + 1;
+  const struttMese = costoStrutt / mesiTrascorsi;
+  // biglietteria e costi legati
+  const bigl = list.filter((r) => /^E01$/i.test(r.cod_cat) || /bigliett/i.test(r.categoria) && r.entrate > 0);
+  const cat = (re) => list.filter((r) => re.test(r.cod_cat + " " + r.categoria));
+  const noleggio = sommaU(cat(/U01|noleggio/i).filter(isCinema)), incCinema = sommaE(bigl.filter(isCinema));
+  const siae = sommaU(cat(/U02|siae/i)), comm = sommaU(cat(/U03|commission|pos/i)), Ebig = sommaE(bigl);
+  const c1Anno = S.c1.filter((c) => c.data.startsWith(Y));
+  const spett = c1Anno.reduce((s, c) => s + c.spettatori, 0);
+  const margSpett = spett ? margAtt / spett : 0;
+  // mesi
+  const mesi = MESI.map((m, i) => { const k = `${Y}-${pad(i + 1)}`; const rs = list.filter((r) => r.data.startsWith(k)); return { m, k, e: sommaE(rs), u: sommaU(rs) }; });
+  let cum = 0; const cumul = mesi.map((x) => (cum = r2(cum + x.e - x.u)));
+  const ultimoMese = Math.max(0, ...mesi.map((x, i) => (x.e || x.u ? i : 0)));
+  const minI = cumul.slice(0, ultimoMese + 1).reduce((bi, v, i, a) => (v < a[bi] ? i : bi), 0);
+  // settori
+  const sett = [...raggruppa(list, "settore").entries()].map(([nome, rs]) => ({ nome, e: sommaE(rs), u: sommaU(rs), m: r2(sommaE(rs) - sommaU(rs)), att: rs.some(isAttivita) })).sort((a, b) => b.m - a.m);
+  const maxAbs = Math.max(1, ...sett.map((s) => Math.abs(s.m)));
+  const migliore = sett.filter((s) => s.att)[0], peggiore = sett.filter((s) => s.att).slice(-1)[0];
+  // categorie
+  const catU = [...raggruppa(list.filter((r) => r.uscite), "categoria").entries()].map(([nome, rs]) => ({ nome, v: sommaU(rs) })).filter((c) => c.v > 0).sort((a, b) => b.v - a.v);
+  const catE = [...raggruppa(list.filter((r) => r.entrate), "categoria").entries()].map(([nome, rs]) => ({ nome, v: sommaE(rs) })).sort((a, b) => b.v - a.v);
+  // eventi
+  const spettEvento = (ev) => { const ne = normT(ev); return c1Anno.filter((c) => { const nt = normT(c.titolo); return nt.length >= 4 && (ne.includes(nt) || nt.includes(ne)); }).reduce((s, c) => s + c.spettatori, 0); };
+  const eventi = [...raggruppa(list.filter((r) => r.evento), "evento").entries()].map(([nome, rs]) => { const e = sommaE(rs), u = sommaU(rs), sp = spettEvento(nome); return { nome, settore: rs[0].settore, e, u, m: r2(e - u), sp, data: rs[0].data }; }).sort((a, b) => b.m - a.m);
+  const inPerdita = eventi.filter((x) => x.m < 0);
+
+  const ins = [
+    costoStrutt > 0 && `<div class="insight"><span class="k">Tenere aperta la sala</span>La struttura (energia, assicurazioni, manutenzioni…) costa in media <b>${money(Math.round(struttMese))}</b> al mese. Attività, affitti e donazioni ne coprono il <b>${pct(copertura)}</b>.</div>`,
+    migliore && `<div class="insight"><span class="k">Settori</span>Il settore che rende di più è <b>${esc(migliore.nome)}</b> (${money(migliore.m)})${peggiore && peggiore.m < 0 ? `; <b>${esc(peggiore.nome)}</b> è in perdita di ${money(Math.abs(peggiore.m))}` : ""}.</div>`,
+    incCinema > 0 && `<div class="insight"><span class="k">Cinema</span>Il noleggio dei film pesa il <b>${pct(noleggio / incCinema)}</b> degli incassi del cinema; SIAE e commissioni POS e online il <b>${pct((siae + comm) / (Ebig || 1))}</b> della biglietteria.</div>`,
+    spett > 0 && margSpett > 0 && struttMese > 0 && `<div class="insight"><span class="k">Punto di pareggio</span>Ogni spettatore lascia in media <b>${money(r2(margSpett))}</b> di margine: per coprire da soli i costi della struttura servirebbero circa <b>${Math.round(struttMese / margSpett)}</b> spettatori al mese (oggi ${Math.round(spett / mesiTrascorsi)}).</div>`,
+    cumul[minI] < 0 && `<div class="insight"><span class="k">Liquidità</span>Il saldo cumulato tocca il minimo a <b>${esc(parse(mesi[minI].k + "-01").toLocaleDateString("it-IT", { month: "long" }))}</b> (${money(cumul[minI])}): conviene tenere una riserva per quel periodo.</div>`,
+    inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${eventi.length} chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.</div>`,
+  ].filter(Boolean).join("");
+
+  const settori = [...new Set(list.map((r) => r.settore))].sort();
+  const q = S.pnQ.trim().toLowerCase();
+  const movs = list.filter((r) => (!S.pnSett || r.settore === S.pnSett) && (!q || [r.descrizione, r.controparte, r.evento, r.categoria, r.note].join(" ").toLowerCase().includes(q))).sort((a, b) => b.data.localeCompare(a.data) || (b.n || 0) - (a.n || 0));
+  const movVis = S.pnTutti ? movs : movs.slice(0, 60);
+
+  el.innerHTML = `
+    <section class="kpis" aria-label="In sintesi">
+      <div class="kpi"><span class="eyebrow">Entrate</span><b>${money(E)}</b><small>${list.filter((r) => r.entrate).length} movimenti</small></div>
+      <div class="kpi"><span class="eyebrow">Uscite</span><b>${money(U)}</b><small>${prevU ? `di cui ${money(prevU)} previste da pagare` : `${list.filter((r) => r.uscite).length} movimenti`}</small></div>
+      <div class="kpi"><span class="eyebrow">Risultato ${S.pnComp === "competenza" ? "di gestione" : "di cassa"}</span><b class="${ris < 0 ? "neg" : ""}">${money(ris)}</b><small>${S.pnComp === "competenza" && anniPrec.length ? `escluse partite di anni precedenti (${money(r2(sommaE(anniPrec) - sommaU(anniPrec)))})` : "entrate − uscite"}</small></div>
+      <div class="kpi"><span class="eyebrow">${spett ? "Incasso per spettatore" : "Margine attività"}</span><b>${spett ? money(r2(Ebig / spett)) : money(margAtt)}</b><small>${spett ? `${spett.toLocaleString("it-IT")} spettatori dai C1` : "cinema, teatro, danza…"}</small></div>
+    </section>
+    <div class="insights">${ins}</div>
+    <div class="panel"><h2>Entrate e uscite mese per mese</h2><span class="hint">Tocca una barra per i dettagli</span>
+      <div class="series-legend"><span><i class="sw" style="background:var(--accent)"></i>Entrate</span><span><i class="sw" style="background:var(--spese)"></i>Uscite</span></div>
+      <div class="chart-wrap" id="pn-chart"></div></div>
+    <div class="panel" style="margin-top:18px"><h2>Saldo cumulato</h2><span class="hint">Quanto è avanzato (o mancato) dall'inizio dell'anno: mostra i mesi in cui serve liquidità</span>
+      <div class="chart-wrap" id="pn-cum"></div></div>
+    <div class="st-grid">
+      <div class="panel"><h2>Risultato per settore</h2><span class="hint">Entrate − uscite di ogni settore; a destra in positivo, a sinistra in perdita</span>
+        <div class="dv">${sett.map((s) => `<div class="dv-row"><span class="nm" title="${esc(s.nome)}">${esc(s.nome)}</span><div class="dv-track"><div class="dv-bar ${s.m >= 0 ? "pos" : "neg"}" style="width:${(Math.abs(s.m) / maxAbs) * 50}%"></div></div><span class="v ${s.m < 0 ? "neg" : ""}">${money(s.m)}</span><span class="sub">entrate ${money(s.e)} · uscite ${money(s.u)}</span></div>`).join("")}</div></div>
+      <div class="stack">
+        <div class="panel"><h2>Dove vanno i soldi</h2><span class="hint">Uscite per categoria</span>
+          <div class="hbars">${catU.slice(0, 9).map((c) => `<div class="hbar"><span class="nm" title="${esc(c.nome)}">${esc(c.nome)}</span><span class="v">${money(c.v)} · ${pct(c.v / (U || 1))}</span><div class="track"><div class="fill" style="width:${(c.v / catU[0].v) * 100}%;background:var(--spese)"></div></div></div>`).join("")}</div></div>
+        <div class="panel"><h2>Da dove arrivano</h2><span class="hint">Entrate per categoria</span>
+          <div class="hbars">${catE.slice(0, 6).map((c) => `<div class="hbar"><span class="nm" title="${esc(c.nome)}">${esc(c.nome)}</span><span class="v">${money(c.v)} · ${pct(c.v / (E || 1))}</span><div class="track"><div class="fill" style="width:${(c.v / catE[0].v) * 100}%"></div></div></div>`).join("")}</div></div>
+      </div>
+    </div>
+    ${eventi.length ? `<div class="panel" style="margin-top:18px"><h2>Conto economico per evento</h2><span class="hint">Incassi e costi diretti registrati con l'evento in prima nota; spettatori dai C1 quando il titolo corrisponde</span>
+      <div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Settore</th><th class="n">Entrate</th><th class="n">Costi diretti</th><th class="n">Margine</th><th class="n">Spettatori</th><th class="n">Margine / spett.</th></tr></thead><tbody>
+      ${eventi.map((x) => `<tr><td>${esc(x.nome)}</td><td>${esc(x.settore)}</td><td class="n">${money(x.e)}</td><td class="n">${money(x.u)}</td><td class="n ${x.m < 0 ? "neg" : ""}"><b>${money(x.m)}</b></td><td class="n">${x.sp || "—"}</td><td class="n ${x.m < 0 ? "neg" : ""}">${x.sp ? money(r2(x.m / x.sp)) : "—"}</td></tr>`).join("")}
+      </tbody></table></div></div>` : ""}
+    <div class="panel" style="margin-top:18px"><h2>Movimenti</h2><span class="hint">${movs.length} movimenti${S.pnSett || q ? " filtrati" : ""} · ${money(sommaE(movs))} entrate · ${money(sommaU(movs))} uscite</span>
+      <div class="pn-filters"><select id="pn-sett" aria-label="Settore"><option value="">Tutti i settori</option>${settori.map((s) => `<option${s === S.pnSett ? " selected" : ""}>${esc(s)}</option>`).join("")}</select>
+        <input type="search" id="pn-q" placeholder="Cerca descrizione, controparte, evento…" value="${esc(S.pnQ)}" aria-label="Cerca nei movimenti"></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Settore · categoria</th><th class="n">Entrate</th><th class="n">Uscite</th></tr></thead><tbody>
+      ${movVis.map((r) => `<tr><td style="white-space:nowrap">${esc(parse(r.data).toLocaleDateString("it-IT", { day: "numeric", month: "short" }))}</td><td>${esc(r.descrizione || r.controparte)}${r.evento ? `<div class="hint">${esc(r.evento)}</div>` : ""}${/previst/i.test(r.tipo_movimento) ? ' <span class="pill acconto">Previsto</span>' : ""}${r.anno !== +r.data.slice(0, 4) ? ` <span class="pill annullata">comp. ${r.anno}</span>` : ""}</td><td>${esc(r.settore)}<div class="hint">${esc(r.categoria)}</div></td><td class="n">${r.entrate ? money(r.entrate) : ""}</td><td class="n">${r.uscite ? money(r.uscite) : ""}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${movs.length > movVis.length ? `<button class="btn sm" type="button" id="pn-more" style="margin-top:10px">Mostra tutti i ${movs.length} movimenti</button>` : ""}</div>`;
+  barChart($("#pn-chart"), mesi.map((x) => x.m), [
+    { name: "Entrate", color: "var(--accent)", values: mesi.map((x) => x.e) },
+    { name: "Uscite", color: "var(--spese)", values: mesi.map((x) => x.u) },
+  ], (v) => eur.format(v));
+  lineChart($("#pn-cum"), mesi.slice(0, ultimoMese + 1).map((x) => x.m), cumul.slice(0, ultimoMese + 1), (v) => eur.format(v));
+  $("#pn-sett").onchange = (e) => { S.pnSett = e.target.value; renderBilancio(); };
+  const qi = $("#pn-q"); qi.oninput = () => { S.pnQ = qi.value; clearTimeout(S._pnT); S._pnT = setTimeout(() => { renderBilancio(); const n = $("#pn-q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+  const more = $("#pn-more"); if (more) more.onclick = () => { S.pnTutti = true; renderBilancio(); };
+}
+
 /* ---------- sopralluoghi ---------- */
 const SOP_STATI = { da_fare: "Da fare", fatto: "Fatto", annullato: "Annullato" };
 const ESIGENZE = ["Proiettore e schermo", "Audio e microfoni", "Luci di scena", "Palco", "Sedie e tavoli", "Accessibilità", "Riscaldamento / aria condizionata", "Spazio per rinfresco", "Parcheggio"];
@@ -1559,7 +1700,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");

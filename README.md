@@ -130,6 +130,17 @@ record, film che ha reso di più, confronto con il periodo precedente); spettato
 classifica dei film; mappa giorno × fascia oraria; tipi di biglietto. Nella Programmazione ogni film mostra una stima
 degli spettatori della prossima proiezione, ricavata dai C1 della stessa fascia e del film stesso.
 
+## Bilancio dalla prima nota
+Esegui `supabase/007_prima_nota.sql` nel SQL Editor (si può rieseguire). Con `+primanota` nella proprietà `MODALITA`
+dello script Google lo script legge il file Excel (.xlsx) più recente nella cartella Drive «PRIMA NOTA» (foglio
+«Prima nota», nomi di settori e categorie dal foglio «Piano dei conti») e lo rilegge solo quando cambia; per provarlo
+subito esegui `provaPrimaNota`. In **Economia → Bilancio** (solo amministratori): entrate, uscite, risultato di gestione
+(per competenza o tutti i movimenti), costi previsti da pagare, incasso per spettatore; frasi di sintesi (costo mensile
+della struttura e quanto è coperto, settore migliore e in perdita, peso di noleggio film, SIAE e commissioni, punto di
+pareggio in spettatori, mese di minima liquidità, eventi in perdita); entrate e uscite per mese, saldo cumulato,
+risultato per settore, uscite ed entrate per categoria, conto economico per evento con spettatori dai C1, elenco dei
+movimenti con filtro e ricerca.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

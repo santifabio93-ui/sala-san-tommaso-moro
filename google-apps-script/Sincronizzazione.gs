@@ -19,6 +19,8 @@
  *                  anche la programmazione da Cinebot (es. "lettura+email+cinema"); aggiungi "+c1" per leggere
  *                  i riepiloghi C1 dalla cartella Drive e dagli allegati email (es. "lettura+email+cinema+c1")
  *   C1_CARTELLA    (facoltativo) id della cartella Drive con i C1; se manca si usa quella della sala
+ *                  aggiungi "+primanota" per leggere la contabilità (file .xlsx nella cartella PRIMA NOTA)
+ *   PRIMA_NOTA_FILE (facoltativo) id del file .xlsx della prima nota; se manca si usa il più recente della cartella
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
  * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
@@ -28,7 +30,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.6"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-10-30.7"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -60,6 +62,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
     if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
     if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 30));
+    if (cfg.modalita.indexOf("primanota") !== -1) prova("prima nota", () => leggiPrimaNota(cfg, false));
   } finally {
     lock.releaseLock();
   }
@@ -86,6 +89,8 @@ function leggiImpostazioni() {
     modalita: (p.MODALITA || "email").toLowerCase(),
     calendario: p.CALENDARIO || "",
     c1Cartella: p.C1_CARTELLA || C1_CARTELLA_SALA,
+    primaNotaCartella: p.PRIMA_NOTA_CARTELLA || PRIMA_NOTA_CARTELLA,
+    primaNotaFile: p.PRIMA_NOTA_FILE || "",
   };
 }
 
@@ -560,6 +565,140 @@ function provaC1() {
     Logger.log("Riconosciuto: " + JSON.stringify(analizzaC1(testo).map((e) => ({ titolo: e.titolo, data: e.data, ora: e.ora, spettatori: e.spettatori, lordo: e.lordo }))));
   } else Logger.log("Nella cartella C1 non trovo PDF: controlla C1_CARTELLA");
   leggiC1(cfg, 60);
+}
+
+/* ---------------- Prima nota (file Excel .xlsx su Drive) ---------------- */
+
+const PRIMA_NOTA_CARTELLA = "14D2sZWpTAGwkIJi27V22NpWvVDkUkTF-"; // cartella "PRIMA NOTA" su Drive della sala
+
+// legge la prima nota solo quando il file è cambiato (o sempre, con forza = true)
+function leggiPrimaNota(cfg, forza) {
+  const props = PropertiesService.getScriptProperties();
+  const file = filePrimaNota(cfg);
+  if (!file) { Logger.log("Prima nota: nessun file .xlsx nella cartella"); return; }
+  const chiave = file.getId() + "_" + file.getLastUpdated().getTime();
+  if (!forza && props.getProperty("PN_ULTIMO") === chiave) return;
+  const righe = primaNotaDaXlsx(file.getBlob());
+  if (!righe.length) throw new Error("Prima nota: nel file «" + file.getName() + "» non trovo il foglio «Prima nota» con i movimenti");
+  const esito = rpc(cfg, "sync_prima_nota_push", { p_file: file.getName(), p_rows: righe });
+  props.setProperty("PN_ULTIMO", chiave);
+  const e = righe.reduce((s, r) => s + (r.entrate || 0), 0), u = righe.reduce((s, r) => s + (r.uscite || 0), 0);
+  Logger.log("Prima nota «" + file.getName() + "»: " + righe.length + " movimenti, entrate " + e.toFixed(2) + ", uscite " + u.toFixed(2) + " → " + JSON.stringify(esito));
+}
+
+// il file .xlsx più recente nella cartella della prima nota (o quello indicato in PRIMA_NOTA_FILE)
+function filePrimaNota(cfg) {
+  if (cfg.primaNotaFile) return DriveApp.getFileById(cfg.primaNotaFile);
+  const it = DriveApp.getFolderById(cfg.primaNotaCartella).getFiles();
+  let migliore = null;
+  while (it.hasNext()) {
+    const f = it.next();
+    if (!/\.xlsx$/i.test(f.getName())) continue;
+    if (!migliore || f.getLastUpdated() > migliore.getLastUpdated()) migliore = f;
+  }
+  return migliore;
+}
+
+// apre il file Excel (è uno zip di file XML) e ne legge i fogli come tabelle di valori
+function fogliXlsx(blob) {
+  const voci = {};
+  Utilities.unzip(Utilities.newBlob(blob.getBytes(), "application/zip", "file.zip")).forEach((b) => (voci[b.getName()] = b));
+  const testo = (n) => (voci[n] ? voci[n].getDataAsString("UTF-8") : "");
+  const xmlTesto = (s) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&");
+  const condivise = (testo("xl/sharedStrings.xml").match(/<si>[\s\S]*?<\/si>/g) || [])
+    .map((si) => xmlTesto((si.match(/<t[^>]*>[\s\S]*?<\/t>/g) || []).map((t) => t.replace(/<[^>]+>/g, "")).join("")));
+  const rels = {};
+  (testo("xl/_rels/workbook.xml.rels").match(/<Relationship\b[^>]*>/g) || []).forEach((r) => {
+    const id = (r.match(/Id="([^"]+)"/) || [])[1], t = (r.match(/Target="([^"]+)"/) || [])[1];
+    if (id && t) rels[id] = t.replace(/^\/?(xl\/)?/, "xl/");
+  });
+  const fogli = {};
+  (testo("xl/workbook.xml").match(/<sheet\b[^>]*>/g) || []).forEach((s) => {
+    const nome = xmlTesto((s.match(/name="([^"]*)"/) || [])[1] || "");
+    const rid = (s.match(/r:id="([^"]+)"/) || [])[1];
+    const xml = testo(rels[rid] || "");
+    const righe = [];
+    (xml.match(/<row\b[^>]*>[\s\S]*?<\/row>/g) || []).forEach((riga) => {
+      const r = +((riga.match(/<row\b[^>]*\br="(\d+)"/) || [])[1]) || righe.length + 1;
+      const valori = [];
+      (riga.match(/<c\b[^>]*\/>|<c\b[^>]*>[\s\S]*?<\/c>/g) || []).forEach((c) => {
+        const ref = (c.match(/\br="([A-Z]+)\d+"/) || [])[1];
+        if (!ref) return;
+        const col = ref.split("").reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+        const tipo = (c.match(/\bt="([^"]+)"/) || [])[1];
+        const v = (c.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+        let val = null;
+        if (tipo === "s" && v != null) val = condivise[+v];
+        else if (tipo === "inlineStr") val = xmlTesto((c.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [])[1] || "");
+        else if (tipo === "str" || tipo === "e") val = v != null ? xmlTesto(v) : null;
+        else if (tipo === "b") val = v === "1";
+        else if (v != null) val = Number(v);
+        valori[col] = val;
+      });
+      righe[r - 1] = valori;
+    });
+    fogli[nome] = righe;
+  });
+  return fogli;
+}
+
+// trasforma il foglio «Prima nota» in movimenti; nomi di settori e categorie dal foglio «Piano dei conti»
+function primaNotaDaXlsx(blob) {
+  const fogli = fogliXlsx(blob);
+  const norm = (s) => String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+  const nomeFoglio = (cerca) => Object.keys(fogli).find((n) => norm(n) === cerca) || Object.keys(fogli).find((n) => norm(n).indexOf(cerca) !== -1);
+  const pn = fogli[nomeFoglio("primanota")] || [];
+  const pc = fogli[nomeFoglio("pianodeiconti")] || [];
+  const settori = {}, categorie = {};
+  pc.forEach((r) => {
+    if (!r) return;
+    if (typeof r[0] === "number" && r[1]) settori[r[0]] = String(r[1]).trim();
+    if (r[3] && /^[EU]\d+$/i.test(String(r[3]).trim()) && r[5]) categorie[String(r[3]).trim().toUpperCase()] = { tipo: String(r[4] || "").trim(), nome: String(r[5]).trim() };
+  });
+  const iHead = pn.findIndex((r) => r && r.some((v) => norm(v) === "data") && r.some((v) => norm(v).indexOf("entrate") === 0));
+  if (iHead < 0) return [];
+  const h = pn[iHead].map(norm);
+  const col = (...nomi) => h.findIndex((x) => nomi.some((n) => x === n || x.indexOf(n) === 0));
+  const C = {
+    n: col("n"), data: col("data"), anno: col("annocompetenza"), sett: col("codsettore"), settNome: col("settore"), cat: col("codcat"), catNome: col("categoria"),
+    contro: col("controparte"), descr: col("descrizione"), doc: col("ndocumento"), evento: col("eventotitolo", "evento"),
+    entrate: col("entrate"), uscite: col("uscite"), tipo: col("tipomovimento"), file: col("documentoindrive"), note: col("note"),
+  };
+  const dataIso = (v) => {
+    if (typeof v === "number") { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5); return d.toISOString().slice(0, 10); }
+    const m = String(v || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2) : null;
+  };
+  const importo = (v) => (typeof v === "number" ? v : v ? Number(String(v).replace(/[€\s.]/g, "").replace(",", ".")) || 0 : 0);
+  const txt = (r, i) => (i >= 0 && r[i] != null ? String(r[i]).trim() : "");
+  const out = [];
+  pn.slice(iHead + 1).forEach((r) => {
+    if (!r) return;
+    const data = dataIso(r[C.data]);
+    const e = importo(r[C.entrate]), u = importo(r[C.uscite]);
+    if (!data || (!e && !u)) return;
+    const cs = r[C.sett] != null && r[C.sett] !== "" ? Number(r[C.sett]) : null;
+    const cc = txt(r, C.cat).toUpperCase();
+    out.push({
+      n: typeof r[C.n] === "number" ? r[C.n] : out.length + 1, data: data,
+      anno: typeof r[C.anno] === "number" ? r[C.anno] : +data.slice(0, 4),
+      cod_settore: cs, settore: settori[cs] || txt(r, C.settNome) || (cs != null ? "Settore " + cs : "Senza settore"),
+      cod_cat: cc, categoria: (categorie[cc] && categorie[cc].nome) || txt(r, C.catNome) || cc || "Senza categoria",
+      controparte: txt(r, C.contro), descrizione: txt(r, C.descr), n_documento: txt(r, C.doc), evento: txt(r, C.evento),
+      entrate: Math.round(e * 100) / 100, uscite: Math.round(u * 100) / 100,
+      tipo_movimento: txt(r, C.tipo) || "Movimento", documento: txt(r, C.file), note: txt(r, C.note),
+    });
+  });
+  return out;
+}
+
+// da eseguire a mano: legge subito la prima nota e mostra i totali nel log
+function provaPrimaNota() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("primanota") === -1 ? "  ← manca «+primanota»: la lettura automatica non partirà" : ""));
+  const f = filePrimaNota(cfg);
+  Logger.log("File trovato: " + (f ? f.getName() + " (modificato il " + f.getLastUpdated() + ")" : "nessuno"));
+  leggiPrimaNota(cfg, true);
 }
 
 /* ---------------- email ---------------- */
