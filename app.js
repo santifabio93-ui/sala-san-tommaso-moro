@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.7";
+const VERSIONE = "2026-10-30.8";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -137,6 +137,8 @@ async function loadAll() {
     const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
+    // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
+    S.loadErr = { prima_nota: pn.error && pn.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message };
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
@@ -1234,7 +1236,7 @@ function renderBilancio() {
   const all = S.primaNota.filter((r) => r.data.startsWith(Y));
   const list = S.pnComp === "competenza" ? all.filter((r) => r.anno === S.pnYear) : all;
   if (!list.length) {
-    el.innerHTML = `<div class="empty">${S.primaNota.length ? `Nessun movimento nel ${Y}.` : "La prima nota non è ancora arrivata. Nello script Google aggiungi «+primanota» alla proprietà MODALITA ed esegui provaPrimaNota."}</div>`;
+    el.innerHTML = S.primaNota.length ? `<div class="empty">Nessun movimento nel ${Y}.</div>` : diagnosiPrimaNota("bilancio");
     return;
   }
   const E = sommaE(list), U = sommaU(list), ris = r2(E - U);
@@ -1416,6 +1418,25 @@ function indicatoriGestione(list, all, ctx) {
   </div>${conto}`;
 }
 
+/* ---------- diagnosi: perché la prima nota o le donazioni non compaiono ---------- */
+function diagnosiPrimaNota(dove) {
+  const passi = [];
+  const errPn = S.loadErr?.prima_nota;
+  if (errPn) passi.push(`<b>In Supabase manca lo script 007_prima_nota.sql</b> (o non è andato a buon fine). Eseguilo nel SQL Editor e ricarica la pagina.<div class="hint">Messaggio del database: ${esc(errPn)}</div>`);
+  else if (!S.primaNota.length) {
+    passi.push(S.sync.primaNota
+      ? `Lo script Google ha letto la prima nota ${ago(S.sync.primaNota)}, ma non ha mandato movimenti: controlla il log di <b>provaPrimaNota</b>.`
+      : `<b>La prima nota non è ancora arrivata.</b> Nello script Google la proprietà <b>MODALITA</b> deve contenere <b>+primanota</b> (es. <code>lettura+email+cinema+c1+primanota</code>); poi esegui <b>provaPrimaNota</b> e controlla che il log dica «229 movimenti».`);
+    passi.push(`Controlla che il codice dello script Google sia la versione <b>2026-10-30.7</b> o successiva (lo dice la prima riga del log).`);
+  } else if (dove === "donazioni") {
+    const cats = [...new Set(S.primaNota.filter((r) => r.entrate > 0).map((r) => `${r.cod_cat || "senza codice"} · ${r.categoria}`))];
+    passi.push(`Nella prima nota ci sono ${S.primaNota.length} movimenti, ma nessuna entrata con categoria <b>E03 «Erogazioni liberali e donazioni»</b> o settore «Donazioni». Le categorie delle entrate trovate sono: ${cats.map(esc).join("; ") || "nessuna"}.`);
+  }
+  return `<div class="panel"><h2>${dove === "donazioni" ? "Le donazioni non sono ancora disponibili" : "Il bilancio non è ancora disponibile"}</h2>
+    <span class="hint">Le ${dove === "donazioni" ? "donazioni" : "cifre"} arrivano dalla prima nota (file Excel nella cartella «PRIMA NOTA» su Drive), letta dallo script Google.</span>
+    <ol style="margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:8px">${passi.map((x) => `<li>${x}</li>`).join("")}</ol></div>`;
+}
+
 /* ---------- donazioni e donatori ---------- */
 const isDonazione = (r) => r.entrate > 0 && (/^E03$/i.test(r.cod_cat) || /donaz|liberal/i.test(r.categoria + " " + r.settore));
 const TIPI_DON = { azienda: "Azienda", associazione: "Associazione o gruppo", privato: "Privato", ente: "Ente" };
@@ -1444,7 +1465,8 @@ function renderDonazioni() {
   $("#dn-years").innerHTML = [...years.map((y) => [String(y), String(y)]), ["tutti", "Tutti gli anni"]].map(([k, l]) => `<button type="button" data-y="${k}" aria-pressed="${String(S.dnYear) === k}">${l}</button>`).join("");
   $("#dn-years").querySelectorAll("[data-y]").forEach((b) => (b.onclick = () => { S.dnYear = b.dataset.y === "tutti" ? "tutti" : +b.dataset.y; renderDonazioni(); }));
   const el = $("#dn-body");
-  if (!tutte.length) { el.innerHTML = `<div class="empty">Nessuna donazione in prima nota. Arrivano qui le entrate con categoria «Erogazioni liberali e donazioni» (codice E03).</div>`; return; }
+  if (!tutte.length) { el.innerHTML = diagnosiPrimaNota("donazioni"); return; }
+  const avvisoDon = S.loadErr?.donatori ? `<div class="warn" style="margin-bottom:14px">Le donazioni ci sono, ma le schede dei donatori (contatti, ringraziamenti) non si possono salvare: in Supabase manca lo script <b>008_donatori.sql</b>. (${esc(S.loadErr.donatori)})</div>` : "";
   const Y = S.dnYear === "tutti" ? null : String(S.dnYear);
   const movs = Y ? tutte.filter((r) => r.data.startsWith(Y)) : tutte;
   const donatori = donatoriDa(Y ? S.primaNota.filter((r) => r.data.startsWith(Y)) : S.primaNota).sort((a, b) => b.totale - a.totale);
@@ -1475,7 +1497,7 @@ function renderDonazioni() {
     storico && nuovi.length > 0 && `<div class="insight"><span class="k">Nuovi donatori</span><b>${nuovi.length}</b> su ${donatori.length} hanno donato per la prima volta nel ${Y}${ricorrenti.length ? `; ${ricorrenti.length} hanno donato più volte` : ""}.</div>`,
     daRingraziare.length > 0 && `<div class="insight"><span class="k">Da ringraziare</span><b>${daRingraziare.length}</b> donatori non risultano ancora ringraziati${Y ? ` per il ${Y}` : ""}. Apri la scheda per preparare la lettera.</div>`,
   ].filter(Boolean).join("");
-  el.innerHTML = `
+  el.innerHTML = avvisoDon + `
     <section class="kpis" aria-label="In sintesi">
       <div class="kpi"><span class="eyebrow">Donazioni${Y ? " " + Y : ""}</span><b>${money(tot)}</b><small>${movs.length} versamenti</small></div>
       <div class="kpi"><span class="eyebrow">Donatori</span><b>${donatori.length}</b><small>${storico ? `${nuovi.length} nuovi · ${ricorrenti.length} ricorrenti` : `${ricorrenti.length} hanno donato più volte`}</small></div>
