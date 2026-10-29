@@ -30,7 +30,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.7"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-10-30.8"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -57,6 +57,7 @@ function sincronizza() {
   const prova = (nome, fn) => { try { fn(); } catch (e) { errori.push(nome + ": " + e.message); Logger.log("ERRORE " + nome + ": " + e.message); } };
   try {
     Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita);
+    spostaMemoriaC1();
     const scrivi = cfg.modalita.indexOf("calendario") !== -1;
     if (scrivi || cfg.modalita.indexOf("lettura") !== -1) prova("calendario", () => sincronizzaCalendario(cfg, scrivi));
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
@@ -331,7 +332,7 @@ const C1_RICERCA_EMAIL = "has:attachment filename:pdf newer_than:60d (C1 OR C1E 
 
 // legge i PDF non ancora letti (cartella Drive e allegati email), al massimo `limite` per volta
 function leggiC1(cfg, limite) {
-  const props = PropertiesService.getScriptProperties();
+  const props = memoriaC1();
   const fatti = (k) => props.getProperty("C1_" + k) === "1";
   const segna = (k) => props.setProperty("C1_" + k, "1");
   const daLeggere = [];
@@ -545,10 +546,34 @@ function analizzaC1(testoGrezzo) {
 
 // dimentica quali C1 sono già stati letti: al prossimo giro vengono riletti tutti (nell'app non si duplicano)
 function azzeraC1() {
-  const props = PropertiesService.getScriptProperties();
-  const chiavi = Object.keys(props.getProperties()).filter((k) => k.indexOf("C1_") === 0 && k !== "C1_CARTELLA");
+  spostaMemoriaC1();
+  const props = memoriaC1();
+  const chiavi = Object.keys(props.getProperties()).filter((k) => k.indexOf("C1_") === 0);
   chiavi.forEach((k) => props.deleteProperty(k));
   Logger.log("Memoria dei C1 azzerata (" + chiavi.length + " voci): verranno riletti tutti");
+}
+
+// la memoria dei C1 già letti sta tra le proprietà dell'utente, così non riempie l'elenco delle Proprietà script
+function memoriaC1() { return PropertiesService.getUserProperties(); }
+
+// sposta la vecchia memoria dei C1 fuori dalle Proprietà script (le versioni precedenti la salvavano lì)
+function spostaMemoriaC1() {
+  const script = PropertiesService.getScriptProperties(), utente = memoriaC1();
+  const vecchie = Object.keys(script.getProperties()).filter((k) => k.indexOf("C1_") === 0 && k !== "C1_CARTELLA");
+  vecchie.forEach((k) => { utente.setProperty(k, script.getProperty(k)); script.deleteProperty(k); });
+  return vecchie.length;
+}
+
+// da eseguire a mano una volta: ripulisce l'elenco delle Proprietà script e attiva tutte le letture
+function sistemaProprieta() {
+  const spostate = spostaMemoriaC1();
+  const script = PropertiesService.getScriptProperties();
+  const parti = (script.getProperty("MODALITA") || "").toLowerCase().split("+").filter(Boolean);
+  if (parti.indexOf("calendario") === -1 && parti.indexOf("lettura") === -1) parti.unshift("lettura");
+  ["email", "cinema", "c1", "primanota"].forEach((p) => { if (parti.indexOf(p) === -1) parti.push(p); });
+  script.setProperty("MODALITA", parti.join("+"));
+  Logger.log("Spostate " + spostate + " voci di memoria dei C1 fuori dall'elenco. Proprietà script rimaste: " + Object.keys(script.getProperties()).join(", "));
+  Logger.log("MODALITA ora è: " + parti.join("+"));
 }
 
 // da eseguire a mano: azzera la memoria, mostra cosa legge dal C1 più recente, poi legge subito fino a 60 C1
