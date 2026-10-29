@@ -75,15 +75,20 @@ Lo script `google-apps-script/Sincronizzazione.gs` gira gratis dentro Google ogn
   scritte per esteso. Ricevono l'etichetta Gmail «Sala/Richieste»; un'email con quell'etichetta, messa a mano,
   entra sempre.
 
-### Installazione
-1. In Supabase esegui `supabase/002_sincronizzazione.sql` nel SQL Editor e copia il **codice di sincronizzazione** che compare.
-2. Entra in https://script.google.com con l'account **salatommasomoro@gmail.com** → **Nuovo progetto**,
-   cancella il contenuto e incolla `google-apps-script/Sincronizzazione.gs`. Salva.
+### Installazione (un solo account basta)
+1. In Supabase esegui `supabase/002_sincronizzazione.sql` nel SQL Editor e copia il **codice di sincronizzazione**
+   che compare in basso. Per rivederlo in seguito: `select token from public.sync_tokens;`
+2. Entra in https://script.google.com con l'account che vede il calendario della sala (anche in sola lettura)
+   → **Nuovo progetto**, cancella il contenuto e incolla `google-apps-script/Sincronizzazione.gs`. Salva.
 3. **Impostazioni progetto** (ingranaggio) → **Proprietà script** → aggiungi:
-   `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1), `MODALITA` = `lettura+email`.
-   Prima di passare a `calendario+email`, fai un backup del calendario: Google Calendar → Impostazioni → Importa ed esporta → Esporta.
+   `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1),
+   `MODALITA` = `lettura+email`, `CALENDARIO` = `salatommasomoro@gmail.com`.
 4. Torna all'editor, scegli la funzione **installa** e premi **Esegui**; accetta i permessi.
-5. Ripeti i punti 2–4 con l'account **santifabio93@gmail.com**, con `MODALITA` = `email`.
+
+Per leggere anche le email della casella della sala: inoltro automatico da quella casella, oppure lo stesso
+script installato in quell'account con `MODALITA` = `email`.
+Prima di passare a `calendario+email` (scrittura sul calendario), fai un backup:
+Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
