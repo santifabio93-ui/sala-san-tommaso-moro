@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.6";
+const VERSIONE = "2026-10-30.7";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -294,7 +294,11 @@ function renderKpis() {
     const y = String(new Date().getFullYear());
     const inc = S.bookings.filter((b) => b.data.startsWith(y)).reduce((s, b) => s + b.incassato, 0) + bigliettiDal(y);
     const spe = S.expenses.filter((e) => e.data.startsWith(y)).reduce((s, e) => s + e.importo, 0);
-    econ = `<div class="kpi"><span class="eyebrow">Saldo ${y}</span><b>${money(inc - spe)}</b><small>${money(inc)} incassati − ${money(spe)} spese</small></div>`;
+    // se c'è la prima nota vale quella (stesso numero di Economia → Bilancio); altrimenti i dati inseriti nell'app
+    const pnAnno = S.primaNota.filter((r) => r.data.startsWith(y) && r.anno === +y);
+    econ = pnAnno.length
+      ? `<div class="kpi"><span class="eyebrow">Risultato ${y}</span><b class="${sommaE(pnAnno) - sommaU(pnAnno) < 0 ? "neg" : ""}">${money(r2(sommaE(pnAnno) - sommaU(pnAnno)))}</b><small>dalla prima nota · competenza ${y}</small></div>`
+      : `<div class="kpi"><span class="eyebrow">Saldo ${y}</span><b>${money(inc - spe)}</b><small>${money(inc)} incassati − ${money(spe)} spese</small></div>`;
   } else {
     econ = `<div class="kpi"><span class="eyebrow">Posti scoperti</span><b>${scoperti}</b><small>nei turni in programma</small></div>`;
   }
