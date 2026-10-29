@@ -18,15 +18,18 @@
  *   MODALITA       "lettura+email", "calendario+email" oppure "email"
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
+ * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
+ * alla SOLA LETTURA di calendario ed email. Google stesso impedisce allo script qualsiasi modifica.
+ * (Solo per la modalità "calendario+email" va sostituito calendar.readonly con calendar.)
+ *
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
-const ETICHETTA = "Sala/Richieste";
 const CONTRASSEGNO = "creatoDallAppSala"; // tag invisibile sugli eventi creati dall'app
-// email che parlano della sala e sembrano richieste; quelle con l'etichetta "Sala/Richieste" entrano sempre
+// email che parlano della sala e sembrano richieste; quelle con un'etichetta Gmail "Sala-Richieste" messa a mano entrano sempre
 const RICERCA_EMAIL =
   '-from:me newer_than:21d -category:promotions -category:social ' +
   '(label:sala-richieste OR (("tommaso moro" OR "sala") ' +
@@ -35,7 +38,6 @@ const RICERCA_EMAIL =
 function installa() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("sincronizza").timeBased().everyMinutes(15).create();
-  GmailApp.getUserLabelByName(ETICHETTA) || GmailApp.createLabel(ETICHETTA);
   sincronizza();
   Logger.log("Installato: la sincronizzazione girerà ogni 15 minuti.");
 }
@@ -215,34 +217,49 @@ function dataLocale(giorno, ora) {
 
 /* ---------------- email ---------------- */
 
+// legge le email con il servizio Gmail in sola lettura (non sposta, non etichetta, non cancella nulla)
 function leggiEmail(cfg) {
   const account = Session.getActiveUser().getEmail() || "account";
-  const etichetta = GmailApp.getUserLabelByName(ETICHETTA) || GmailApp.createLabel(ETICHETTA);
-  const threads = GmailApp.search(RICERCA_EMAIL, 0, 30);
+  const lista = Gmail.Users.Threads.list("me", { q: RICERCA_EMAIL, maxResults: 30 });
   const items = [];
-  threads.forEach((th) => {
-    const msg = th.getMessages()[0];
-    const da = msg.getFrom();
+  (lista.threads || []).forEach((t) => {
+    const msg = Gmail.Users.Threads.get("me", t.id, { format: "full" }).messages[0];
+    const intestazione = (nome) => ((msg.payload.headers || []).find((h) => h.name.toLowerCase() === nome) || {}).value || "";
+    const da = intestazione("from"), oggetto = intestazione("subject");
     if (/noreply|no-reply|newsletter|brevosend|mailchimp|notifiche|notification/i.test(da)) return;
-    const testo = msg.getPlainBody().replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-    const quando = trovaDataOra(msg.getSubject() + "\n" + testo, msg.getDate());
+    const ricevuta = new Date(Number(msg.internalDate));
+    const testo = (corpoTesto(msg.payload) || msg.snippet || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    const quando = trovaDataOra(oggetto + "\n" + testo, ricevuta);
     const nome = (da.match(/^\s*"?([^"<]+?)"?\s*</) || [])[1] || "";
     const email = (da.match(/<([^>]+)>/) || [null, da])[1].trim();
     items.push({
-      thread_id: th.getId(),
-      link: "https://mail.google.com/mail/?authuser=" + encodeURIComponent(account) + "#all/" + th.getId(),
+      thread_id: t.id,
+      link: "https://mail.google.com/mail/?authuser=" + encodeURIComponent(account) + "#all/" + t.id,
       mittente: nome || email,
       mittente_email: email,
-      oggetto: msg.getSubject(),
+      oggetto: oggetto,
       testo: testo.slice(0, 4000),
       data_proposta: quando.data,
       ora_proposta: quando.ora,
-      ricevuta: msg.getDate().toISOString(),
+      ricevuta: ricevuta.toISOString(),
     });
-    th.addLabel(etichetta);
   });
   const nuove = items.length ? rpc(cfg, "sync_email_push", { p_account: account, p_items: items }) : 0;
   Logger.log("Email: controllate " + items.length + ", nuove richieste " + nuove);
+}
+
+// testo semplice dell'email: la parte text/plain, altrimenti l'HTML ripulito
+function corpoTesto(parte) {
+  const decodifica = (d) => Utilities.newBlob(Utilities.base64DecodeWebSafe(d)).getDataAsString("UTF-8");
+  const trova = (p, tipo) => {
+    if (p.mimeType === tipo && p.body && p.body.data) return decodifica(p.body.data);
+    for (const sub of p.parts || []) { const r = trova(sub, tipo); if (r) return r; }
+    return "";
+  };
+  const plain = trova(parte, "text/plain");
+  if (plain) return plain;
+  return trova(parte, "text/html").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>|<\/p>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/[ \t]{2,}/g, " ");
 }
 
 const MESI = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };

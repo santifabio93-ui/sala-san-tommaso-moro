@@ -72,14 +72,16 @@ Lo script `google-apps-script/Sincronizzazione.gs` gira gratis dentro Google ogn
   diventa referente e telefono; «EVENTO DA PERFEZIONARE» e «OPZIONE –» diventano stato *Opzione*.
   Gli eventi ricorrenti (es. cineforum) si modificano solo da Google Calendar.
 - **Email**: le email che chiedono la sala compaiono in **Richieste**, con data e ora riconosciute quando
-  scritte per esteso. Ricevono l'etichetta Gmail «Sala/Richieste»; un'email con quell'etichetta, messa a mano,
-  entra sempre.
+  scritte per esteso. Lo script non modifica le email; un'email a cui metti a mano l'etichetta Gmail «Sala-Richieste» entra sempre.
 
 ### Installazione (un solo account basta)
 1. In Supabase esegui `supabase/002_sincronizzazione.sql` nel SQL Editor e copia il **codice di sincronizzazione**
    che compare in basso. Per rivederlo in seguito: `select token from public.sync_tokens;`
 2. Entra in https://script.google.com con l'account che vede il calendario della sala (anche in sola lettura)
    → **Nuovo progetto**, cancella il contenuto e incolla `google-apps-script/Sincronizzazione.gs`. Salva.
+   In **Impostazioni progetto** spunta «Mostra il file manifest "appsscript.json" nell'editor», poi nell'editor
+   sostituisci il contenuto di `appsscript.json` con `google-apps-script/appsscript.json`: limita lo script
+   alla **sola lettura** di calendario ed email.
 3. **Impostazioni progetto** (ingranaggio) → **Proprietà script** → aggiungi:
    `SUPABASE_URL`, `SUPABASE_KEY` (la chiave publishable), `SYNC_TOKEN` (il codice del punto 1),
    `MODALITA` = `lettura+email`, `CALENDARIO` = `salatommasomoro@gmail.com`.
