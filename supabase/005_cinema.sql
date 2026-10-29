@@ -1,7 +1,8 @@
 -- Sala San Tommaso Moro — aggiornamento 5: Cinema (film in programma, supporti, prove).
--- Da eseguire una sola volta in Supabase: SQL Editor → New query → incolla tutto → Run.
+-- Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run.
+-- Si può rieseguire senza problemi: crea solo ciò che manca e aggiorna il resto.
 
-create table public.films (
+create table if not exists public.films (
   id uuid primary key default gen_random_uuid(),
   titolo text not null check (length(trim(titolo)) > 0),
   locandina_url text not null default '',
@@ -24,7 +25,7 @@ create table public.films (
   aggiornato timestamptz not null default now()
 );
 
-create table public.proiezioni (
+create table if not exists public.proiezioni (
   id uuid primary key default gen_random_uuid(),
   film_id uuid not null references public.films(id) on delete cascade,
   data date not null,
@@ -33,31 +34,45 @@ create table public.proiezioni (
   cinebot_key text unique,
   creato timestamptz not null default now()
 );
-create index proiezioni_data on public.proiezioni (data, ora);
+create index if not exists proiezioni_data on public.proiezioni (data, ora);
 
 alter table public.films enable row level security;
 alter table public.proiezioni enable row level security;
 
 -- tutti gli approvati vedono la programmazione; tutti possono aggiornare supporto e prova;
 -- solo lo staff aggiunge o elimina film e proiezioni
+drop policy if exists "film: approvati leggono" on public.films;
 create policy "film: approvati leggono" on public.films
   for select using (public.my_role() in ('admin', 'coordinatore', 'volontario'));
+drop policy if exists "film: approvati aggiornano" on public.films;
 create policy "film: approvati aggiornano" on public.films
   for update using (public.my_role() in ('admin', 'coordinatore', 'volontario'))
   with check (public.my_role() in ('admin', 'coordinatore', 'volontario'));
+drop policy if exists "film: staff inserisce" on public.films;
 create policy "film: staff inserisce" on public.films
   for insert with check (public.my_role() in ('admin', 'coordinatore'));
+drop policy if exists "film: staff elimina" on public.films;
 create policy "film: staff elimina" on public.films
   for delete using (public.my_role() in ('admin', 'coordinatore'));
+drop policy if exists "proiezioni: approvati leggono" on public.proiezioni;
 create policy "proiezioni: approvati leggono" on public.proiezioni
   for select using (public.my_role() in ('admin', 'coordinatore', 'volontario'));
+drop policy if exists "proiezioni: staff gestisce" on public.proiezioni;
 create policy "proiezioni: staff gestisce" on public.proiezioni
   for all using (public.my_role() in ('admin', 'coordinatore'))
   with check (public.my_role() in ('admin', 'coordinatore'));
 
-alter publication supabase_realtime add table public.films, public.proiezioni;
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'films') then
+    alter publication supabase_realtime add table public.films;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'proiezioni') then
+    alter publication supabase_realtime add table public.proiezioni;
+  end if;
+end $$;
 
-alter table public.settings add column sync_cinebot timestamptz;
+alter table public.settings add column if not exists sync_cinebot timestamptz;
 
 -- lo script Google manda la programmazione letta da Cinebot:
 -- [{ "cinebot_id", "titolo", "locandina", "url", "proiezioni": [{ "key", "data": "YYYY-MM-DD", "ora": "HH:MM" }] }]
@@ -100,3 +115,10 @@ end $$;
 
 revoke all on function public.sync_cinebot_push(text, jsonb) from public;
 grant execute on function public.sync_cinebot_push(text, jsonb) to anon;
+
+-- controllo finale: devono risultare tutte «true»
+select
+  to_regclass('public.films') is not null as tabella_film,
+  to_regclass('public.proiezioni') is not null as tabella_proiezioni,
+  exists (select 1 from pg_proc where proname = 'sync_cinebot_push') as funzione_cinebot,
+  exists (select 1 from information_schema.columns where table_name = 'settings' and column_name = 'sync_cinebot') as colonna_sync;
