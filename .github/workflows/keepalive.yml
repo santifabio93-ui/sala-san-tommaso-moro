@@ -1,0 +1,17 @@
+# Il piano gratuito di Supabase mette in pausa i progetti inattivi per una settimana.
+# Questa azione fa una piccola richiesta ogni 3 giorni per tenerlo attivo.
+# Richiede due "secrets" nel repository: SUPABASE_URL e SUPABASE_ANON_KEY.
+name: Mantieni attivo Supabase
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Richiesta al database
+        run: |
+          curl -fsS "${{ secrets.SUPABASE_URL }}/rest/v1/settings?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" -o /dev/null -w "HTTP %{http_code}\n"

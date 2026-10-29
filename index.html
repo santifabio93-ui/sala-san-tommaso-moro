@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sala San Tommaso Moro</title>
+<meta name="description" content="Calendario, prenotazioni, turni dei volontari ed economia della Sala San Tommaso Moro.">
+<meta name="theme-color" content="#00897C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="gate" id="screen-loading"><p class="muted">Caricamento…</p></div>
+
+<div class="gate" id="screen-login" hidden>
+  <div class="gate-card">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">TM</div>
+      <div><div class="eyebrow">Registro della sala</div><h1>Sala San Tommaso Moro</h1></div>
+    </div>
+    <p>Accedi con il tuo account Google per vedere il calendario e segnarti ai turni.</p>
+    <button class="btn google" type="button" id="btn-login">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+      Accedi con Google
+    </button>
+    <p class="hint" id="login-error"></p>
+  </div>
+</div>
+
+<div class="gate" id="screen-pending" hidden>
+  <div class="gate-card">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">TM</div>
+      <div><div class="eyebrow">Registro della sala</div><h1>Sala San Tommaso Moro</h1></div>
+    </div>
+    <h2 id="pending-title">Richiesta inviata</h2>
+    <p id="pending-text">Hai effettuato l'accesso come <b id="pending-email"></b>. Chi gestisce la sala deve ancora approvarti: riapri questa pagina più tardi.</p>
+    <div class="actions"><button class="btn" type="button" id="pending-refresh">Controlla di nuovo</button><button class="btn ghost" type="button" data-logout>Esci</button></div>
+  </div>
+</div>
+
+<div class="gate" id="screen-setup" hidden>
+  <div class="gate-card">
+    <h2>Configurazione mancante</h2>
+    <p>Inserisci l'indirizzo e la chiave pubblica del progetto Supabase nel file <b>config.js</b>, come spiegato nel README.</p>
+  </div>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">TM</div>
+      <div>
+        <div class="eyebrow">Registro della sala</div>
+        <h1>Sala San Tommaso Moro</h1>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Sezioni" id="tabs"></nav>
+    <div class="actions">
+      <button class="btn primary" id="btn-new" type="button">+ Nuova prenotazione</button>
+      <div class="userbox"><img id="me-avatar" alt="" hidden><span id="me-name"></span><span class="role" id="me-role"></span><button class="btn ghost sm" type="button" data-logout>Esci</button></div>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Riepilogo"></section>
+
+  <main id="view-calendario" hidden>
+    <div class="cal-layout">
+      <div class="panel">
+        <div class="cal-head">
+          <h2 id="cal-title">Calendario</h2>
+          <div class="cal-nav">
+            <button class="btn sm" id="cal-prev" type="button" aria-label="Mese precedente">‹</button>
+            <button class="btn sm" id="cal-today" type="button">Oggi</button>
+            <button class="btn sm" id="cal-next" type="button" aria-label="Mese successivo">›</button>
+          </div>
+        </div>
+        <div class="grid" id="cal-grid"></div>
+        <div class="legend">
+          <span><span class="pill opzione">Opzione</span> in attesa di conferma</span>
+          <span><span class="pill confermata">Confermata</span></span>
+          <span><span class="pill annullata">Annullata</span></span>
+        </div>
+      </div>
+      <aside class="panel daypanel" id="daypanel" aria-live="polite"></aside>
+    </div>
+  </main>
+
+  <main id="view-prenotazioni" hidden>
+    <div class="toolbar">
+      <div class="seg" id="filters" role="group" aria-label="Filtro"></div>
+      <input type="search" class="search" id="q" placeholder="Cerca evento o referente…" aria-label="Cerca">
+    </div>
+    <div id="list"></div>
+  </main>
+
+  <main id="view-turni" hidden>
+    <div class="toolbar">
+      <div class="seg" id="shift-filters" role="group" aria-label="Filtro turni"></div>
+      <span class="hint" id="shift-hint"></span>
+    </div>
+    <div id="shifts"></div>
+  </main>
+
+  <main id="view-economia" hidden>
+    <div class="toolbar">
+      <div class="seg" id="years" role="group" aria-label="Anno"></div>
+      <div class="actions"><button class="btn" id="btn-export" type="button">Esporta tutto</button><button class="btn" id="btn-exp" type="button">+ Registra spesa</button></div>
+    </div>
+    <div class="econ-grid">
+      <div class="stack">
+        <div class="panel">
+          <div class="section-head">
+            <h2>Entrate e spese per mese</h2>
+            <button class="linkbtn" id="toggle-table" type="button">Mostra tabella</button>
+          </div>
+          <div class="series-legend">
+            <span><i class="sw" style="background:var(--accent)"></i>Entrate incassate</span>
+            <span><i class="sw" style="background:var(--spese)"></i>Spese</span>
+          </div>
+          <div class="chart-wrap" id="chart"></div>
+          <div class="tbl-wrap" id="chart-table" hidden></div>
+        </div>
+        <div class="panel">
+          <div class="section-head"><h2>Da incassare</h2><span class="hint">Prenotazioni confermate con saldo aperto</span></div>
+          <div class="tbl-wrap" id="receivables"></div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="panel">
+          <div class="section-head"><h2>Spese</h2><span class="hint" id="exp-total"></span></div>
+          <div class="tbl-wrap" id="expenses"></div>
+        </div>
+        <div class="panel">
+          <div class="section-head"><h2>Tariffe</h2><span class="hint">Usate per proporre il prezzo</span></div>
+          <form id="rates-form" class="stack" style="gap:12px">
+            <div class="rates">
+              <div class="field"><label for="r-ora">All'ora (€)</label><input id="r-ora" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-mezza">Mezza giornata (€)</label><input id="r-mezza" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-giorno">Giornata intera (€)</label><input id="r-giorno" type="number" min="0" step="1" inputmode="decimal"></div>
+            </div>
+            <div class="hint">Fino a 4 ore si applica il minore tra tariffa oraria e mezza giornata; oltre, il minore tra oraria e giornata intera.</div>
+            <div><button class="btn" type="submit" id="r-save">Salva tariffe</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <main id="view-utenti" hidden>
+    <div class="toolbar"><h2>Persone e ruoli</h2><span class="hint">Chi accede con Google per la prima volta compare qui «In attesa»</span></div>
+    <div class="panel"><div class="tbl-wrap users" id="users"></div></div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Cosa può fare ogni ruolo</h3>
+      <table style="margin-top:8px"><tbody>
+        <tr><td><b>Amministratore</b></td><td>Tutto: prenotazioni, economia, tariffe, turni, persone e ruoli.</td></tr>
+        <tr><td><b>Coordinatore</b></td><td>Prenotazioni e turni, compresi prezzi e contatti dei clienti. Non vede spese e tariffe.</td></tr>
+        <tr><td><b>Volontario</b></td><td>Calendario e turni, senza prezzi né contatti. Si segna e si toglie dai turni.</td></tr>
+        <tr><td><b>Bloccato</b></td><td>Non vede nulla.</td></tr>
+      </tbody></table>
+    </div>
+  </main>
+</div>
+
+<dialog id="dlg-booking">
+  <form class="dlg" id="booking-form" novalidate>
+    <div class="dlg-head"><h2 id="b-head">Nuova prenotazione</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field"><label for="b-titolo">Evento</label><input id="b-titolo" required placeholder="Es. Festa di compleanno, Assemblea condominiale"></div>
+      <div class="field h"><label for="b-referente">Referente</label><input id="b-referente" placeholder="Nome e cognome"></div>
+      <div class="field h"><label for="b-tipo">Tipo</label>
+        <select id="b-tipo"><option>Festa privata</option><option>Riunione / assemblea</option><option>Corso / laboratorio</option><option>Attività parrocchiale</option><option>Spettacolo / concerto</option><option>Altro</option></select></div>
+      <div class="field h"><label for="b-telefono">Telefono</label><input id="b-telefono" type="tel" inputmode="tel"></div>
+      <div class="field h"><label for="b-email">Email</label><input id="b-email" type="email"></div>
+      <div class="field t"><label for="b-data">Data</label><input id="b-data" type="date" required></div>
+      <div class="field t"><label for="b-inizio">Dalle</label><input id="b-inizio" type="time" required value="16:00"></div>
+      <div class="field t"><label for="b-fine">Alle</label><input id="b-fine" type="time" required value="20:00"></div>
+      <div class="field"><div id="b-avail"></div></div>
+      <div class="field t"><label for="b-prezzo">Prezzo (€)</label><input id="b-prezzo" type="number" min="0" step="1" inputmode="decimal">
+        <button class="linkbtn" type="button" id="b-suggest">Applica tariffa</button></div>
+      <div class="field t"><label for="b-incassato">Incassato (€)</label><input id="b-incassato" type="number" min="0" step="1" inputmode="decimal" value="0">
+        <button class="linkbtn" type="button" id="b-saldo">Segna saldato</button></div>
+      <div class="field t"><label for="b-stato">Stato</label>
+        <select id="b-stato"><option value="opzione">Opzione</option><option value="confermata">Confermata</option><option value="annullata">Annullata</option></select></div>
+      <div class="field"><label for="b-note">Note</label><textarea id="b-note" placeholder="Allestimento, chiavi, cauzione, pulizie…"></textarea></div>
+      <div class="subhead"><div><h3>Turni volontari</h3><span class="hint">Fasce orarie e quante persone servono</span></div>
+        <div class="actions"><button class="btn sm" type="button" id="b-turni-std">Proponi turni</button><button class="btn sm" type="button" id="b-turni-add">+ Fascia</button></div></div>
+      <div class="field"><div class="slot-rows" id="b-turni"></div></div>
+    </div>
+    <div id="b-error"></div>
+    <div class="dlg-foot">
+      <div id="b-delete-area"></div>
+      <div class="right">
+        <button class="btn" type="button" data-close>Annulla</button>
+        <button class="btn primary" type="submit" id="b-submit">Salva</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-expense">
+  <form class="dlg" id="expense-form" novalidate>
+    <div class="dlg-head"><h2 id="e-head">Registra spesa</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field h"><label for="e-data">Data</label><input id="e-data" type="date" required></div>
+      <div class="field h"><label for="e-categoria">Categoria</label>
+        <select id="e-categoria"><option>Utenze</option><option>Pulizie</option><option>Manutenzione</option><option>Assicurazione</option><option>Materiali</option><option>Altro</option></select></div>
+      <div class="field h"><label for="e-descrizione">Descrizione</label><input id="e-descrizione" placeholder="Es. Bolletta luce settembre"></div>
+      <div class="field h"><label for="e-importo">Importo (€)</label><input id="e-importo" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+    </div>
+    <div id="e-error"></div>
+    <div class="dlg-foot">
+      <div id="e-delete-area"></div>
+      <div class="right">
+        <button class="btn" type="button" data-close>Annulla</button>
+        <button class="btn primary" type="submit">Salva</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-copy">
+  <div class="dlg">
+    <div class="dlg-head"><h2>Messaggio per WhatsApp</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" style="margin:0">Copia il testo e incollalo nel gruppo dei volontari. Puoi modificarlo qui prima di copiarlo.</p>
+    <textarea class="copy-text" id="copy-text" aria-label="Testo del messaggio"></textarea>
+    <div class="dlg-foot"><span class="hint" id="copy-status"></span><div class="right"><a class="btn" id="wa-open" target="_blank" rel="noopener">Apri WhatsApp</a><button class="btn primary" type="button" id="copy-btn">Copia testo</button></div></div>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
