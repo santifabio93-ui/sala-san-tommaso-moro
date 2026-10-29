@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-10-29.2">
+<link rel="stylesheet" href="style.css?v=2026-10-30.1">
 </head>
 <body>
 
@@ -115,6 +115,14 @@
       <button class="btn primary" id="btn-sop" type="button">+ Nuovo sopralluogo</button>
     </div>
     <div id="sopralluoghi"></div>
+  </main>
+
+  <main id="view-cinema" hidden>
+    <div class="toolbar">
+      <div class="seg" id="film-filters" role="group" aria-label="Filtro film"></div>
+      <div class="actions"><span class="hint" id="film-sync"></span><button class="btn primary" id="btn-film" type="button">+ Aggiungi film</button></div>
+    </div>
+    <div id="films"></div>
   </main>
 
   <main id="view-turni" hidden>
@@ -269,6 +277,57 @@
   </div>
 </dialog>
 
+<dialog id="dlg-film">
+  <form class="dlg" id="film-form" novalidate>
+    <div class="dlg-head"><h2 id="f-head">Film</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="film-top">
+      <img id="f-poster" alt="" hidden>
+      <div class="form" style="flex:1;min-width:0">
+        <div class="field"><label for="f-titolo">Titolo</label><input id="f-titolo" required></div>
+        <div class="field h"><label for="f-distributore">Distributore</label><input id="f-distributore" placeholder="Es. Lucky Red"></div>
+        <div class="field h"><label for="f-locandina">Locandina (indirizzo immagine)</label><input id="f-locandina" type="url" placeholder="https://…"></div>
+      </div>
+    </div>
+    <div id="f-readiness"></div>
+
+    <div class="subsec"><h3>Proiezioni</h3><span class="hint" id="f-pr-hint"></span></div>
+    <div id="f-proiezioni" class="pr-list"></div>
+    <div class="pr-add" id="f-pr-add">
+      <input id="f-pr-data" type="date" aria-label="Data proiezione"><input id="f-pr-ora" type="time" value="20:30" aria-label="Ora proiezione">
+      <button class="btn sm" type="button" id="f-pr-btn">+ Aggiungi proiezione</button>
+    </div>
+
+    <div class="subsec"><h3>Supporto</h3><span class="hint">Da cosa si proietta e se è già in sala</span></div>
+    <div class="form">
+      <div class="field t"><label for="f-supporto">Supporto</label>
+        <select id="f-supporto"><option value="">Da decidere</option><option value="file">File (MP4…)</option><option value="dvd">DVD</option><option value="bluray">Blu-ray</option><option value="link">Link da scaricare</option></select></div>
+      <div class="field t"><label for="f-acquisizione">Stato</label>
+        <select id="f-acquisizione"><option value="da_procurare">Da procurare</option><option value="in_arrivo">Ordinato / in arrivo</option><option value="disponibile">In sala (acquistato o scaricato)</option></select></div>
+      <div class="field t"><label for="f-disponibile_il">Arrivato il</label><input id="f-disponibile_il" type="date"></div>
+      <div class="field"><label for="f-dove">Dove si trova</label><input id="f-dove" placeholder="Es. chiavetta nel cassetto della regia, cartella Drive «Film 2026», armadio DVD"></div>
+    </div>
+
+    <div class="subsec"><h3>Prova di proiezione</h3><span class="hint" id="f-prova-hint"></span></div>
+    <div class="form">
+      <div class="field t"><label for="f-provato_il">Provato il</label><input id="f-provato_il" type="date"></div>
+      <div class="field t"><label for="f-prova_esito">Esito</label>
+        <select id="f-prova_esito"><option value="">Non ancora provato</option><option value="ok">Tutto a posto</option><option value="problemi">Problemi</option></select></div>
+      <div class="field t"><label>&nbsp;</label><button class="btn sm" type="button" id="f-prova-oggi">Provato oggi: tutto ok</button></div>
+      <div class="field"><label for="f-prova_note">Note sulla prova</label><input id="f-prova_note" placeholder="Es. audio basso sul DVD, sottotitoli da attivare dal menu"></div>
+      <div class="field"><label for="f-note">Altre note</label><textarea id="f-note" placeholder="Condizioni di noleggio, liberatoria, file da eliminare dopo la proiezione…"></textarea></div>
+    </div>
+    <div id="f-error"></div>
+    <div class="dlg-foot">
+      <div id="f-delete-area"></div>
+      <div class="right">
+        <a class="btn ghost" id="f-cinebot" target="_blank" rel="noopener" hidden>Apri su Cinebot</a>
+        <button class="btn" type="button" data-close>Annulla</button>
+        <button class="btn primary" type="submit" id="f-submit">Salva</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-sop">
   <form class="dlg" id="sop-form" novalidate>
     <div class="dlg-head"><h2 id="s-head">Nuovo sopralluogo</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -358,7 +417,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-10-29.2"></script>
-<script type="module" src="app.js?v=2026-10-29.2"></script>
+<script src="config.js?v=2026-10-30.1"></script>
+<script type="module" src="app.js?v=2026-10-30.1"></script>
 </body>
 </html>

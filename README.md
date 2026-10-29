@@ -105,6 +105,13 @@ alla sala (giorno, ora, chi viene, evento e data desiderata, chi accompagna, cos
 sia libera, messaggio di conferma da inviare e trasformazione in prenotazione. Si possono fissare anche dal calendario
 e da una richiesta arrivata per email. Un volontario vede solo i sopralluoghi in cui accompagna e può segnarli come fatti.
 
+## Cinema
+Esegui una volta `supabase/005_cinema.sql` nel SQL Editor. La voce **Cinema** mostra i film in programma con locandina
+e orari; per ognuno si segna il supporto (file, DVD, Blu-ray, link), se è già in sala e dove si trova, e la prova di
+proiezione. Il cartellino sulla locandina dice se il film è pronto o cosa manca, con la scadenza: la prova va fatta
+almeno 7 giorni prima della prima proiezione. Tutti gli approvati possono aggiornare supporto e prova; aggiungere o
+togliere film e orari spetta allo staff.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

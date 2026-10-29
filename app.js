@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-29.2";
+const VERSIONE = "2026-10-30.1";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -23,6 +23,7 @@ const VIEWS = {
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
+  cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   economia: { label: "Economia", roles: ["admin"] },
@@ -39,7 +40,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
-  { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
+  { k: "cinema" }, { k: "turni" }, { k: "cassa" }, { k: "economia" }, { k: "utenti" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
@@ -50,6 +51,7 @@ const S = {
   bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], rates: { ...DEFAULT_RATES }, sync: {},
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
+  films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -121,22 +123,26 @@ async function loadAll() {
       S.isAdmin ? sb.from("inviti").select("*").order("creato") : null,
       sb.from("sopralluoghi").select("*").order("data").order("ora"),
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
+      sb.from("films").select("*").order("titolo"),
+      sb.from("proiezioni").select("*").order("data").order("ora"),
     ];
-    const [b, s, e, st, p, rq, inv, so, ca] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, so, ca].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
       S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
     }
     if (p.data) S.profiles = p.data;
     if (rq.data) S.requests = rq.data;
     if (inv.data) S.invites = inv.data;
     if (ca.data) S.cassa = ca.data.map(mapCassa);
+    if (fi.data) S.films = fi.data;
+    if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
     render();
   })();
@@ -148,7 +154,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -220,7 +226,7 @@ function renderTabs() {
   const cur = (on) => (on ? ' aria-current="page"' : "");
   let sub = null;
   $("#tabs").innerHTML = MENU.map((m) => {
-    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}</a>` : "";
+    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
     if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}</a>`;
@@ -247,6 +253,7 @@ function render() {
   if (S.view === "economia") renderEconomy();
   if (S.view === "cassa") renderCassa();
   if (S.view === "sopralluoghi") renderSopralluoghi();
+  if (S.view === "cinema") renderCinema();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -794,6 +801,162 @@ $("#copy-btn").onclick = () => {
   catch (e) { fallback(); }
 };
 
+/* ---------- cinema ---------- */
+const GIORNI_PROVA = 7; // la prova va fatta almeno una settimana prima della prima proiezione
+const SUPPORTI = { file: "File", dvd: "DVD", bluray: "Blu-ray", link: "Link" };
+const ACQ = { da_procurare: "Da procurare", in_arrivo: "In arrivo", disponibile: "In sala" };
+const showsOf = (f) => S.proiezioni.filter((p) => p.film_id === f.id).sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
+const nextShow = (f) => showsOf(f).find((p) => p.data >= TODAY);
+function addDays(isoDate, n) { const d = parse(isoDate); d.setDate(d.getDate() + n); return iso(d); }
+// stato di preparazione: ok (pronto), warn (da fare, c'è tempo), ko (in ritardo o problemi), none (nessuna proiezione futura)
+function readiness(f) {
+  const nx = nextShow(f);
+  if (!nx) return f.prova_esito === "ok" ? { cls: "ok", text: "Provato", detail: "" } : { cls: "none", text: "Nessuna proiezione in programma", detail: "" };
+  const scad = addDays(nx.data, -GIORNI_PROVA);
+  const late = TODAY > scad;
+  const quando = `entro ${fmtShort(scad)}`;
+  if (f.acquisizione !== "disponibile") {
+    return { cls: late ? "ko" : "warn", text: f.acquisizione === "in_arrivo" ? "Supporto in arrivo" : "Supporto da procurare", detail: late ? `doveva essere in sala e provato entro ${fmtShort(scad)}` : `da avere e provare ${quando}` };
+  }
+  if (f.prova_esito === "problemi") return { cls: "ko", text: "Prova con problemi", detail: f.prova_note || "da risolvere prima della proiezione" };
+  if (f.prova_esito === "ok" && f.provato_il) {
+    return f.provato_il <= scad
+      ? { cls: "ok", text: "Pronto", detail: `provato il ${fmtShort(f.provato_il)}` }
+      : { cls: "warn", text: "Pronto, provato tardi", detail: `provato il ${fmtShort(f.provato_il)}, oltre la settimana di anticipo` };
+  }
+  return { cls: late ? "ko" : "warn", text: late ? "Prova in ritardo" : "Da provare", detail: late ? `andava provato entro ${fmtShort(scad)}` : quando };
+}
+const filmsToFix = () => S.films.filter((f) => nextShow(f) && ["ko", "warn"].includes(readiness(f).cls) && readiness(f).text !== "Pronto, provato tardi").length;
+const FILM_FILTERS = [
+  ["prossimi", "In programma", (f) => !!nextShow(f)],
+  ["dafare", "Da sistemare", (f) => !!nextShow(f) && ["ko", "warn"].includes(readiness(f).cls) && readiness(f).text !== "Pronto, provato tardi"],
+  ["passati", "Già proiettati", (f) => !nextShow(f) && showsOf(f).length > 0],
+  ["tutti", "Tutti", () => true],
+];
+const pillCls = { ok: "saldato", warn: "acconto", ko: "dapagare", none: "annullata" };
+function renderCinema() {
+  $("#btn-film").hidden = !S.canWrite;
+  $("#film-sync").textContent = S.sync.cinebot ? `Programmazione da Cinebot aggiornata ${ago(S.sync.cinebot)}` : "";
+  $("#film-filters").innerHTML = FILM_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.filmFilter === k}">${l}<span class="c">${S.films.filter(f).length}</span></button>`).join("");
+  $("#film-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.filmFilter = b.dataset.f; renderCinema(); }));
+  const flt = FILM_FILTERS.find((x) => x[0] === S.filmFilter)[2];
+  const list = S.films.filter(flt).sort((a, b) => {
+    const na = nextShow(a), nb = nextShow(b);
+    if (na && nb) return (na.data + na.ora).localeCompare(nb.data + nb.ora);
+    if (na || nb) return na ? -1 : 1;
+    const la = showsOf(a).pop(), lb = showsOf(b).pop();
+    return ((lb && lb.data) || "").localeCompare((la && la.data) || "");
+  });
+  const el = $("#films");
+  if (!list.length) {
+    el.innerHTML = `<div class="empty">${S.films.length ? "Nessun film in questo elenco." : "Nessun film ancora. La programmazione arriva da Cinebot quando lo script Google è attivo" + (S.canWrite ? ", oppure aggiungi un film con «+ Aggiungi film»." : ".")}</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="film-grid">${list.map((f) => {
+    const r = readiness(f), shows = showsOf(f), upcoming = shows.filter((p) => p.data >= TODAY);
+    const visible = (upcoming.length ? upcoming : shows.slice(-3)).slice(0, 6);
+    return `<button type="button" class="film" data-film="${esc(f.id)}">
+      <div class="poster">${f.locandina_url ? `<img src="${esc(f.locandina_url)}" alt="Locandina di ${esc(f.titolo)}" loading="lazy" referrerpolicy="no-referrer">` : `<span class="ph">${esc(f.titolo)}</span>`}
+        <div class="ready"><span class="pill ${pillCls[r.cls]}">${esc(r.text)}</span></div></div>
+      <div class="body">
+        <div class="t">${esc(f.titolo)}</div>
+        <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
+        <div class="meta"><span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}</div>
+      </div>
+    </button>`;
+  }).join("")}</div>`;
+  el.querySelectorAll("[data-film]").forEach((b) => (b.onclick = () => openFilm(S.films.find((f) => f.id === b.dataset.film))));
+  el.querySelectorAll(".poster img").forEach((img) => (img.onerror = () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ph", textContent: img.alt.replace(/^Locandina di /, "") })); }));
+}
+
+const dlgF = $("#dlg-film");
+const F_FIELDS = ["titolo", "distributore", "supporto", "acquisizione", "disponibile_il", "dove", "provato_il", "prova_esito", "prova_note", "note"];
+function openFilm(f) {
+  if (!f && !S.canWrite) return;
+  S.editingFilm = f ? f.id : null;
+  const v = f || { titolo: "", distributore: "", locandina_url: "", supporto: "", acquisizione: "da_procurare", disponibile_il: "", dove: "", provato_il: "", prova_esito: "", prova_note: "", note: "" };
+  $("#f-head").textContent = f ? f.titolo : "Aggiungi film";
+  for (const k of F_FIELDS) $("#f-" + k).value = v[k] ?? "";
+  $("#f-locandina").value = v.locandina_url || "";
+  $("#f-poster").hidden = !v.locandina_url; if (v.locandina_url) { $("#f-poster").src = v.locandina_url; $("#f-poster").alt = "Locandina di " + v.titolo; }
+  $("#f-cinebot").hidden = !v.cinebot_url; if (v.cinebot_url) $("#f-cinebot").href = v.cinebot_url;
+  S.draftPr = f ? showsOf(f).map((p) => ({ ...p })) : [];
+  const fromCinebot = !!(f && f.cinebot_id);
+  $("#f-titolo").disabled = fromCinebot || !S.canWrite;
+  $("#f-locandina").disabled = fromCinebot || !S.canWrite;
+  $("#f-distributore").disabled = !S.canWrite;
+  $("#f-pr-add").hidden = !S.canWrite;
+  $("#f-pr-hint").textContent = fromCinebot ? "Gli orari di Cinebot si aggiornano da soli" : "";
+  $("#f-prova-hint").textContent = `Da fare almeno ${GIORNI_PROVA} giorni prima della proiezione`;
+  $("#f-error").innerHTML = "";
+  renderDraftPr();
+  renderDeleteArea("#f-delete-area", !!f && S.canWrite, async () => { await run(sb.from("films").delete().eq("id", f.id), "Film eliminato"); dlgF.close(); });
+  updateReadiness();
+  dlgF.showModal();
+}
+function renderDraftPr() {
+  const list = [...S.draftPr].filter((p) => !p._del).sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
+  $("#f-proiezioni").innerHTML = list.length
+    ? list.map((p) => `<span class="show src-${p.fonte || "manuale"}${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}${S.canWrite && p.fonte !== "cinebot" ? `<button type="button" data-rmpr="${esc(p.id || p._tmp)}" aria-label="Togli proiezione">×</button>` : ""}</span>`).join("")
+    : `<span class="hint">Nessuna proiezione inserita.</span>`;
+  $("#f-proiezioni").querySelectorAll("[data-rmpr]").forEach((b) => (b.onclick = () => {
+    const p = S.draftPr.find((x) => (x.id || x._tmp) === b.dataset.rmpr);
+    if (p.id) p._del = true; else S.draftPr.splice(S.draftPr.indexOf(p), 1);
+    renderDraftPr(); updateReadiness();
+  }));
+}
+$("#f-pr-btn").onclick = () => {
+  const d = $("#f-pr-data").value, o = $("#f-pr-ora").value;
+  if (!d || !o) { toast("Scegli data e ora della proiezione"); return; }
+  S.draftPr.push({ _tmp: uidv(), data: d, ora: o, fonte: "manuale" });
+  renderDraftPr(); updateReadiness();
+};
+function updateReadiness() {
+  const f = { id: "__draft", acquisizione: $("#f-acquisizione").value, provato_il: $("#f-provato_il").value, prova_esito: $("#f-prova_esito").value, prova_note: $("#f-prova_note").value };
+  const saved = S.proiezioni; S.proiezioni = S.draftPr.filter((p) => !p._del).map((p) => ({ ...p, film_id: "__draft" }));
+  const r = readiness(f);
+  S.proiezioni = saved;
+  $("#f-readiness").innerHTML = `<div class="readiness ${r.cls}"><span>${esc(r.text)}</span>${r.detail ? `<small>${esc(r.detail)}</small>` : ""}</div>`;
+}
+["#f-acquisizione", "#f-provato_il", "#f-prova_esito", "#f-prova_note"].forEach((id) => $(id).addEventListener("input", updateReadiness));
+$("#f-acquisizione").addEventListener("change", () => { if ($("#f-acquisizione").value === "disponibile" && !$("#f-disponibile_il").value) $("#f-disponibile_il").value = TODAY; });
+$("#f-prova-oggi").onclick = () => {
+  $("#f-provato_il").value = TODAY; $("#f-prova_esito").value = "ok";
+  if ($("#f-acquisizione").value !== "disponibile") { $("#f-acquisizione").value = "disponibile"; if (!$("#f-disponibile_il").value) $("#f-disponibile_il").value = TODAY; }
+  updateReadiness();
+};
+$("#f-locandina").addEventListener("change", () => { const u = $("#f-locandina").value.trim(); $("#f-poster").hidden = !u; if (u) $("#f-poster").src = u; });
+$("#btn-film").onclick = () => openFilm(null);
+$("#film-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const g = (k) => $("#f-" + k).value.trim();
+  const rec = {};
+  for (const k of F_FIELDS) rec[k] = g(k) || (["supporto", "prova_esito", "disponibile_il", "provato_il"].includes(k) ? null : "");
+  rec.locandina_url = g("locandina");
+  rec.aggiornato = new Date().toISOString();
+  const prev = S.films.find((f) => f.id === S.editingFilm);
+  if (rec.prova_esito && prev?.prova_esito !== rec.prova_esito) rec.provato_da = S.me.id;
+  if (prev && prev.cinebot_id) { delete rec.titolo; delete rec.locandina_url; }
+  if (!S.canWrite) delete rec.distributore;
+  if (!prev && !rec.titolo) { $("#f-error").innerHTML = `<div class="warn">Scrivi il titolo del film.</div>`; return; }
+  const btn = $("#f-submit"); btn.disabled = true;
+  try {
+    let id = prev && prev.id;
+    if (prev) { const { error } = await sb.from("films").update(rec).eq("id", id); if (error) throw error; }
+    else { const { data, error } = await sb.from("films").insert(rec).select("id").single(); if (error) throw error; id = data.id; }
+    if (S.canWrite) {
+      const add = S.draftPr.filter((p) => !p.id && !p._del).map((p) => ({ film_id: id, data: p.data, ora: p.ora, fonte: "manuale" }));
+      const del = S.draftPr.filter((p) => p.id && p._del).map((p) => p.id);
+      if (add.length) { const { error } = await sb.from("proiezioni").insert(add); if (error) throw error; }
+      if (del.length) { const { error } = await sb.from("proiezioni").delete().in("id", del); if (error) throw error; }
+    }
+    toast(prev ? "Film aggiornato" : "Film aggiunto");
+    await loadAll();
+    dlgF.close();
+  } catch (x) { $("#f-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+  finally { btn.disabled = false; }
+});
+
 /* ---------- sopralluoghi ---------- */
 const SOP_STATI = { da_fare: "Da fare", fatto: "Fatto", annullato: "Annullato" };
 const ESIGENZE = ["Proiettore e schermo", "Audio e microfoni", "Luci di scena", "Palco", "Sedie e tavoli", "Accessibilità", "Riscaldamento / aria condizionata", "Spazio per rinfresco", "Parcheggio"];
@@ -1172,7 +1335,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");
