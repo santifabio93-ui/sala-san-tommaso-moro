@@ -120,7 +120,14 @@ entro quando: chiedere il supporto al distributore (21 giorni prima), controllar
 prima), il film sul sito (10 giorni prima, dal controllo della pagina Sito web) e, per l'amministratore, i noleggi
 già proiettati che non risultano ancora in prima nota. I film appena arrivati da Cinebot sono segnati «Nuovo».
 
-Nella pagina **Turni**, per oggi e i due giorni successivi, «Promemoria per chi è di turno» prepara il messaggio
+Nella pagina **Turni** le regole della sala dicono quante persone servono: senza pubblico 1, pubblico solo in
+galleria 2, pubblico in platea a ingresso libero 3, spettacolo a pagamento 4 (l'admin le cambia nella stessa pagina;
+si salvano con `013_tariffe.sql`). «Eventi senza turni» elenca gli eventi confermati dei prossimi 30 giorni senza
+turni, deduce il tipo di pubblico da proiezioni, scheda e tariffa e crea il turno con un tocco (mezz'ora prima e dopo
+l'evento; oltre le 5 ore in due fasce). «Testo per il sondaggio» prepara domanda e opzioni da copiare in un sondaggio
+WhatsApp con le fasce ancora scoperte dei prossimi 14 giorni.
+
+Sempre in **Turni**, per oggi e i due giorni successivi, «Promemoria per chi è di turno» prepara il messaggio
 per il gruppo con eventi, fasce orarie, nomi e posti ancora scoperti.
 
 ## Incassi C1

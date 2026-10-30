@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.6";
+const VERSIONE = "2026-11-01.7";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -627,6 +627,8 @@ function openBooking(b, date, prefill) {
   $("#b-spazio").value = SPAZI[tar.spazio] ? tar.spazio : "";
   for (const k of Object.keys(SUPPLEMENTI)) $("#b-t-" + k).checked = !!tar[k];
   S.prezzoAuto = null;
+  $("#b-pubblico").innerHTML = `<option value="">Da scegliere</option>${Object.entries(PUBBLICO).map(([k, l]) => `<option value="${k}">${esc(l)} · ${regoleTurni()[k]} ${regoleTurni()[k] === 1 ? "persona" : "persone"}</option>`).join("")}`;
+  $("#b-pubblico").value = (v.tariffa && PUBBLICO[v.tariffa.pubblico]) ? v.tariffa.pubblico : "";
   if (!b && !v.prezzo) applicaTariffa();
   aggiornaTariffa(tar.dallaScheda && !v.tariffa);
   S.draftTurni = turni(v).map((t) => ({ ...t }));
@@ -693,12 +695,14 @@ $("#b-turni-add").onclick = () => {
   const inputs = $("#b-turni").querySelectorAll('input[data-k="label"]'); inputs[inputs.length - 1]?.focus();
 };
 $("#b-turni-std").onclick = () => {
-  const i = $("#b-inizio").value || "16:00", f = $("#b-fine").value || "20:00";
-  S.draftTurni.push(
-    { id: uidv(), label: "Allestimento", inizio: addMin(i, -60), fine: i, posti: 2 },
-    { id: uidv(), label: "Accoglienza e servizio", inizio: i, fine: f, posti: 2 },
-    { id: uidv(), label: "Riordino e pulizie", inizio: f, fine: addMin(f, 60), posti: 2 },
-  );
+  const prev = S.editing ? S.bookings.find((x) => x.id === S.editing) : null;
+  const b = { ...(prev || {}), id: S.editing, tipo: $("#b-tipo").value, titolo: $("#b-titolo").value, data: $("#b-data").value, inizio: $("#b-inizio").value || "16:00", fine: $("#b-fine").value || "20:00", giornata_intera: $("#b-giornata").checked, tariffa: { ...((prev && prev.tariffa) || {}), ...sceltaTariffa(), pubblico: $("#b-pubblico").value || undefined } };
+  const k = $("#b-pubblico").value || pubblicoDi(b).k;
+  if (!k) { toast("Scegli prima il pubblico in sala: decide quante persone servono"); $("#b-pubblico").focus(); return; }
+  $("#b-pubblico").value = k;
+  const proposti = turniProposti(b, k);
+  if (!proposti) { toast("L'evento è «tutto il giorno»: togli la spunta e indica l'orario, oppure aggiungi le fasce a mano"); return; }
+  S.draftTurni.push(...proposti);
   renderSlotEditor();
 };
 ["#b-data", "#b-inizio", "#b-fine", "#b-stato"].forEach((s) => $(s).addEventListener("input", checkAvail));
@@ -736,7 +740,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
     data: g("data"), giornata_intera: $("#b-giornata").checked, comune: $("#b-comune").checked,
     inizio: $("#b-giornata").checked ? "00:00" : g("inizio"), fine: $("#b-giornata").checked ? "23:59" : g("fine"),
     prezzo: Number(g("prezzo")) || 0, incassato: Number(g("incassato")) || 0, stato: g("stato"), note: g("note"),
-    ...(S.tariffeDb ? { tariffa: $("#b-spazio").value ? sceltaTariffa() : null } : {}),
+    ...(S.tariffeDb ? { tariffa: $("#b-spazio").value || $("#b-pubblico").value ? { ...sceltaTariffa(), ...($("#b-pubblico").value ? { pubblico: $("#b-pubblico").value } : {}) } : null } : {}),
     turni: S.draftTurni.filter((t) => t.label.trim() || t.inizio).map((t) => ({ id: t.id, label: t.label.trim() || "Turno", inizio: t.inizio, fine: t.fine, posti: Math.max(1, Number(t.posti) || 1) })),
   };
   const badSlot = rec.turni.find((t) => !t.inizio || !t.fine || t.fine <= t.inizio);
@@ -777,6 +781,9 @@ function renderShifts() {
   $("#shift-filters").innerHTML = SHIFT_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.shiftFilter === k}">${l}<span class="c">${base.filter(f).length}</span></button>`).join("");
   $("#shift-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.shiftFilter = b.dataset.f; S.openSignup = null; renderShifts(); }));
   renderPromemoria();
+  renderSenzaTurni();
+  $("#btn-sondaggio").hidden = !S.canWrite;
+  $("#btn-sondaggio").onclick = () => { const t = testoSondaggio(14); if (t) openCopyText(t); else toast("Nei prossimi 14 giorni non ci sono posti scoperti nei turni"); };
   $("#shift-hint").textContent = S.canWrite ? "Puoi aggiungere anche i nomi arrivati su WhatsApp" : `Ti segni come «${S.me.nome || S.me.email}»`;
   const list = base.filter(SHIFT_FILTERS.find((x) => x[0] === S.shiftFilter)[2]).sort(byWhen);
   if (S.shiftFilter === "passati") list.reverse();
@@ -2577,6 +2584,117 @@ function renderCoseFilm() {
     try { await run(sb.from("films").update({ ...rec, aggiornato: new Date().toISOString() }).eq("id", x.f.id), x.azione === "richiesto" ? "Segnato: supporto richiesto" : "Segnato: supporto arrivato. Dove è stato messo? Scrivilo nel film."); }
     catch (e) { b.disabled = false; toast(errText(e)); }
   }));
+}
+
+/* ---------- quanti volontari servono ---------- */
+// regole della sala (si cambiano nella pagina Turni; salvate in settings.tariffe.turni)
+const PUBBLICO = {
+  senza: "Senza pubblico in sala (prove, allestimenti, riunioni)",
+  galleria: "Pubblico solo in galleria",
+  libero: "Pubblico in platea, ingresso libero",
+  pagamento: "Spettacolo a pagamento",
+};
+const TURNI_DEFAULT = { senza: 1, galleria: 2, libero: 3, pagamento: 4 };
+const regoleTurni = () => ({ ...TURNI_DEFAULT, ...((S.tariffe && S.tariffe.turni) || {}) });
+// che tipo di pubblico ha un evento: la scelta salvata, altrimenti dedotta da cinema, scheda e tariffa (null = da scegliere)
+function pubblicoDi(b) {
+  const t = b.tariffa || {};
+  if (PUBBLICO[t.pubblico]) return { k: t.pubblico, auto: false };
+  const sk = S.schede.filter((x) => x.booking_id === b.id && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+  const d = (sk && sk.dati) || {};
+  // una proiezione che cade dentro l'orario dell'evento (o nello stesso giorno, se l'evento è «tutto il giorno»)
+  const film = S.proiezioni.some((p) => p.data === b.data && (b.giornata_intera || (p.ora >= addMin(b.inizio, -30) && p.ora < b.fine)));
+  const k = film || /cinema|proiezion/i.test(b.tipo) || d.ingresso === "pagamento" || t.biglietteria ? "pagamento"
+    : d.fascia === "galleria" || t.spazio === "galleria" ? "galleria"
+    : d.ingresso || d.fascia || ["platea", "tutta"].includes(t.spazio) || /spettacolo|concerto|conferenza|incontro/i.test(b.tipo) ? "libero"
+    : /riunione|assemblea|corso|laboratorio|prova/i.test(`${b.tipo} ${b.titolo}`) ? "senza" : null;
+  return { k, auto: true };
+}
+// un turno che copre l'evento con mezz'ora prima e dopo; oltre le 5 ore in due fasce
+// per gli eventi «tutto il giorno» l'orario si prende dalle proiezioni di quel giorno; senza, non si può proporre (null)
+function orarioTurni(b) {
+  if (!b.giornata_intera) return [addMin(b.inizio, -30), addMin(b.fine, 30)];
+  const ore = S.proiezioni.filter((p) => p.data === b.data).map((p) => p.ora).sort();
+  return ore.length ? [addMin(ore[0], -30), addMin(ore[ore.length - 1], 150)] : null;
+}
+function turniProposti(b, k) {
+  const n = regoleTurni()[k] || 1, o = orarioTurni(b);
+  if (!o) return null;
+  const [i, f] = o;
+  const min = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+  if (min(f) - min(i) <= 300) return [{ id: uidv(), label: k === "senza" ? "Presenza in sala" : "Servizio in sala", inizio: i, fine: f, posti: n }];
+  const meta = addMin(i, Math.round((min(f) - min(i)) / 60) * 30);
+  return [{ id: uidv(), label: "Primo turno", inizio: i, fine: meta, posti: n }, { id: uidv(), label: "Secondo turno", inizio: meta, fine: f, posti: n }];
+}
+
+// eventi dei prossimi 30 giorni senza turni: da qui si creano con un tocco
+function renderSenzaTurni() {
+  const el = $("#shift-mancano");
+  if (!el) return;
+  const fino = addDays(TODAY, 30);
+  const lista = S.canWrite ? S.bookings.filter((b) => b.stato === "confermata" && b.data >= TODAY && b.data <= fino && !turni(b).length).sort(byWhen) : [];
+  const R = regoleTurni();
+  el.hidden = !S.canWrite;
+  if (!S.canWrite) return;
+  const opz = (sel) => `<option value="">Pubblico?</option>${Object.entries(PUBBLICO).map(([k, l]) => `<option value="${k}"${sel === k ? " selected" : ""}>${esc(l)} · ${R[k]}</option>`).join("")}`;
+  el.innerHTML = `<div class="panel promemoria">
+    <div class="section-head"><h3>Eventi senza turni</h3><span class="hint">Eventi confermati dei prossimi 30 giorni · il numero di persone segue le regole della sala</span></div>
+    ${lista.length ? lista.map((b) => { const p = pubblicoDi(b);
+      return `<div class="todo-riga"><div><b>${esc(fmtShort(b.data))}</b> · ${esc(b.titolo)} <span class="hint">${esc(orario(b))}</span>${p.auto && p.k ? ` <span class="hint">· dedotto: ${esc(PUBBLICO[p.k].split(" (")[0].toLowerCase())}</span>` : ""}</div>
+        <div class="az"><select data-pub="${esc(b.id)}" aria-label="Pubblico di ${esc(b.titolo)}">${opz(p.k)}</select>${orarioTurni(b) ? `<button class="btn sm primary" type="button" data-crea="${esc(b.id)}"${p.k ? "" : " disabled"}>Crea turni${p.k ? ` (${R[p.k]})` : ""}</button>` : `<button class="btn sm" type="button" data-apri="${esc(b.id)}" title="L'evento è «tutto il giorno»: indica l'orario">Orario da indicare</button>`}</div></div>`; }).join("")
+      + `<div class="actions" style="margin-top:8px"><button class="btn" type="button" id="crea-tutti"${lista.some((b) => pubblicoDi(b).k && orarioTurni(b)) ? "" : " disabled"}>Crea i turni per tutti quelli con il pubblico indicato</button></div>`
+      : `<div class="hint">Tutti gli eventi dei prossimi 30 giorni hanno i turni. ✓</div>`}
+    <details class="regole-turni"><summary>Regole: quante persone servono</summary>
+      <form id="regole-form" class="sito-contatto">${Object.entries(PUBBLICO).map(([k, l]) => `<label class="hint" for="rt-${k}">${esc(l.split(" (")[0])}</label><input id="rt-${k}" type="number" min="0" max="20" step="1" value="${R[k]}"${S.isAdmin ? "" : " disabled"}>`).join("")}
+        ${S.isAdmin ? `<button class="btn sm" type="submit">Salva regole</button>` : ""}</form>
+      ${S.isAdmin && !S.tariffeDb ? `<p class="hint">Per salvare le regole esegui in Supabase lo script 013_tariffe.sql.</p>` : ""}
+    </details></div>`;
+  // la scelta del pubblico resta nella prenotazione (insieme alla tariffa)
+  const salvaPubblico = (b, k) => (S.tariffeDb ? sb.from("bookings").update({ tariffa: { ...(b.tariffa || {}), pubblico: k } }).eq("id", b.id) : Promise.resolve({}));
+  const crea = async (b, k) => {
+    const { error } = await sb.from("bookings").update({ turni: turniProposti(b, k), ...(S.tariffeDb ? { tariffa: { ...(b.tariffa || {}), pubblico: k } } : {}) }).eq("id", b.id);
+    if (error) throw error;
+  };
+  el.querySelectorAll("[data-pub]").forEach((s) => (s.onchange = async () => {
+    const b = S.bookings.find((x) => x.id === s.dataset.pub);
+    if (!s.value) return;
+    b.tariffa = { ...(b.tariffa || {}), pubblico: s.value };
+    renderSenzaTurni();
+    try { const r = await salvaPubblico(b, s.value); if (r.error) throw r.error; } catch (e) { toast(errText(e)); }
+  }));
+  el.querySelectorAll("[data-apri]").forEach((x) => (x.onclick = () => openBooking(S.bookings.find((y) => y.id === x.dataset.apri))));
+  el.querySelectorAll("[data-crea]").forEach((x) => (x.onclick = async () => {
+    const b = S.bookings.find((y) => y.id === x.dataset.crea), k = pubblicoDi(b).k;
+    x.disabled = true;
+    try { await crea(b, k); toast(`Turni creati: ${regoleTurni()[k]} ${regoleTurni()[k] === 1 ? "persona" : "persone"}`); await loadAll(); } catch (e) { x.disabled = false; toast(errText(e)); }
+  }));
+  if ($("#crea-tutti")) $("#crea-tutti").onclick = async (ev) => {
+    ev.target.disabled = true;
+    let n = 0;
+    try { for (const b of lista) { const k = pubblicoDi(b).k; if (k && orarioTurni(b)) { await crea(b, k); n++; } } toast(`Turni creati per ${n} ${n === 1 ? "evento" : "eventi"}`); } catch (e) { toast(errText(e)); }
+    await loadAll();
+  };
+  if ($("#regole-form")) $("#regole-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const turniR = Object.fromEntries(Object.keys(PUBBLICO).map((k) => [k, Math.max(0, Number($("#rt-" + k).value) || 0)]));
+    if (!S.tariffeDb) { S.tariffe = { ...S.tariffe, turni: turniR }; renderSenzaTurni(); return; }
+    try { await run(sb.from("settings").update({ tariffe: { ...S.tariffe, turni: turniR } }).eq("id", 1), "Regole dei turni salvate"); } catch (x) { toast(errText(x)); }
+  };
+}
+
+// testo per il sondaggio WhatsApp: una domanda e un'opzione per ogni fascia dei prossimi giorni
+function testoSondaggio(giorni) {
+  const fino = addDays(TODAY, giorni);
+  const eventi = S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= fino && turni(b).length).sort(byWhen);
+  const opzioni = eventi.flatMap((b) => turni(b).map((t) => {
+    const mancano = Math.max(0, (Number(t.posti) || 0) - signupsFor(b.id, t.id).length);
+    return { testo: `${fmtShort(b.data)} · ${b.titolo} · ${t.inizio}–${t.fine}`, mancano };
+  })).filter((o) => o.mancano > 0);
+  if (!opzioni.length) return "";
+  const f = (s) => parse(s).toLocaleDateString("it-IT", { day: "numeric", month: "long" });
+  return [`📋 Sondaggio da creare su WhatsApp (📎 → Sondaggio)`, "", `DOMANDA:`, `Turni in sala dal ${f(TODAY)} al ${f(fino)}: quando ci sei?`, "",
+    `OPZIONI (una per riga${opzioni.length > 12 ? "; WhatsApp ne accetta 12: fai due sondaggi" : ""}):`, ...opzioni.map((o) => `${o.testo} (${o.mancano === 1 ? "serve 1" : `servono ${o.mancano}`})`), "",
+    `Ricordati di attivare «Consenti più risposte». Poi scrivi i nomi nella pagina Turni con «+ Aggiungi».`].join("\n");
 }
 
 function route() {

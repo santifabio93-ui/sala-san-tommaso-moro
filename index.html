@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.6">
+<link rel="stylesheet" href="style.css?v=2026-11-01.7">
 </head>
 <body>
 
@@ -164,9 +164,10 @@
   <main id="view-turni" hidden>
     <div class="toolbar">
       <div class="seg" id="shift-filters" role="group" aria-label="Filtro turni"></div>
-      <span class="hint" id="shift-hint"></span>
+      <div class="actions"><span class="hint" id="shift-hint"></span><button class="btn" type="button" id="btn-sondaggio">Testo per il sondaggio</button></div>
     </div>
     <div id="shift-promemoria" hidden></div>
+    <div id="shift-mancano" hidden></div>
     <div id="shifts"></div>
   </main>
 
@@ -302,6 +303,7 @@
       <div class="field"><label for="b-note">Note</label><textarea id="b-note" placeholder="Allestimento, chiavi, cauzione, pulizie…"></textarea></div>
       <div class="subhead"><div><h3>Turni volontari</h3><span class="hint">Fasce orarie e quante persone servono</span></div>
         <div class="actions"><button class="btn sm" type="button" id="b-turni-std">Proponi turni</button><button class="btn sm" type="button" id="b-turni-add">+ Fascia</button></div></div>
+      <div class="field"><label for="b-pubblico">Pubblico in sala</label><select id="b-pubblico"></select><span class="hint">Decide quante persone servono quando premi «Proponi turni»</span></div>
       <div class="field"><div class="slot-rows" id="b-turni"></div></div>
     </div>
     <div id="b-origin" class="hint"></div>
@@ -543,7 +545,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.6"></script>
-<script type="module" src="app.js?v=2026-11-01.6"></script>
+<script src="config.js?v=2026-11-01.7"></script>
+<script type="module" src="app.js?v=2026-11-01.7"></script>
 </body>
 </html>
