@@ -127,6 +127,12 @@ turni, deduce il tipo di pubblico da proiezioni, scheda e tariffa e crea il turn
 l'evento; oltre le 5 ore in due fasce). «Testo per il sondaggio» prepara domanda e opzioni da copiare in un sondaggio
 WhatsApp con le fasce ancora scoperte dei prossimi 14 giorni.
 
+**Link personali dei volontari** (esegui `supabase/014_turni_link.sql`): in Turni → «Volontari con link personale»
+aggiungi nome e cellulare di ogni volontario e gli mandi su WhatsApp il suo link (`modulo/turni.html?t=…`). Senza
+account vede le fasce confermate dei prossimi 30 giorni, chi c'è già e quanti posti mancano, e tocca «Ci sono» o
+«Non ci sono più»: i nomi arrivano subito nei turni dell'app. Una fascia piena non accetta altri nomi; un link
+disattivato smette di funzionare. «Avviso per il gruppo» prepara il messaggio con le fasce ancora scoperte.
+
 Sempre in **Turni**, per oggi e i due giorni successivi, «Promemoria per chi è di turno» prepara il messaggio
 per il gruppo con eventi, fasce orarie, nomi e posti ancora scoperti.
 

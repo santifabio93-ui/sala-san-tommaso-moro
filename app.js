@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.7";
+const VERSIONE = "2026-11-01.8";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -62,7 +62,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -119,7 +119,7 @@ async function start() {
 
 /* ---------- dati ---------- */
 const mapBooking = (r) => ({ ...r, inizio: hm(r.inizio), fine: hm(r.fine), prezzo: Number(r.prezzo) || 0, incassato: Number(r.incassato) || 0, turni: Array.isArray(r.turni) ? r.turni : [] });
-const mapSignup = (r) => ({ id: r.id, bookingId: r.booking_id, slotId: r.slot_id, nome: r.nome, uid: r.user_id, creato: r.creato });
+const mapSignup = (r) => ({ id: r.id, bookingId: r.booking_id, slotId: r.slot_id, nome: r.nome, uid: r.user_id, volontarioId: r.volontario_id || null, creato: r.creato });
 
 let loading = null;
 async function loadAll() {
@@ -143,6 +143,10 @@ async function loadAll() {
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
     const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    // volontari con link personale (aggiornamento 14): se la tabella manca lo spiega la pagina Turni
+    const vo = S.canWrite ? await sb.from("volontari").select("*").order("nome") : { data: null };
+    S.loadErr2 = { ...(S.loadErr2 || {}), volontari: vo.error && (vo.error.message || "errore") };
+    if (vo.data) S.volontari = vo.data;
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
@@ -180,7 +184,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -782,6 +786,7 @@ function renderShifts() {
   $("#shift-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.shiftFilter = b.dataset.f; S.openSignup = null; renderShifts(); }));
   renderPromemoria();
   renderSenzaTurni();
+  renderVolontari();
   $("#btn-sondaggio").hidden = !S.canWrite;
   $("#btn-sondaggio").onclick = () => { const t = testoSondaggio(14); if (t) openCopyText(t); else toast("Nei prossimi 14 giorni non ci sono posti scoperti nei turni"); };
   $("#shift-hint").textContent = S.canWrite ? "Puoi aggiungere anche i nomi arrivati su WhatsApp" : `Ti segni come «${S.me.nome || S.me.email}»`;
@@ -2695,6 +2700,47 @@ function testoSondaggio(giorni) {
   return [`📋 Sondaggio da creare su WhatsApp (📎 → Sondaggio)`, "", `DOMANDA:`, `Turni in sala dal ${f(TODAY)} al ${f(fino)}: quando ci sei?`, "",
     `OPZIONI (una per riga${opzioni.length > 12 ? "; WhatsApp ne accetta 12: fai due sondaggi" : ""}):`, ...opzioni.map((o) => `${o.testo} (${o.mancano === 1 ? "serve 1" : `servono ${o.mancano}`})`), "",
     `Ricordati di attivare «Consenti più risposte». Poi scrivi i nomi nella pagina Turni con «+ Aggiungi».`].join("\n");
+}
+
+/* ---------- volontari con link personale ---------- */
+const linkTurni = (v) => new URL("modulo/turni.html?t=" + v.token, location.href.split("#")[0]).href;
+function renderVolontari() {
+  const el = $("#shift-volontari");
+  if (!el) return;
+  el.hidden = !S.canWrite;
+  if (!S.canWrite) return;
+  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel promemoria"><div class="warn">Per i link personali dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>`; return; }
+  const att = S.volontari.filter((v) => v.attivo), off = S.volontari.filter((v) => !v.attivo);
+  const conta = (v) => S.signups.filter((x) => x.volontarioId === v.id && S.bookings.some((b) => b.id === x.bookingId && b.data >= TODAY)).length;
+  const riga = (v) => `<div class="todo-riga"><div><b>${esc(v.nome)}</b> <span class="hint">${esc(v.cellulare || "senza cellulare")}${v.attivo ? ` · ${conta(v)} turni in programma` : " · disattivato"}</span></div>
+    <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink="${esc(v.id)}">Manda il link</button><button class="btn ghost sm" type="button" data-voff="${esc(v.id)}">Disattiva</button>` : `<button class="btn ghost sm" type="button" data-von="${esc(v.id)}">Riattiva</button>`}</div></div>`;
+  el.innerHTML = `<div class="panel promemoria"><details${S.volAperto ? " open" : ""} id="vol-det"><summary><b>Volontari con link personale</b> <span class="hint">· ${att.length} attivi · ognuno si segna dal suo link e vede chi c'è già</span></summary>
+    <form id="vol-form" class="sito-contatto" style="margin-top:10px"><input id="vol-nome" placeholder="Nome (come lo vedranno gli altri)" aria-label="Nome del volontario" maxlength="60"><input id="vol-cell" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm primary" type="submit">Aggiungi</button></form>
+    ${att.map(riga).join("") || `<p class="hint">Nessun volontario ancora: aggiungili qui sopra e manda a ciascuno il suo link.</p>`}
+    ${off.length ? `<p class="hint" style="margin-top:8px">Disattivati: il loro link non funziona più.</p>${off.map(riga).join("")}` : ""}
+    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button></div></details></div>`;
+  $("#vol-det").ontoggle = (e) => (S.volAperto = e.target.open);
+  $("#vol-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const nome = $("#vol-nome").value.trim().replace(/\s+/g, " "), cellulare = $("#vol-cell").value.trim();
+    if (!nome) { $("#vol-nome").focus(); return; }
+    if (S.volontari.some((v) => v.attivo && v.nome.toLowerCase() === nome.toLowerCase())) { toast(`C'è già un volontario «${nome}»: aggiungi l'iniziale del cognome`); return; }
+    try { await run(sb.from("volontari").insert({ nome, cellulare }), `${nome} aggiunto: ora mandagli il link`); } catch (x) { toast(errText(x)); }
+  };
+  el.querySelectorAll("[data-vlink]").forEach((b) => (b.onclick = () => {
+    const v = S.volontari.find((x) => x.id === b.dataset.vlink), io = (S.me.nome || "").split(" ")[0];
+    openCopyText([`Ciao ${v.nome}!`, "Questo è il tuo link per i turni della Sala San Tommaso Moro: lo apri, vedi le fasce con chi c'è già e tocchi «Ci sono» dove puoi esserci.", linkTurni(v), "Salvalo, vale sempre (anche per i prossimi turni). Grazie!" + (io ? `\n${io}` : "")].join("\n"), v.cellulare);
+  }));
+  el.querySelectorAll("[data-voff],[data-von]").forEach((b) => (b.onclick = async () => {
+    const id = b.dataset.voff || b.dataset.von, on = !!b.dataset.von;
+    try { await run(sb.from("volontari").update({ attivo: on }).eq("id", id), on ? "Volontario riattivato" : "Link disattivato"); } catch (x) { toast(errText(x)); }
+  }));
+  $("#vol-gruppo").onclick = () => {
+    const fino = addDays(TODAY, 14), eventi = S.bookings.filter((b) => b.stato === "confermata" && b.data >= TODAY && b.data <= fino && turni(b).length).sort(byWhen);
+    const righe = eventi.flatMap((b) => turni(b).map((t) => ({ b, t, m: Math.max(0, (Number(t.posti) || 0) - signupsFor(b.id, t.id).length) }))).filter((x) => x.m);
+    if (!righe.length) { toast("Nei prossimi 14 giorni i turni sono tutti coperti"); return; }
+    openCopyText([`📋 Turni in sala dei prossimi giorni: ci sono ancora posti!`, "", ...righe.map((x) => `• ${fmtShort(x.b.data)} · ${x.b.titolo} · ${x.t.inizio}–${x.t.fine} (${x.m === 1 ? "serve 1 persona" : `servono ${x.m} persone`})`), "", "Segnatevi dal vostro link personale. Se non lo trovate, scrivetemi e ve lo rimando. Grazie! 🙏"].join("\n"));
+  };
 }
 
 function route() {

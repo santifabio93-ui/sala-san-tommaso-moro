@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>I miei turni · Sala San Tommaso Moro</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#00897C">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.8">
+<style>
+.wrap { max-width: 640px }
+.head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
+.giorno { margin-top: 18px }
+.giorno > .eyebrow { color: var(--accent); margin-bottom: 6px; display: block }
+.fascia { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap }
+.fascia + .fascia { margin-top: 8px }
+.fascia.mia { border-color: var(--accent); background: var(--accent-soft) }
+.fascia .t { font-weight: 700 }
+.fascia .nomi { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px }
+.fascia .nomi span { background: var(--sunk); border-radius: 999px; padding: 2px 9px; font-size: .82rem; font-weight: 600 }
+.fascia.mia .nomi span.io { background: var(--accent); color: var(--accent-ink) }
+.fascia .stato { font-size: .82rem; font-weight: 600; color: var(--muted); margin-top: 4px }
+.fascia .stato.manca { color: var(--opz-fg) }
+.fascia .stato.pieno { color: var(--ok-fg) }
+.fascia .btn { flex: none }
+.esito { text-align: center; padding: 30px 10px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="seal" aria-hidden="true">TM</div>
+    <div><div class="eyebrow">Parrocchia di San Biagio · Piombino Dese</div><h1>Sala San Tommaso Moro</h1><span class="hint">Turni dei volontari</span></div>
+  </div>
+  <div id="app"><p class="muted">Caricamento dei turni…</p></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="../config.js?v=2026-11-01.8"></script>
+<script type="module" src="turni.js?v=2026-11-01.8"></script>
+</body>
+</html>
