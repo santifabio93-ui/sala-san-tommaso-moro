@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.43";
+const VERSIONE = "2026-11-01.45";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2320,7 +2320,7 @@ function quadratura(c) {
 async function chiFaCassa(cf) {
   const { data, error } = await sb.rpc("cassa_tessera", { p_cf: cf });
   if (error) { toast(/Could not find|schema cache/i.test(error.message) ? "Manca l'aggiornamento 028_cassa_tessera.sql" : error.message); return null; }
-  if (!data) { toast("Tessera non registrata: chiedi a chi organizza di registrarla nella scheda del volontario"); return null; }
+  if (!data) { toast("Tessera o badge non riconosciuti: chiedi a chi organizza (scheda del volontario)"); return null; }
   return data;
 }
 function renderTessera() {
@@ -2330,7 +2330,7 @@ function renderTessera() {
   box.innerHTML = S.cassiere
     ? `<div class="tessera-ok"><span class="eyebrow">Alla cassa stasera</span><b>${esc(S.cassiere.nome)}</b>
         <div class="actions"><button class="btn primary" type="button" id="tess-apri">Apri la cassa di stasera</button><button class="btn ghost" type="button" id="tess-cambia">Non sono io</button></div></div>`
-    : `<div class="tessera"><div class="tessera-ico" aria-hidden="true">🪪</div><h2>Passa la tessera sanitaria</h2><p class="hint">Avvicina il codice a barre della tessera al lettore. Puoi anche scrivere il codice fiscale e premere Invio.</p>
+    : `<div class="tessera"><div class="tessera-ico" aria-hidden="true">🪪</div><h2>Passa la tessera sanitaria o il badge</h2><p class="hint">Avvicina al lettore il codice a barre della tessera sanitaria o il badge della Sala (anche dal telefono). Puoi anche scrivere il codice e premere Invio.</p>
         <form id="tess-form" novalidate><input id="tess-cf" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Codice fiscale" placeholder="In attesa della tessera…"></form></div>`;
   if (S.cassiere) {
     $("#tess-apri").onclick = () => openCassaFor(TODAY);
@@ -2442,7 +2442,7 @@ function openCassa(c, date) {
   dlgK.querySelectorAll("input,select,textarea,.ct-pezzi button").forEach((el) => (el.disabled = locked));
   $("#c-save").hidden = locked; $("#c-close").hidden = locked || (c && c.stato === "chiusa");
   $("#c-save").textContent = c && c.stato === "chiusa" ? "Salva modifiche" : "Salva";
-  $("#c-status").textContent = (c && (c.aperta_da_nome || c.chiusa_da_nome) ? `${c.aperta_da_nome ? `Aperta da ${c.aperta_da_nome}` : ""}${c.aperta_da_nome && c.chiusa_da_nome ? " · " : ""}${c.chiusa_da_nome ? `chiusa da ${c.chiusa_da_nome}` : ""}. ` : !c && S.cassiere ? `Alla cassa: ${S.cassiere.nome}. ` : "") + (c && c.stato === "chiusa"
+  $("#c-status").textContent = (c && (c.aperta_da_nome || c.chiusa_da_nome) ? `${c.aperta_da_nome ? `Aperta da ${c.aperta_da_nome}` : ""}${c.aperta_da_nome && c.chiusa_da_nome ? " · " : ""}${c.chiusa_da_nome ? `chiusa da ${c.chiusa_da_nome}` : ""}. ` : !c && S.cassiere ? `Alla cassa: ${S.cassiere.nome.replace(/\.$/, "")}. ` : "") + (c && c.stato === "chiusa"
     ? `Chiusa il ${new Date(c.chiuso_il || c.aggiornato).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${S.isAdmin ? " · da amministratore puoi ancora correggerla" : ""}` : "");
   $("#c-error").innerHTML = "";
   renderDeleteArea("#c-delete-area", !!c && S.isAdmin, async () => { await run(sb.from("cassa").delete().eq("id", c.id), "Cassa eliminata"); dlgK.close(); });
@@ -3109,10 +3109,10 @@ function renderVolontariPagina() {
     return `<div class="todo-riga vol-riga"><div><b>${esc(v.nome)}</b>${v.attivo ? "" : ' <span class="hint">· disattivato</span>'}
       <div class="hint">${v.cellulare ? esc(v.cellulare) : "senza cellulare"}${c ? ` · 🎂 ${esc(parse(c.data).toLocaleDateString("it-IT", { day: "numeric", month: "long" }))} (${c.anni - (c.data > TODAY ? 1 : 0)} anni)` : ""}${v.attivo ? ` · ${conta(v)} turni in programma` : ""}</div>
       <div class="vol-pill">${pillAI(v)}${v.antincendio_file ? `<a href="#" class="hint" data-vatt="${esc(v.id)}">📎 attestato</a>` : ""}</div></div>
-      <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink2="${esc(v.id)}">Link turni</button>` : ""}<button class="btn sm" type="button" data-vedit="${esc(v.id)}">Scheda</button></div></div>`; };
+      <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink2="${esc(v.id)}">Link turni</button>` : ""}${v.attivo && v.badge ? `<button class="btn sm" type="button" data-vbadge="${esc(v.id)}">🪪 Badge</button>` : ""}<button class="btn sm" type="button" data-vedit="${esc(v.id)}">Scheda</button></div></div>`; };
   el.innerHTML = `
     <div class="toolbar"><div><h2>Volontari</h2><span class="hint">Telefono, compleanno e attestato antincendio · li vedono solo admin e coordinatori</span></div>
-      <div class="actions"><button class="btn" type="button" id="vol-csv">Esporta elenco</button><button class="btn primary" type="button" id="vol-nuovo">+ Nuovo volontario</button></div></div>
+      <div class="actions">${att.some((v) => v.badge) ? `<button class="btn" type="button" id="vol-badge-tutti">🪪 Stampa i badge</button>` : ""}<button class="btn" type="button" id="vol-csv">Esporta elenco</button><button class="btn primary" type="button" id="vol-nuovo">+ Nuovo volontario</button></div></div>
     ${nuovo ? "" : `<div class="panel"><div class="warn">Per salvare data di nascita e attestato antincendio esegui in Supabase lo script <b>019_volontari_dati.sql</b> e ricarica la pagina.</div></div>`}
     <section class="kpis">
       <div class="kpi"><span class="eyebrow">Attivi</span><b>${att.length}</b><small>${off.length ? `${off.length} disattivati` : ""}</small></div>
@@ -3135,6 +3135,8 @@ function renderVolontariPagina() {
   el.querySelectorAll("[data-vedit]").forEach((b) => (b.onclick = () => openVolontario(S.volontari.find((v) => v.id === b.dataset.vedit))));
   el.querySelectorAll("[data-vauguri]").forEach((b) => (b.onclick = () => auguri(S.volontari.find((v) => v.id === b.dataset.vauguri))));
   el.querySelectorAll("[data-vlink2]").forEach((b) => (b.onclick = () => mandaLinkTurni(S.volontari.find((v) => v.id === b.dataset.vlink2))));
+  el.querySelectorAll("[data-vbadge]").forEach((b) => (b.onclick = () => stampaBadge([S.volontari.find((v) => v.id === b.dataset.vbadge)])));
+  const bt = $("#vol-badge-tutti"); if (bt) bt.onclick = () => stampaBadge(att.filter((v) => v.badge));
   el.querySelectorAll("[data-vatt]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); apriAttestato(S.volontari.find((v) => v.id === a.dataset.vatt)); }));
   $("#vol-csv").onclick = () => {
     const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -3175,6 +3177,26 @@ function mostraFileVol() {
   $("#v-file-ora").innerHTML = c ? `<a href="#" id="v-file-apri">📎 Apri l'attestato caricato</a> · <button class="btn ghost sm" type="button" id="v-file-togli">Togli</button>` : "";
   if (c) { $("#v-file-apri").onclick = (e) => { e.preventDefault(); apriAttestato(v); }; $("#v-file-togli").onclick = () => { S.volTogliFile = true; mostraFileVol(); }; }
 }
+// badge della Sala (aggiornamento 30): tesserine da stampare, 10 per foglio A4
+async function stampaBadge(lista) {
+  const w = window.open("", "_blank");
+  if (!w) { toast("Il browser ha bloccato la finestra di stampa: consenti i popup"); return; }
+  w.document.write("<p style='font-family:sans-serif'>Preparo i badge…</p>");
+  try {
+    const m = await import(`./badge.js?v=${VERSIONE}`);
+    await m.caricaQr();
+    // il ritratto va dentro la pagina: con un'immagine esterna la stampa partirebbe prima che sia caricata
+    const ritratto = await fetch(`moro.svg?v=${VERSIONE}`).then((r) => r.text()).catch(() => "");
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="it"><head><meta charset="utf-8"><title>Badge dei volontari · Sala San Tommaso Moro</title>
+      <style>@page { size: A4; margin: 12mm; } body { margin: 0; } .foglio { display: grid; grid-template-columns: repeat(2, 85mm); gap: 6mm 8mm; justify-content: center; }
+      .nota { font-family: Arial, sans-serif; font-size: 12px; color: #555; margin: 0 0 6mm; } @media print { .nota { display: none } } ${m.STILE_TESSERINA}</style></head>
+      <body><p class="nota">Stampa su cartoncino, ritaglia e, se puoi, plastifica. Il badge vale alla cassa come la tessera sanitaria: se uno lo perde, nella sua scheda c'è «Nuovo badge».</p>
+      <div class="foglio">${lista.map((v) => m.tesserinaHtml(v.nome, v.badge, ritratto)).join("")}</div>
+      <script>window.onload = () => setTimeout(() => window.print(), 300);<\/script></body></html>`);
+    w.document.close();
+  } catch (x) { w.close(); toast("Non riesco a preparare i badge: controlla la connessione"); }
+}
 // tessera sanitaria del volontario, per la postazione cassa (aggiornamento 28)
 function statoTessera(v) {
   const ok = S.volontari.length && "cf_impronta" in S.volontari[0];
@@ -3183,6 +3205,8 @@ function statoTessera(v) {
   $("#v-tess-stato").innerHTML = v.cf_impronta ? `<span class="pill saldato">Registrata ✓</span>` : `<span class="pill esempio">Non registrata</span>`;
   $("#v-tess-togli").hidden = !v.cf_impronta;
   $("#v-cf").value = "";
+  $("#v-badge-riga").hidden = !v.badge;
+  if (v.badge) $("#v-badge-cod").textContent = v.badge;
 }
 $("#v-cf").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
@@ -3195,6 +3219,14 @@ $("#v-cf").addEventListener("keydown", async (e) => {
   v.cf_impronta = "registrata"; statoTessera(v); toast(`Tessera di ${v.nome} registrata`);
   loadAll();
 });
+$("#v-badge-stampa").onclick = () => stampaBadge([S.editingVol]);
+$("#v-badge-nuovo").onclick = async () => {
+  const v = S.editingVol;
+  if (!v || !confirm(`Fare un badge nuovo per ${v.nome}? Quello vecchio non funzionerà più.`)) return;
+  const { data, error } = await sb.rpc("volontario_badge_nuovo", { p_volontario: v.id });
+  if (error) { toast(error.message); return; }
+  v.badge = data; statoTessera(v); toast("Badge nuovo: stampalo e dallo a " + v.nome.split(" ")[0]); loadAll();
+};
 $("#v-tess-togli").onclick = async () => {
   const v = S.editingVol;
   if (!v || !confirm(`Togliere la tessera di ${v.nome}? Non potrà più entrare in cassa con la tessera.`)) return;
@@ -3971,6 +4003,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],
     ["029_foglietto.sql", "Email del giovedì per il foglietto parrocchiale", k.has("foglietto_attivo"), "Dopo lo script SQL ricopia lo script Google (2026-11-02.2) e il file appsscript.json, e aggiungi «+foglietto» alla MODALITA"],
     ["028_cassa_tessera.sql", "Cassa con la tessera sanitaria", S.cassaNomi, "Serve solo se usi il lettore di tessere in biglietteria", true],
     ["027_parroco.sql", "Ruolo Parroco (sola lettura, conti solo totali)", undefined, "Serve solo se dai a qualcuno il ruolo Parroco", true],

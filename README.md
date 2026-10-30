@@ -148,6 +148,12 @@ riconosce, apre la cassa della serata a suo nome e, alla chiusura, chiede di rip
 cassa restano «aperta da» e «chiusa da». Le tessere si registrano nella scheda del volontario (Turni → Volontari):
 il codice fiscale non viene salvato, solo un'impronta cifrata con un sale segreto.
 
+**Badge della Sala** (script `030_badge.sql`): ogni volontario ha un codice casuale (es. STM7K3QX9PA, senza dati
+personali) che vale alla postazione come la tessera sanitaria. In Turni → Volontari «🪪 Stampa i badge» prepara le
+tesserine (85 × 54 mm, 10 per foglio A4) con ritratto, nome, QR code e codice a barre Code 39 (lo stesso tipo della
+tessera sanitaria, così lo legge qualsiasi lettore); il volontario lo trova anche nel suo link dei turni («Il mio badge
+per la cassa») da mostrare dal telefono. Se lo perde, nella sua scheda «Nuovo badge» rende inutilizzabile il vecchio.
+
 ## Sopralluoghi
 Esegui una volta `supabase/004_sopralluoghi.sql` nel SQL Editor. Nella voce di menu **Sopralluoghi** si fissano le visite
 alla sala (giorno, ora, chi viene, evento e data desiderata, chi accompagna, cosa vuole vedere), con controllo che la sala

@@ -20,7 +20,7 @@ const giorno = (d) => new Date(d + "T12:00:00").toLocaleDateString("it-IT", { we
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3200); }
 const mostra = (html) => { $("#app").innerHTML = html; };
 
-let dati = null, stasera = [];
+let dati = null, stasera = [], badge = "";
 let benvenuto = false; // appena ritrovato il link: si ricorda come salvarlo
 async function carica() {
   if (!token) { recupero(); return; }
@@ -32,6 +32,9 @@ async function carica() {
   // il giorno di un evento: il contapersone per la porta (aggiornamento 26)
   const oggi = await sb.rpc("conta_oggi", { p_token: token });
   stasera = (oggi.data && oggi.data.eventi) || [];
+  // il badge della Sala per la cassa (aggiornamento 30)
+  const bg = await sb.rpc("turni_badge", { p_token: token });
+  badge = (bg.data && bg.data.badge) || "";
   disegna();
 }
 
@@ -107,6 +110,20 @@ function nelCalendario(lista) {
 // Google Calendar (Android, computer): apre l'evento già compilato
 const linkGoogle = (f) => { const o = orari(f); return "https://calendar.google.com/calendar/render?" + new URLSearchParams({ action: "TEMPLATE", text: `Turno in sala: ${f.titolo}`, dates: `${o.da}/${o.a}`, ctz: "Europe/Rome", location: DOVE, details: descrizione(f) }); };
 
+// il badge a tutto schermo, da avvicinare al lettore della cassa
+async function mostraBadge() {
+  try {
+    const m = await import("../badge.js?v=" + (document.querySelector('script[src*="turni.js"]').src.split("v=")[1] || ""));
+    await m.caricaQr();
+    const d = document.createElement("div");
+    d.className = "badge-schermo";
+    d.innerHTML = `<div class="bs-carta"><small>Sala San Tommaso Moro · Volontario</small><b>${esc(dati.nome)}</b>${m.qrSvg(badge, { lato: 9 })}${m.codice39Svg(badge, { altezza: 70, modulo: 2 })}<span>${esc(badge)}</span>
+      <p class="hint">Alza la luminosità dello schermo e avvicinalo al lettore.</p><button class="btn primary" type="button">Chiudi</button></div>`;
+    d.querySelector("button").onclick = () => d.remove();
+    document.body.appendChild(d);
+  } catch (e) { toast("Non riesco a mostrare il badge: controlla la connessione"); }
+}
+
 function disegna() {
   const io = dati.nome, fasce = dati.fasce || [];
   const mie = fasce.filter((f) => f.mio).length;
@@ -116,6 +133,7 @@ function disegna() {
     <p class="hint">Tocca «Ci sono» nelle fasce in cui puoi esserci. ${mie ? `Sei segnato in <b>${mie}</b> ${mie === 1 ? "fascia" : "fasce"}.` : ""}</p>
     ${stasera.length ? `<a class="btn primary conta-btn" href="conta.html?t=${esc(token)}">🚪 Contapersone di stasera <small>${esc(stasera.map((e) => (e.ora ? e.ora + " " : "") + e.titolo).join(" · "))}</small></a>` : ""}
     ${salvaLink()}
+    ${badge ? `<button class="btn sm badge-btn" type="button" id="mio-badge">🪪 Il mio badge per la cassa</button>` : ""}
     ${mie ? `<div class="cal-tutti"><button class="btn sm" type="button" id="cal-tutti">📅 Tutti i miei turni nel calendario</button><span class="hint">${IOS ? "si aprono nel Calendario dell'iPhone, con l'avviso un'ora prima" : "file da aprire con il calendario del telefono o di Outlook"}</span></div>` : ""}
     ${giorni.length ? giorni.map((g) => `<section class="giorno"><span class="eyebrow">${esc(giorno(g.data))}</span>
       ${g.fasce.map((f, i) => { const manca = Math.max(0, f.posti - f.presi), k = fasce.indexOf(f);
@@ -130,6 +148,7 @@ function disegna() {
       : `<div class="empty" style="margin-top:16px">Al momento non ci sono turni aperti nei prossimi 30 giorni. Grazie!</div>`}`);
   const ok = $("#salva-ok"); if (ok) ok.onclick = () => { try { localStorage.setItem(CHIAVE + "-home", "1"); } catch (e) {} benvenuto = false; $("#salva").remove(); };
   const cp = $("#copia-link"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(conCodice(token)); toast("Link copiato: incollalo dove vuoi tenerlo"); } catch (e) { prompt("Copia il tuo link:", conCodice(token)); } };
+  const mb = $("#mio-badge"); if (mb) mb.onclick = mostraBadge;
   const ct = $("#cal-tutti"); if (ct) ct.onclick = () => nelCalendario(fasce.filter((f) => f.mio));
   document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = () => nelCalendario([fasce[+b.dataset.cal]])));
   document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {

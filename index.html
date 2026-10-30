@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.43">
+<link rel="stylesheet" href="style.css?v=2026-11-01.45">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -573,7 +573,8 @@
       </div>
       <div class="field" id="v-tess-campo"><label for="v-cf">Tessera sanitaria (per entrare in cassa)</label>
         <div class="tess-riga"><span id="v-tess-stato" class="hint"></span><input id="v-cf" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Passa la tessera o scrivi il codice fiscale e premi Invio"><button class="btn ghost sm" type="button" id="v-tess-togli">Togli</button></div>
-        <span class="hint">Il codice fiscale non viene salvato: l'app tiene solo un'impronta cifrata per riconoscere la tessera.</span></div>
+        <span class="hint">Il codice fiscale non viene salvato: l'app tiene solo un'impronta cifrata per riconoscere la tessera.</span>
+        <div class="tess-riga" id="v-badge-riga" style="margin-top:6px"><span class="hint">Badge della Sala: <b id="v-badge-cod"></b></span><button class="btn ghost sm" type="button" id="v-badge-stampa">🪪 Stampa</button><button class="btn ghost sm" type="button" id="v-badge-nuovo">Nuovo badge (perso)</button></div></div>
       <div class="field"><label for="v-note">Note</label><textarea id="v-note" placeholder="Es. disponibilità, cosa sa fare (cassa, proiezione, bar)…"></textarea></div>
       <div class="field"><label class="check"><input type="checkbox" id="v-attivo"> Attivo (il suo link dei turni funziona)</label></div>
     </div>
@@ -680,7 +681,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.43"></script>
-<script type="module" src="app.js?v=2026-11-01.43"></script>
+<script src="config.js?v=2026-11-01.45"></script>
+<script type="module" src="app.js?v=2026-11-01.45"></script>
 </body>
 </html>

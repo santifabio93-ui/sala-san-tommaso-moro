@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.43">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.45">
 <style>
 .wrap { max-width: 640px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -29,6 +29,11 @@
 .esito { text-align: center; padding: 30px 10px }
 .cal-tutti { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 12px }
 .cal-link { display: inline-block; margin-top: 6px; padding: 0; border: 0; background: none; font: inherit; font-size: .86rem; font-weight: 700; color: var(--accent); text-decoration: none; cursor: pointer }
+.badge-btn { margin-top: 10px }
+.badge-schermo { position: fixed; inset: 0; z-index: 90; background: rgba(10,20,22,.75); display: grid; place-items: center; padding: 16px }
+.bs-carta { background: #fff; color: #13262A; border-radius: 18px; padding: 18px; width: min(420px, 100%); text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center }
+.bs-carta small { letter-spacing: .08em; text-transform: uppercase; color: #6b5a1c; font-weight: 700 } .bs-carta b { font-size: 1.4rem }
+.bs-carta svg { max-width: 100%; height: auto } .bs-carta span { letter-spacing: .25em; font-weight: 700 }
 .conta-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 12px; padding: 14px 16px; border-radius: var(--r); text-decoration: none; font-size: 1.05rem }
 .conta-btn small { font-weight: 500; opacity: .85; font-size: .82rem }
 .salva { margin-top: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--gold-soft, #F6EDD0); border: 1px solid color-mix(in oklab, var(--gold, #C9A227) 35%, transparent); font-size: .9rem }
@@ -43,7 +48,7 @@
   <div id="app"><p class="muted">Caricamento dei turni…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.43"></script>
-<script type="module" src="turni.js?v=2026-11-01.43"></script>
+<script src="../config.js?v=2026-11-01.45"></script>
+<script type="module" src="turni.js?v=2026-11-01.45"></script>
 </body>
 </html>
