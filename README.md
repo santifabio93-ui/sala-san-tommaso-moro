@@ -236,5 +236,5 @@ L'app conserva nomi, telefoni ed email di clienti e volontari. Prepara una breve
 e, se la sala fa capo a una parrocchia o associazione, falla verificare da chi segue questi aspetti.
 
 ## Diritti
-© 2026 Parrocchia di San Biagio Vescovo e Martire – Sala San Tommaso Moro. Tutti i diritti riservati: il codice è
-visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.
+© 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
+il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.

@@ -1,4 +1,4 @@
-// © 2026 Parrocchia di San Biagio Vescovo e Martire – Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
+// © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
 /**
  * Sala San Tommaso Moro — sincronizzazione automatica con l'app.
  *
