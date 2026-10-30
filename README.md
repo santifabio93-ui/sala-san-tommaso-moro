@@ -115,6 +115,14 @@ Per leggere la programmazione da Cinebot (film, locandine, orari) aggiungi `+cin
 dello script Google (es. `lettura+email+cinema`): lo script legge https://ticket.cinebot.it/s.tommasomoro/ una volta
 all'ora. Supporto, prova e note scritti nell'app non vengono mai sovrascritti.
 
+In cima alla pagina Cinema, **Cose da fare per i film** elenca per i film dei prossimi 45 giorni cosa manca e
+entro quando: chiedere il supporto al distributore (21 giorni prima), controllare che arrivi, la prova (7 giorni
+prima), il film sul sito (10 giorni prima, dal controllo della pagina Sito web) e, per l'amministratore, i noleggi
+già proiettati che non risultano ancora in prima nota. I film appena arrivati da Cinebot sono segnati «Nuovo».
+
+Nella pagina **Turni**, per oggi e i due giorni successivi, «Promemoria per chi è di turno» prepara il messaggio
+per il gruppo con eventi, fasce orarie, nomi e posti ancora scoperti.
+
 ## Incassi C1
 Esegui `supabase/006_c1.sql` nel SQL Editor (si può rieseguire). Con `+c1` nella proprietà `MODALITA` dello script Google
 (es. `lettura+email+cinema+c1`) lo script legge i riepiloghi C1 in PDF dalla cartella Drive dei C1 e dagli allegati

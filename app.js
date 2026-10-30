@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.5";
+const VERSIONE = "2026-11-01.6";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -776,6 +776,7 @@ function renderShifts() {
   const base = S.bookings.filter((b) => active(b) && turni(b).length);
   $("#shift-filters").innerHTML = SHIFT_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.shiftFilter === k}">${l}<span class="c">${base.filter(f).length}</span></button>`).join("");
   $("#shift-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.shiftFilter = b.dataset.f; S.openSignup = null; renderShifts(); }));
+  renderPromemoria();
   $("#shift-hint").textContent = S.canWrite ? "Puoi aggiungere anche i nomi arrivati su WhatsApp" : `Ti segni come «${S.me.nome || S.me.email}»`;
   const list = base.filter(SHIFT_FILTERS.find((x) => x[0] === S.shiftFilter)[2]).sort(byWhen);
   if (S.shiftFilter === "passati") list.reverse();
@@ -916,6 +917,7 @@ const FILM_FILTERS = [
 const pillCls = { ok: "saldato", warn: "acconto", ko: "dapagare", none: "annullata" };
 function renderCinema() {
   $("#btn-film").hidden = !S.canWrite;
+  renderCoseFilm();
   $("#film-sync").textContent = S.sync.cinebot ? `Programmazione da Cinebot aggiornata ${ago(S.sync.cinebot)}` : "";
   $("#film-filters").innerHTML = FILM_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.filmFilter === k}">${l}<span class="c">${S.films.filter(f).length}</span></button>`).join("");
   $("#film-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.filmFilter = b.dataset.f; renderCinema(); }));
@@ -2495,6 +2497,86 @@ function renderTariffeCosti() {
     if (!S.tariffeDb) { S.tariffe = nuovo; renderTariffeCosti(); return; }
     try { await run(sb.from("settings").update({ tariffe: nuovo }).eq("id", 1), "Valori salvati"); } catch (x) { toast(errText(x)); }
   };
+}
+
+/* ---------- promemoria per chi è di turno ---------- */
+// per i prossimi tre giorni: un messaggio per giorno con eventi, fasce, nomi e posti ancora scoperti
+function promemoriaTurni() {
+  const giorni = [0, 1, 2].map((n) => addDays(TODAY, n));
+  return giorni.map((d) => ({ data: d, eventi: S.bookings.filter((b) => active(b) && b.data === d && turni(b).length).sort(byWhen) })).filter((g) => g.eventi.length);
+}
+function testoPromemoria(g) {
+  const quando = g.data === TODAY ? "oggi" : g.data === addDays(TODAY, 1) ? "domani" : "";
+  const righe = [`⏰ Promemoria turni · ${quando ? quando + " " : ""}${fmtDay(g.data, { weekday: "long", day: "numeric", month: "long" })}`, ""];
+  for (const b of g.eventi) {
+    righe.push(`📍 ${b.titolo}${b.giornata_intera ? "" : ` (${b.inizio}–${b.fine})`}`);
+    for (const t of turni(b)) {
+      const ppl = signupsFor(b.id, t.id), mancano = Math.max(0, (Number(t.posti) || 0) - ppl.length);
+      righe.push(`• ${t.label} ${t.inizio}–${t.fine}: ${ppl.length ? ppl.map((x) => x.nome).join(", ") : "nessuno"}${mancano ? ` — ${mancano === 1 ? "manca ancora 1 persona" : `mancano ancora ${mancano} persone`}: chi può?` : ""}`);
+    }
+    righe.push("");
+  }
+  const io = (S.me.nome || "").split(" ")[0];
+  righe.push(`${io ? `Per qualsiasi cosa scrivete a ${io}. ` : ""}Grazie a tutti! 🙏`);
+  return righe.join("\n");
+}
+function renderPromemoria() {
+  const el = $("#shift-promemoria");
+  if (!el) return;
+  const gg = S.canWrite ? promemoriaTurni() : [];
+  el.hidden = !gg.length;
+  el.innerHTML = gg.length ? `<div class="panel promemoria"><div class="section-head"><h3>Promemoria per chi è di turno</h3><span class="hint">Il messaggio con eventi, orari e nomi, da mandare nel gruppo il giorno prima</span></div>
+    <div class="actions">${gg.map((g, i) => { const scop = g.eventi.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
+      return `<button class="btn${g.data === addDays(TODAY, 1) ? " primary" : ""}" type="button" data-prom="${i}">${g.data === TODAY ? "Oggi" : g.data === addDays(TODAY, 1) ? "Domani" : fmtShort(g.data)} · ${g.eventi.length} ${g.eventi.length === 1 ? "evento" : "eventi"}${scop ? ` · ${scop} scoperti` : ""}</button>`; }).join("")}</div></div>` : "";
+  el.querySelectorAll("[data-prom]").forEach((b) => (b.onclick = () => openCopyText(testoPromemoria(gg[+b.dataset.prom]))));
+}
+
+/* ---------- cose da fare per ogni film ---------- */
+const GIORNI_RICHIESTA = 21; // il supporto si chiede al distributore almeno tre settimane prima
+const GIORNI_SITO = 10;      // e il film va sul sito almeno dieci giorni prima
+const SUPPORTO_ART = { file: "il file", dvd: "il DVD", bluray: "il Blu-ray", link: "il link" };
+const normFilm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+function coseDaFareFilm() {
+  const out = [], fino = addDays(TODAY, 45);
+  const mancaSito = new Set((S.sito.voci || []).filter((v) => v.tipo === "manca" || v.tipo === "orario").map((v) => normFilm((v.testo.match(/«([^»]+)»/) || [])[1])));
+  for (const f of S.films) {
+    const nx = nextShow(f), nuovo = f.creato && (Date.now() - new Date(f.creato)) < 7 * 864e5;
+    if (nx && nx.data <= fino) {
+      const t = (testo, entro, azione) => out.push({ f, testo, entro, azione, nuovo, prima: nx.data });
+      if (f.acquisizione === "da_procurare") t(`Chiedere ${SUPPORTO_ART[f.supporto] || "il DVD o il file"} al distributore${f.distributore ? ` (${f.distributore})` : ""}`, addDays(nx.data, -GIORNI_RICHIESTA), "richiesto");
+      else if (f.acquisizione === "in_arrivo") t(`Controllare che arrivi ${SUPPORTO_ART[f.supporto] || "il supporto"}`, addDays(nx.data, -GIORNI_PROVA - 2), "arrivato");
+      if (f.prova_esito === "problemi") t(`Risolvere i problemi della prova${f.prova_note ? `: ${f.prova_note}` : ""}`, addDays(nx.data, -2), "apri");
+      else if (f.prova_esito !== "ok") t("Fare la prova di proiezione", addDays(nx.data, -GIORNI_PROVA), "apri");
+      if (S.canWrite && mancaSito.has(normFilm(f.titolo))) t("Mettere il film (con gli orari giusti) sul sito della sala", addDays(nx.data, -GIORNI_SITO), "sito");
+    }
+    // dopo la proiezione: la fattura del noleggio deve comparire in prima nota (solo l'amministratore la vede)
+    const ultima = showsOf(f).filter((p) => p.data < TODAY).pop();
+    if (S.isAdmin && S.primaNota.length && ultima && ultima.data >= addDays(TODAY, -60) && !nx) {
+      const n = normFilm(f.titolo);
+      const pagato = S.primaNota.some((r) => r.uscite > 0 && normFilm(`${r.evento} ${r.descrizione}`).includes(n));
+      if (!pagato) out.push({ f, testo: "Il noleggio non risulta ancora in prima nota: controllare la fattura del distributore", entro: addDays(ultima.data, 30), azione: "", nuovo: false, prima: ultima.data });
+    }
+  }
+  return out.sort((a, b) => a.entro.localeCompare(b.entro));
+}
+function renderCoseFilm() {
+  const el = $("#film-todo");
+  if (!el) return;
+  const lista = coseDaFareFilm();
+  el.hidden = !lista.length;
+  if (!lista.length) { el.innerHTML = ""; return; }
+  const scad = (d) => { const g = Math.round((parse(d) - parse(TODAY)) / 864e5); return g < 0 ? `<span class="pill dapagare">in ritardo di ${-g} ${-g === 1 ? "giorno" : "giorni"}</span>` : g <= 3 ? `<span class="pill acconto">${g === 0 ? "oggi" : `entro ${fmtShort(d)}`}</span>` : `<span class="hint">entro ${esc(fmtShort(d))}</span>`; };
+  const bottone = (x, i) => ({ richiesto: `<button class="btn sm" type="button" data-todo="${i}">Fatto: richiesto</button>`, arrivato: `<button class="btn sm" type="button" data-todo="${i}">Arrivato</button>`, apri: `<button class="btn sm" type="button" data-todo="${i}">Apri il film</button>`, sito: `<a class="btn sm" href="#sito">Vai a Sito web</a>` }[x.azione] || "");
+  el.innerHTML = `<div class="panel film-todo"><div class="section-head"><h3>Cose da fare per i film</h3><span class="hint">Prossimi 45 giorni · supporto ${GIORNI_RICHIESTA} giorni prima, prova ${GIORNI_PROVA}, sito ${GIORNI_SITO}</span></div>
+    ${lista.map((x, i) => `<div class="todo-riga"><div><b>${esc(x.f.titolo)}</b>${x.nuovo ? ' <span class="pill confermata">Nuovo da Cinebot</span>' : ""} <span class="hint">· ${x.prima >= TODAY ? "prima proiezione" : "proiettato"} ${esc(fmtShort(x.prima))}</span><div>${esc(x.testo)}</div></div><div class="az">${scad(x.entro)}${bottone(x, i)}</div></div>`).join("")}</div>`;
+  el.querySelectorAll("[data-todo]").forEach((b) => (b.onclick = async () => {
+    const x = lista[+b.dataset.todo];
+    if (x.azione === "apri") { openFilm(x.f); return; }
+    b.disabled = true;
+    const rec = x.azione === "richiesto" ? { acquisizione: "in_arrivo" } : { acquisizione: "disponibile", disponibile_il: TODAY };
+    try { await run(sb.from("films").update({ ...rec, aggiornato: new Date().toISOString() }).eq("id", x.f.id), x.azione === "richiesto" ? "Segnato: supporto richiesto" : "Segnato: supporto arrivato. Dove è stato messo? Scrivilo nel film."); }
+    catch (e) { b.disabled = false; toast(errText(e)); }
+  }));
 }
 
 function route() {

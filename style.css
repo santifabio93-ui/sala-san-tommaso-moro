@@ -454,3 +454,7 @@ a.btn.primary { color: var(--accent-ink) }
 .tariffa-scelte { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center }
 .tariffa-scelte select { max-width: 100% }
 .tariffa-scelte .check { margin: 0; font-weight: 500 }
+/* promemoria turni e cose da fare per i film */
+.promemoria, .film-todo { margin-bottom: 14px }
+.todo-riga { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap }
+.todo-riga .az { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
