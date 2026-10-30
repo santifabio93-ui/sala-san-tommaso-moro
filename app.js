@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.4";
+const VERSIONE = "2026-11-01.5";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2442,12 +2442,12 @@ function analisiTariffe() {
   const giornateAuto = Math.round(date.size * f), giornate = Number(T.giornate_annue) > 0 ? Number(T.giornate_annue) : giornateAuto;
   const costoGiorno = giornate ? costiAnnui / giornate : NaN;
   const variabileGiorno = giornate ? stima(rilevanti.filter((r) => TC_VARIABILI.test(r.cod_cat || ""))) / giornate : 0;
-  // copertura dei costi della struttura da inizio anno
+  // copertura dei costi della struttura da inizio anno: solo entrate su cui si può contare (le donazioni non sono certe)
   const costiStruttura = sommaU(struttura);
   const affitti = sommaE(pn.filter((r) => r.entrate > 0 && (/^E02$/i.test(r.cod_cat) || /affitt/i.test(r.categoria))));
   const donazioni = sommaE(pn.filter(isDonazione));
   const margineAttivita = r2(sommaE(pn.filter(isAttivita)) - sommaU(pn.filter(isAttivita)));
-  const scoperto = r2(costiStruttura - affitti - donazioni - margineAttivita);
+  const scoperto = r2(costiStruttura - affitti - margineAttivita);
   const affittiN = S.bookings.filter((b) => active(b) && !b.comune && b.prezzo > 0 && b.data.startsWith(Y) && b.data <= TODAY).length;
   const previstiN = S.bookings.filter((b) => active(b) && !b.comune && b.prezzo > 0 && b.data.startsWith(Y) && b.data > TODAY).length;
   return { anno, giorni, f, costiAuto, costiAnnui, giornateAuto, giornate, giorniUsati: date.size, costoGiorno, variabileGiorno, costiStruttura, affitti, donazioni, margineAttivita, scoperto, affittiN, previstiN, rilevanti };
@@ -2469,9 +2469,10 @@ function renderTariffeCosti() {
     ? `<div class="warn">Da aumentare: ${sotto.map((s) => `<b>${esc(s.nome)}</b> almeno ${money(arrot(a.costoGiorno))} + IVA (oggi ${money(s.netto)}, ${pct(arrot(a.costoGiorno) / s.netto - 1)})`).join("; ")}. Una giornata di sala costa circa ${money(Math.round(a.costoGiorno))}.</div>`
     : `<div class="ok-note">Le tariffe coprono il costo di una giornata di sala (circa <b>${money(Math.round(a.costoGiorno))}</b>). Il margine più stretto è la ${esc(minimo.nome.toLowerCase())}: i costi possono crescere del <b>${Math.round(margineMin * 100)}%</b> prima che vada sotto costo. Per ora non serve aumentare.</div>`;
   const gapAnnuo = a.scoperto * a.f, contributoPlatea = (Number(T.platea) || 0) - a.variabileGiorno;
+  const donNota = a.donazioni ? ` Le donazioni (${money(a.donazioni)} da inizio anno) non le conto perché non sono certe: quando arrivano ${a.scoperto > 0 ? (a.donazioni >= a.scoperto ? "coprono lo scoperto, ma non ci si può contare" : "riducono lo scoperto") : "sono un margine in più"}.` : "";
   const copertura = a.scoperto > 0
-    ? `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)}, donazioni ${money(a.donazioni)} e margine delle attività ${money(a.margineAttivita)}: restano <b class="neg">scoperti ${money(a.scoperto)}</b> (circa ${money(Math.round(gapAnnuo))} sull'anno). Per coprirli servirebbero circa <b>${contributoPlatea > 0 ? Math.ceil(gapAnnuo / contributoPlatea) : "—"} affitti di platea in più</b> all'anno${a.affitti > 0 ? `, oppure, con gli stessi affitti, tariffe più alte del <b>${Math.round(a.scoperto / a.affitti * 100)}%</b>` : ""}.</p>`
-    : `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)}, donazioni ${money(a.donazioni)} e margine delle attività ${money(a.margineAttivita)}, con un <b>avanzo di ${money(-a.scoperto)}</b>.</p>`;
+    ? `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)} e margine delle attività ${money(a.margineAttivita)}: restano <b class="neg">scoperti ${money(a.scoperto)}</b> (circa ${money(Math.round(gapAnnuo))} sull'anno). Per coprirli servirebbero circa <b>${contributoPlatea > 0 ? Math.ceil(gapAnnuo / contributoPlatea) : "—"} affitti di platea in più</b> all'anno${a.affitti > 0 ? `, oppure, con gli stessi affitti, tariffe più alte del <b>${Math.round(a.scoperto / a.affitti * 100)}%</b>` : ""}.${donNota}</p>`
+    : `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)} e margine delle attività ${money(a.margineAttivita)}, con un <b>avanzo di ${money(-a.scoperto)}</b>, senza contare le donazioni.${donNota}</p>`;
   const quota = a.costiStruttura ? Math.round(a.affitti / a.costiStruttura * 100) : 0;
   el.innerHTML = `${verdetto}
     <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Spazio</th><th class="n">Tariffa netta</th><th class="n">Con IVA</th><th class="n">Costo giornata</th><th class="n">Margine</th></tr></thead><tbody>
