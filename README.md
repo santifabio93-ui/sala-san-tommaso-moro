@@ -389,6 +389,11 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
   script `021_turni_recupero.sql`; dopo 20 tentativi sbagliati in un'ora la pagina si ferma per un po'). La pagina
   suggerisce anche di aggiungere il link alla schermata Home del telefono.
 
+- **Turni nel calendario del telefono**: accanto a ogni turno in cui si è segnati c'è «📅 Mettilo nel calendario»
+  (su iPhone apre «Aggiungi al calendario» con l'avviso un'ora prima, su Android apre Google Calendar con l'evento già
+  compilato) e in alto «Tutti i miei turni nel calendario» (file .ics per iPhone, Outlook, Samsung). Se ci si toglie da
+  un turno, va cancellato anche dal calendario.
+
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.
 
 ## Resoconto mensile

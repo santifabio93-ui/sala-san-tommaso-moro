@@ -70,6 +70,43 @@ function salvaLink() {
     <div class="actions" style="margin-top:8px"><button class="btn sm" type="button" id="copia-link">Copia il mio link</button><button class="btn ghost sm" type="button" id="salva-ok">Fatto, non mostrarlo più</button></div></div>`;
 }
 
+/* ---------- i turni nel calendario del telefono ---------- */
+const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const DOVE = "Sala San Tommaso Moro, Piombino Dese";
+const stamp = (d, t) => d.replace(/-/g, "") + "T" + t.replace(":", "") + "00";
+const giornoDopo = (d) => { const x = new Date(d + "T12:00:00"); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
+// inizio e fine di una fascia; se finisce dopo mezzanotte, la fine è il giorno dopo
+const orari = (f) => ({ da: stamp(f.data, f.inizio), a: stamp(f.fine <= f.inizio ? giornoDopo(f.data) : f.data, f.fine) });
+const descrizione = (f) => [`Turno «${f.fascia}» per ${f.titolo}.`, f.nomi.length ? `In turno: ${f.nomi.join(", ")}.` : "", `I tuoi turni: ${conCodice(token)}`].filter(Boolean).join("\n");
+const icsTesto = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+function ics(lista) {
+  const ora = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const righe = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sala San Tommaso Moro//Turni//IT", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VTIMEZONE", "TZID:Europe/Rome",
+    "BEGIN:DAYLIGHT", "TZOFFSETFROM:+0100", "TZOFFSETTO:+0200", "TZNAME:CEST", "DTSTART:19700329T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU", "END:DAYLIGHT",
+    "BEGIN:STANDARD", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "TZNAME:CET", "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD",
+    "END:VTIMEZONE"];
+  for (const f of lista) {
+    const o = orari(f);
+    righe.push("BEGIN:VEVENT", `UID:turno-${f.booking_id}-${f.slot_id}@salasantommasomoro`, `DTSTAMP:${ora}`,
+      `DTSTART;TZID=Europe/Rome:${o.da}`, `DTEND;TZID=Europe/Rome:${o.a}`,
+      `SUMMARY:${icsTesto(`Turno in sala: ${f.titolo}`)}`, `LOCATION:${icsTesto(DOVE)}`, `DESCRIPTION:${icsTesto(descrizione(f))}`,
+      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsTesto(`Tra un'ora sei in sala: ${f.titolo}`)}`, "TRIGGER:-PT1H", "END:VALARM", "END:VEVENT");
+  }
+  righe.push("END:VCALENDAR");
+  return righe.join("\r\n");
+}
+function nelCalendario(lista) {
+  // su iPhone il file .ics apre «Aggiungi al calendario»; altrove si scarica e si apre con il calendario
+  const url = URL.createObjectURL(new Blob([ics(lista)], { type: "text/calendar;charset=utf-8" }));
+  if (IOS) { location.href = url; return; }
+  const a = Object.assign(document.createElement("a"), { href: url, download: lista.length === 1 ? "turno-sala.ics" : "turni-sala.ics" });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+// Google Calendar (Android, computer): apre l'evento già compilato
+const linkGoogle = (f) => { const o = orari(f); return "https://calendar.google.com/calendar/render?" + new URLSearchParams({ action: "TEMPLATE", text: `Turno in sala: ${f.titolo}`, dates: `${o.da}/${o.a}`, ctz: "Europe/Rome", location: DOVE, details: descrizione(f) }); };
+
 function disegna() {
   const io = dati.nome, fasce = dati.fasce || [];
   const mie = fasce.filter((f) => f.mio).length;
@@ -79,23 +116,27 @@ function disegna() {
     <p class="hint">Tocca «Ci sono» nelle fasce in cui puoi esserci. ${mie ? `Sei segnato in <b>${mie}</b> ${mie === 1 ? "fascia" : "fasce"}.` : ""}</p>
     ${stasera.length ? `<a class="btn primary conta-btn" href="conta.html?t=${esc(token)}">🚪 Contapersone di stasera <small>${esc(stasera.map((e) => (e.ora ? e.ora + " " : "") + e.titolo).join(" · "))}</small></a>` : ""}
     ${salvaLink()}
+    ${mie ? `<div class="cal-tutti"><button class="btn sm" type="button" id="cal-tutti">📅 Tutti i miei turni nel calendario</button><span class="hint">${IOS ? "si aprono nel Calendario dell'iPhone, con l'avviso un'ora prima" : "file da aprire con il calendario del telefono o di Outlook"}</span></div>` : ""}
     ${giorni.length ? giorni.map((g) => `<section class="giorno"><span class="eyebrow">${esc(giorno(g.data))}</span>
       ${g.fasce.map((f, i) => { const manca = Math.max(0, f.posti - f.presi), k = fasce.indexOf(f);
         return `<div class="fascia${f.mio ? " mia" : ""}"><div>
           <div class="t">${esc(f.titolo)}</div>
           <div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}</div>
           ${f.nomi.length ? `<div class="nomi">${f.nomi.map((n) => `<span class="${f.mio && n === io ? "io" : ""}">${esc(n)}</span>`).join("")}</div>` : ""}
-          <div class="stato ${manca ? "manca" : "pieno"}">${manca ? (manca === 1 ? "serve ancora 1 persona" : `servono ancora ${manca} persone`) : "al completo ✓"}</div></div>
+          <div class="stato ${manca ? "manca" : "pieno"}">${manca ? (manca === 1 ? "serve ancora 1 persona" : `servono ancora ${manca} persone`) : "al completo ✓"}</div>
+          ${f.mio ? (IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Mettilo nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Mettilo nel calendario</a>`) : ""}</div>
           ${f.mio ? `<button class="btn" type="button" data-k="${k}" data-si="0">Non ci sono più</button>` : manca ? `<button class="btn primary" type="button" data-k="${k}" data-si="1">Ci sono</button>` : ""}
         </div>`; }).join("")}</section>`).join("")
       : `<div class="empty" style="margin-top:16px">Al momento non ci sono turni aperti nei prossimi 30 giorni. Grazie!</div>`}`);
   const ok = $("#salva-ok"); if (ok) ok.onclick = () => { try { localStorage.setItem(CHIAVE + "-home", "1"); } catch (e) {} benvenuto = false; $("#salva").remove(); };
   const cp = $("#copia-link"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(conCodice(token)); toast("Link copiato: incollalo dove vuoi tenerlo"); } catch (e) { prompt("Copia il tuo link:", conCodice(token)); } };
+  const ct = $("#cal-tutti"); if (ct) ct.onclick = () => nelCalendario(fasce.filter((f) => f.mio));
+  document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = () => nelCalendario([fasce[+b.dataset.cal]])));
   document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {
     const f = fasce[+b.dataset.k], si = b.dataset.si === "1";
     b.disabled = true;
     const { error } = await sb.rpc("turni_segna", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id, p_si: si });
-    if (error) toast(error.message); else toast(si ? "Grazie, sei in turno!" : "Ti sei tolto dal turno");
+    if (error) toast(error.message); else toast(si ? "Grazie, sei in turno! Toccando 📅 lo metti nel calendario" : "Ti sei tolto dal turno: se l'avevi nel calendario, cancellalo anche lì");
     await carica();
   }));
 }
