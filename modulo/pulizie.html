@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pulizie · Sala San Tommaso Moro</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0E2629">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.30">
+<style>
+.wrap { max-width: 680px }
+.head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
+.settimane { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 4px }
+.riepilogo { margin-top: 12px; padding: 14px 16px; border-radius: var(--r); background: linear-gradient(135deg, var(--curtain-2, #163A39), var(--curtain-3, #1E4A46)); color: #F4F0E6 }
+.riepilogo .numeri { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 1.05rem }
+.riepilogo .numeri b { font-size: 1.5rem; color: #fff }
+.riepilogo .zone { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px }
+.zona { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: .82rem; font-weight: 700; background: var(--sunk); color: var(--ink) }
+.riepilogo .zona { background: rgba(255,255,255,.14); color: #fff }
+.zona.palco { background: var(--gold-soft, #F6EDD0) } .zona.tappeto { background: var(--opz-bg); color: var(--opz-fg) }
+.attenzione { margin-top: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--opz-bg); color: var(--opz-fg); font-weight: 600; font-size: .9rem }
+.attenzione ul { margin: 4px 0 0; padding-left: 18px }
+.giorno { margin-top: 18px }
+.giorno > .eyebrow { color: var(--accent); margin-bottom: 6px; display: block }
+.uso { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 4px 12px }
+.uso + .uso { margin-top: 8px }
+.uso .ore { font-weight: 800; font-variant-numeric: tabular-nums }
+.uso .ore small { display: block; font-weight: 600; color: var(--muted) }
+.uso .cosa { font-weight: 700 }
+.uso .dett { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; align-items: center }
+.uso .dett .hint { margin-left: 2px }
+.uso.futuro { border-style: dashed; opacity: .8 }
+.fatto-box { margin-top: 22px }
+.fatta { padding: 8px 0; border-top: 1px solid var(--line); font-size: .92rem }
+.vuoto { text-align: center; padding: 26px 10px; color: var(--muted) }
+@media (max-width: 420px) { .uso { grid-template-columns: minmax(0, 1fr) } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="seal" aria-hidden="true">TM</div>
+    <div><div class="eyebrow">Parrocchia di San Biagio · Piombino Dese</div><h1>Sala San Tommaso Moro</h1><span class="hint">Gruppo pulizie</span></div>
+  </div>
+  <div id="app"><p class="muted">Caricamento dei turni…</p></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="../config.js?v=2026-11-01.30"></script>
+<script type="module" src="pulizie.js?v=2026-11-01.30"></script>
+</body>
+</html>

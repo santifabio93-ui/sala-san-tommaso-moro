@@ -308,6 +308,16 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Gruppo pulizie
+
+Un link solo per tutto il gruppo pulizie (`modulo/pulizie.html`, senza account), da Turni → Volontari → «Manda il link
+al gruppo». Mostra cosa è successo in sala nei sette giorni prima delle pulizie (di solito il martedì; il giorno si
+cambia dallo stesso riquadro): quando e per quanto, in quali spazi (platea, galleria, palco, tappeto danza), per cosa
+e con quante persone (dalla cassa, dai C1 o dal pubblico previsto nella scheda), con in evidenza tappeto danza, molti
+bambini o tanta gente. A fine lavoro segnano «Pulizie fatte» con una nota (cosa manca, cosa non va): la nota compare
+nel riquadro e in Oggi. «Rinnova il link» lo cambia se gira troppo. Serve lo script `024_pulizie.sql`. I nomi dei
+referenti, i telefoni e gli incassi non compaiono.
+
 ## Film e altri spettacoli
 
 Su Cinebot si vendono anche teatro, danza, concerti e incontri: non tutto è un film. Lo script Google porta da Cinebot

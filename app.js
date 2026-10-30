@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.29";
+const VERSIONE = "2026-11-01.30";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -157,6 +157,9 @@ async function loadAll() {
     // compleanno e attestato antincendio (aggiornamento 19)
     const vd = S.canWrite && !vo.error ? await sb.from("volontari").select("data_nascita").limit(1) : { error: null };
     S.loadErr2.volDati = vd.error && (vd.error.message || "errore");
+    // pulizie fatte, con le note del gruppo pulizie (aggiornamento 24)
+    const pf = S.canWrite ? await sb.from("pulizie_fatte").select("*").order("creato", { ascending: false }).limit(60) : { data: null };
+    S.pulizieFatte = pf.data || [];
     // richieste di film al SAS e catalogo (aggiornamento 16)
     const [rf, cf] = S.canWrite ? await Promise.all([sb.from("richieste_film").select("*").order("creato", { ascending: false }).limit(1000), sb.from("catalogo_film").select("*").order("titolo").limit(5000)]) : [{ data: null }, { data: null }];
     S.loadErr2.sas = rf.error && (rf.error.message || "errore");
@@ -186,6 +189,7 @@ async function loadAll() {
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
+      S.pulizie = "pulizie_token" in st.data ? { token: st.data.pulizie_token, giorno: st.data.pulizie_giorno ?? 2 } : null; // aggiornamento 24
       S.sitoCfg = "sito_ignora" in st.data ? { nome: st.data.sito_nome || "", cell: st.data.sito_cellulare || "", avvisati: st.data.sito_avvisati || [], avvisatoIl: st.data.sito_avvisato_il, ignora: st.data.sito_ignora || [] } : null;
     }
     if (p.data) S.profiles = p.data;
@@ -214,7 +218,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -2962,6 +2966,7 @@ function renderVolontariPagina() {
       <div class="kpi"><span class="eyebrow">Attestati da rinnovare</span><b>${inScad.length}</b><small>scaduti o entro 60 giorni</small></div>
       <div class="kpi"><span class="eyebrow">Compleanni</span><b>${prossimi.length}</b><small>nei prossimi 30 giorni</small></div>
     </section>
+    ${pannelloPulizie()}
     ${prossimi.length ? `<div class="panel"><h3>Prossimi compleanni</h3>${prossimi.map(({ v, c }) => `<div class="todo-riga"><div>${c.data === TODAY ? "<b>Oggi</b>" : c.data === addDays(TODAY, 1) ? "<b>Domani</b>" : esc(fmtShort(c.data))} · ${esc(v.nome)} <span class="hint">compie ${c.anni} anni</span></div><div class="az"><button class="btn sm${c.data === TODAY ? " primary" : ""}" type="button" data-vauguri="${esc(v.id)}">Auguri</button></div></div>`).join("")}</div>` : ""}
     ${nuovo && att.some((v) => !v.data_nascita || (v.cellulare || "").replace(/\D/g, "").length < 8) ? `<div class="panel"><h3>Non possono ritrovare il link da soli</h3><p class="hint">Senza cellulare e data di nascita il volontario che perde il link deve chiederlo a te. Completa le schede:</p>${att.filter((v) => !v.data_nascita || (v.cellulare || "").replace(/\D/g, "").length < 8).map((v) => `<div class="todo-riga"><div>${esc(v.nome)} <span class="hint">manca ${[(v.cellulare || "").replace(/\D/g, "").length < 8 ? "cellulare" : "", !v.data_nascita ? "data di nascita" : ""].filter(Boolean).join(" e ")}</span></div><div class="az"><button class="btn sm" type="button" data-vedit="${esc(v.id)}">Completa</button></div></div>`).join("")}</div>` : ""}
     ${inScad.length ? `<div class="panel"><h3>Attestati antincendio da rinnovare</h3>${inScad.map((v) => `<div class="todo-riga"><div>${esc(v.nome)} ${pillAI(v)}</div><div class="az"><button class="btn sm" type="button" data-vedit="${esc(v.id)}">Aggiorna</button></div></div>`).join("")}</div>` : ""}
@@ -2970,6 +2975,7 @@ function renderVolontariPagina() {
       ${lista.map(riga).join("") || `<p class="hint">${S.volontari.length ? "Nessun volontario corrisponde alla ricerca." : "Nessun volontario ancora: aggiungili con «+ Nuovo volontario»."}</p>`}
     </div>`;
   $("#vol-nuovo").onclick = () => openVolontario(null);
+  collegaPulizie();
   $("#vol-q").oninput = (e) => { S.volQ = e.target.value; const pos = e.target.selectionStart; renderVolontariPagina(); const i = $("#vol-q"); i.focus(); i.setSelectionRange(pos, pos); };
   $("#vol-tutti").onchange = (e) => { S.volTutti = e.target.checked; renderVolontariPagina(); };
   el.querySelectorAll("[data-vedit]").forEach((b) => (b.onclick = () => openVolontario(S.volontari.find((v) => v.id === b.dataset.vedit))));
@@ -3052,6 +3058,27 @@ $("#volontario-form").addEventListener("submit", async (e) => {
   } catch (x) { $("#v-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
   btn.disabled = false;
 });
+
+/* ---------- gruppo pulizie: un link per tutti con l'uso della sala dall'ultima pulizia ---------- */
+const GIORNI_SETT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+const linkPulizie = () => new URL("modulo/pulizie.html?t=" + S.pulizie.token, location.href.split("#")[0]).href;
+function pannelloPulizie() {
+  if (!S.pulizie) return `<div class="panel"><h3>Gruppo pulizie</h3><p class="hint">Per il link del gruppo pulizie esegui in Supabase lo script <b>024_pulizie.sql</b> e ricarica la pagina.</p></div>`;
+  const ultime = S.pulizieFatte.slice(0, 4);
+  return `<div class="panel"><div class="section-head"><h3>Gruppo pulizie</h3><span class="hint">Un link per tutto il gruppo: vedono quando, quanto, dove e per cosa è stata usata la sala dall'ultima pulizia</span></div>
+    <div class="actions" style="margin:8px 0"><button class="btn primary sm" type="button" id="pul-manda">Manda il link al gruppo</button><a class="btn sm" href="${esc(linkPulizie())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
+      ${S.isAdmin ? `<label class="hint">Le pulizie si fanno il <select id="pul-giorno">${GIORNI_SETT.map((g, i) => `<option value="${i}"${i === S.pulizie.giorno ? " selected" : ""}>${g}</option>`).join("")}</select></label><button class="btn ghost sm" type="button" id="pul-rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
+    ${ultime.length ? ultime.map((f) => `<div class="todo-riga"><div><b>${esc(f.nome)}</b> <span class="hint">pulizie del ${esc(fmtShort(f.giorno))}</span>${f.note ? `<div>${esc(f.note)}</div>` : ""}</div></div>`).join("") : `<p class="hint">Quando finiscono, dal link segnano «pulizie fatte» con eventuali note (cosa manca, cosa non va): le vedi qui e in Oggi.</p>`}</div>`;
+}
+function collegaPulizie() {
+  const m = $("#pul-manda"); if (!m) return;
+  m.onclick = () => openCopyText([`🧹 Gruppo pulizie della Sala San Tommaso Moro`, `Qui trovate cosa è successo in sala dall'ultima pulizia: quando, per quanto, in quali spazi, per cosa e con quante persone.`, linkPulizie(), `Quando avete finito, toccate «Pulizie fatte» e scrivete se manca qualcosa. Grazie! 🙏`].join("\n"));
+  const g = $("#pul-giorno"); if (g) g.onchange = async () => { try { await run(sb.from("settings").update({ pulizie_giorno: +g.value }).eq("id", 1), `Pulizie il ${GIORNI_SETT[+g.value]}`); } catch (x) { toast(errText(x)); } };
+  const r = $("#pul-rinnova"); if (r) r.onclick = async () => {
+    if (!confirm("Il link vecchio smetterà di funzionare: dovrai mandare quello nuovo al gruppo. Rinnovare?")) return;
+    try { await run(sb.from("settings").update({ pulizie_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo al gruppo"); } catch (x) { toast(errText(x)); }
+  };
+}
 
 /* ---------- la serata: tutto quello che serve a chi apre la sala, su una pagina ---------- */
 const CAPIENZA = { galleria: "fino a 134 persone (solo galleria)", platea: "fino a 338 persone (platea)", tutta: "fino a 472 persone (platea e galleria)" };
@@ -3589,6 +3616,8 @@ function coseDiOggi() {
   righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
   S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
   S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
+  (S.pulizieFatte || []).filter((f) => f.creato.slice(0, 10) >= tra(-3)).forEach((f) => add(f.note ? "warn" : "info", `Pulizie fatte da ${f.nome}${f.note ? `: «${f.note}»` : ""}`, "#volontari"));
   // volontari: compleanni di oggi e domani, attestati antincendio da rinnovare
   S.volontari.filter((v) => v.attivo).forEach((v) => {
     const c = compleanno(v);
@@ -3657,6 +3686,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["024_pulizie.sql", "Link per il gruppo pulizie", k.has("pulizie_token")],
     ["023_tipo_spettacolo.sql", "Teatro, danza e incontri di Cinebot distinti dai film", S.films.length ? "cinebot_info" in S.films[0] : undefined, "Dopo lo script SQL ricopia anche lo script Google (versione 2026-11-02.1)"],
     ["022_eventi_della_sala.sql", "Eventi organizzati dalla Sala", S.bookings.length ? "della_sala" in S.bookings[0] : undefined],
     ["021_turni_recupero.sql", "I volontari ritrovano da soli il link dei turni", chk.recupero],
