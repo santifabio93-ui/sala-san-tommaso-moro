@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.23";
+const VERSIONE = "2026-11-01.24";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -427,6 +427,7 @@ function bookingCard(b, showDate) {
       <span class="pill ${b.stato}">${STATI[b.stato]}</span>
       ${ps ? `<span class="pill ${ps[0]}">${esc(ps[1])}</span>` : ""}
       ${b.comune && S.canWrite ? `<span class="pill comune">Comune</span>` : ""}
+      ${b.della_sala && S.canWrite ? `<span class="pill sala">Della Sala</span>` : ""}
       ${S.canWrite ? pillScheda(b) : ""}
       ${c.need && active(b) ? `<span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">Turni ${c.have}/${c.need}</span>` : ""}</div>
   </button>`;
@@ -457,14 +458,18 @@ function renderDay() {
 
 const FILTERS = [
   ["prossime", "Prossime", (b) => active(b) && b.data >= TODAY],
+  ["affitti", "Affitti", (b) => active(b) && b.data >= TODAY && !b.della_sala && !b.comune],
+  ["sala", "Della Sala", (b) => active(b) && b.data >= TODAY && b.della_sala],
   ["opzioni", "Da confermare", (b) => b.stato === "opzione" && b.data >= TODAY],
   ["dasaldare", "Da saldare", (b) => b.stato === "confermata" && residuo(b) > 0],
   ["passate", "Passate", (b) => active(b) && b.data < TODAY],
   ["annullate", "Annullate", (b) => b.stato === "annullata"],
   ["tutte", "Tutte", () => true],
 ];
+// eventi organizzati dalla Sala (aggiornamento 22)
+const dellaSalaAttivo = () => !S.bookings.length || "della_sala" in S.bookings[0];
 function renderList() {
-  $("#filters").innerHTML = FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.filter === k}">${l}<span class="c">${S.bookings.filter(f).length}</span></button>`).join("");
+  $("#filters").innerHTML = FILTERS.filter(([k]) => k !== "sala" || dellaSalaAttivo()).map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.filter === k}">${l}<span class="c">${S.bookings.filter(f).length}</span></button>`).join("");
   $("#filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.filter = b.dataset.f; renderList(); }));
   const f = FILTERS.find((x) => x[0] === S.filter)[2];
   const q = S.q.trim().toLowerCase();
@@ -689,6 +694,8 @@ function openBooking(b, date, prefill) {
   renderSlotEditor();
   $("#b-giornata").checked = !!v.giornata_intera;
   $("#b-comune").checked = !!v.comune;
+  $("#b-sala").checked = !!v.della_sala;
+  $("#b-sala-campo").hidden = !dellaSalaAttivo();
   hintComune();
   syncAllDay();
   $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
@@ -799,6 +806,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
   const rec = {
     titolo: g("titolo"), referente: g("referente"), tipo: g("tipo"), telefono: g("telefono"), email: g("email"),
     data: g("data"), giornata_intera: $("#b-giornata").checked, comune: $("#b-comune").checked,
+    ...(dellaSalaAttivo() && S.bookings.length ? { della_sala: $("#b-sala").checked } : {}),
     inizio: $("#b-giornata").checked ? "00:00" : g("inizio"), fine: $("#b-giornata").checked ? "23:59" : g("fine"),
     prezzo: Number(g("prezzo")) || 0, incassato: Number(g("incassato")) || 0, stato: g("stato"), note: g("note"),
     ...(S.tariffeDb ? { tariffa: $("#b-spazio").value || $("#b-pubblico").value ? { ...sceltaTariffa(), ...($("#b-pubblico").value ? { pubblico: $("#b-pubblico").value } : {}) } : null } : {}),
@@ -1587,7 +1595,7 @@ const linkScheda = (s) => new URL("modulo/compila.html?t=" + s.token, location.h
 const schedaDi = (b) => S.schede.filter((s) => s.booking_id === b.id).sort((a, c) => c.creato.localeCompare(a.creato))[0];
 const schedeDaVerificare = () => S.schede.filter((s) => s.stato === "compilata").length;
 // eventi per cui di solito serve la scheda: in arrivo, non ricorrenti, non del cinema della sala
-const serveScheda = (b) => active(b) && b.data >= TODAY && giorniA(b.data) <= 120 && !isRecurring(b) && !/cinema|proiezion|cineforum/i.test((b.tipo || "") + " " + b.titolo);
+const serveScheda = (b) => active(b) && !b.della_sala && b.data >= TODAY && giorniA(b.data) <= 120 && !isRecurring(b) && !/cinema|proiezion|cineforum/i.test((b.tipo || "") + " " + b.titolo);
 const STATI_SCHEDA = { da_inviare: "Da inviare", inviata: "Inviata", aperta: "Aperta", compilata: "Da verificare", approvata: "Approvata", respinta: "Da correggere", non_serve: "Non serve" };
 function pillScheda(b) {
   const s = schedaDi(b);
@@ -1649,6 +1657,7 @@ function renderSchede() {
     if (s && ["compilata", "approvata", "respinta"].includes(s.stato)) az.push(`<button class="btn ${s.stato === "compilata" ? "primary" : ""} sm" type="button" data-vedi="${esc(s.id)}">${s.stato === "compilata" ? "Verifica" : "Vedi risposte"}</button>`);
     if (!s || !["approvata", "non_serve", "compilata"].includes(s.stato)) az.push(`<button class="btn ghost sm" type="button" data-nonserve="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Non serve</button>`);
     if (s && s.stato === "non_serve") az.push(`<button class="btn ghost sm" type="button" data-riattiva="${esc(s.id)}">Serve</button>`);
+    if (b && !s && dellaSalaAttivo()) az.push(`<button class="btn ghost sm" type="button" data-dellasala="${esc(b.id)}" title="Evento organizzato dalla Sala: non serve la scheda">È della Sala</button>`);
     return `<article class="panel sc-row ${r.urgente ? "sc-urgente" : ""}">
       <div class="quando">${r.data ? `<b>${esc(fmtShort(r.data))}</b><span class="tra ${r.urgente ? "urg" : ""}">${r.gg === 0 ? "oggi" : r.gg > 0 ? `tra ${r.gg} giorni` : `${-r.gg} giorni fa`}</span>` : `<span>data da definire</span>`}</div>
       <div><div class="t">${esc(titolo)}</div><div class="m">${esc([chi, s && s.firma_nome ? `firmata da ${s.firma_nome}` : "", s && s.sicurezza ? { compatibile: "sicurezza: compatibile", condizioni: "sicurezza: con condizioni", non_compatibile: "sicurezza: non compatibile" }[s.sicurezza] : ""].filter(Boolean).join(" · "))}</div><div class="tappe">${tappe}</div></div>
@@ -1666,6 +1675,10 @@ function renderSchede() {
       if (x.dataset.sid) await run(sb.from("schede").update({ stato: "non_serve", aggiornato: new Date().toISOString() }).eq("id", x.dataset.sid), "Segnata: la scheda non serve");
       else { const b = S.bookings.find((y) => y.id === x.dataset.nonserve); await run(sb.from("schede").insert({ booking_id: b.id, titolo: b.titolo, data_evento: b.data, destinatario: b.referente || "", stato: "non_serve" }), "Segnata: la scheda non serve"); }
     } catch (e) { x.disabled = false; toast(errText(e)); }
+  }));
+  L.querySelectorAll("[data-dellasala]").forEach((x) => (x.onclick = async () => {
+    x.disabled = true;
+    try { await run(sb.from("bookings").update({ della_sala: true }).eq("id", x.dataset.dellasala), "Segnato come evento della Sala: la scheda non serve"); } catch (e) { x.disabled = false; toast(errText(e)); }
   }));
   L.querySelectorAll("[data-riattiva]").forEach((x) => (x.onclick = async () => { try { await run(sb.from("schede").update({ stato: "da_inviare" }).eq("id", x.dataset.riattiva), "La scheda torna da inviare"); } catch (e) { toast(errText(e)); } }));
 }
@@ -3572,6 +3585,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["022_eventi_della_sala.sql", "Eventi organizzati dalla Sala", S.bookings.length ? "della_sala" in S.bookings[0] : undefined],
     ["021_turni_recupero.sql", "I volontari ritrovano da soli il link dei turni", chk.recupero],
     ["019_volontari_dati.sql", "Compleanni e attestati antincendio dei volontari", !manca(e2.volontari) && !manca(e2.volDati)],
     ["018_calendario_app.sql", "Secondo calendario (in standby, facoltativo)", chk.calApp, "Serve solo se attivi il calendario dell'app", true],
@@ -3648,7 +3662,7 @@ function datiResoconto(mese) {
   const prossimo = iso(new Date(y, m, 1)).slice(0, 7);
   const c1 = S.c1.filter((c) => nel(c.data)), c1Prima = S.c1.filter((c) => c.data.startsWith(primaAnno));
   const eventi = S.bookings.filter((b) => active(b) && nel(b.data)).sort(byWhen);
-  const affitti = eventi.filter((b) => b.prezzo > 0 && !b.comune), comune = eventi.filter((b) => b.comune);
+  const affitti = eventi.filter((b) => b.prezzo > 0 && !b.comune && !b.della_sala), comune = eventi.filter((b) => b.comune), sala = eventi.filter((b) => b.della_sala);
   const giorni = new Set([...eventi.map((b) => b.data), ...S.proiezioni.filter((p) => nel(p.data)).map((p) => p.data), ...c1.map((c) => c.data)]);
   // turni
   const conTurni = eventi.filter((b) => turni(b).length), posti = conTurni.reduce((s, b) => s + coverage(b).need, 0), coperti = conTurni.reduce((s, b) => s + coverage(b).have, 0);
@@ -3665,7 +3679,7 @@ function datiResoconto(mese) {
     ...S.programmazione.filter((p) => p.data.startsWith(prossimo)).map((p) => p.titolo)])];
   const eventiProssimi = S.bookings.filter((b) => active(b) && b.data.startsWith(prossimo)).sort(byWhen);
   return {
-    mese, prossimo, giorni: giorni.size, eventi, affitti, comune, c1, film, posti, coperti, persone: persone.size,
+    mese, prossimo, giorni: giorni.size, eventi, affitti, comune, sala, c1, film, posti, coperti, persone: persone.size,
     spettatori: c1.reduce((s, c) => s + c.spettatori, 0), incasso: c1.reduce((s, c) => s + c.lordo, 0),
     spettatoriPrima: c1Prima.reduce((s, c) => s + c.spettatori, 0), proiezioniPrima: c1Prima.length,
     entrate: sommaE(pn), uscite: sommaU(pn), risultatoAnno: r2(sommaE(pnAnno) - sommaU(pnAnno)),
@@ -3679,7 +3693,7 @@ const nomeMese = (mese) => parse(mese + "-01").toLocaleDateString("it-IT", { mon
 function testoResoconto(d, note) {
   const r = [`Sala San Tommaso Moro · resoconto di ${nomeMese(d.mese)}`, "",
     `In sintesi: ${d.giorni} giornate di apertura, ${d.c1.length} proiezioni con ${d.spettatori} spettatori (${money(r2(d.incasso))} di biglietti)${d.proiezioniPrima ? `; a ${nomeMese(d.mese).split(" ")[0]} dell'anno scorso ${d.spettatoriPrima} spettatori in ${d.proiezioniPrima} proiezioni` : ""}.`,
-    `${d.eventi.length === 1 ? "Evento" : "Eventi"}: ${d.eventi.length}${d.affitti.length ? `, di cui ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"} (${money(d.affitti.reduce((s, b) => s + b.prezzo, 0))})` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.`,
+    `${d.eventi.length === 1 ? "Evento" : "Eventi"}: ${d.eventi.length}${d.affitti.length ? `, di cui ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"} (${money(d.affitti.reduce((s, b) => s + b.prezzo, 0))})` : ""}${d.sala.length ? `, ${d.sala.length} ${d.sala.length === 1 ? "organizzato" : "organizzati"} dalla Sala` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.`,
     d.posti ? `Volontari: ${d.coperti} posti coperti su ${d.posti} nei turni, ${d.persone} persone diverse.` : "",
     d.film.length ? `Film più visti: ${d.film.slice(0, 3).map((f) => `${f.titolo} (${f.sp})`).join(", ")}.` : "",
     S.isAdmin && (d.entrate || d.uscite) ? `Conti del mese (prima nota): entrate ${money(d.entrate)}, uscite ${money(d.uscite)}, saldo ${money(r2(d.entrate - d.uscite))}; risultato da inizio anno ${money(d.risultatoAnno)}.` : "",
@@ -3710,7 +3724,7 @@ function renderResoconto() {
       <div class="reso-grid">
         <div class="panel"><h3>Film del mese</h3>${d.film.length ? `<table><tbody>${d.film.slice(0, 8).map((f) => `<tr><td>${esc(f.titolo)}</td><td class="n">${f.sp} spett.</td><td class="n">${f.n} pr.</td><td class="n">${money(r2(f.lordo))}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Nessun borderò C1 per questo mese.</p>`}</div>
         <div class="panel"><h3>Eventi e volontari</h3>
-          <p>${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"}${d.affitti.length ? `, ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.</p>
+          <p>${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"}${d.affitti.length ? `, ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}` : ""}${d.sala.length ? `, ${d.sala.length} della Sala` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.</p>
           ${d.posti ? `<p>Turni: <b>${d.coperti}</b> posti coperti su ${d.posti} (${Math.round(d.coperti / d.posti * 100)}%), <b>${d.persone}</b> volontari diversi.</p>` : ""}
           ${d.eventi.length ? `<ul class="reso-lista">${d.eventi.slice(0, 12).map((b) => `<li>${esc(fmtShort(b.data))} · ${esc(b.titolo)}</li>`).join("")}</ul>` : ""}</div>
         ${S.isAdmin ? `<div class="panel"><h3>Conti del mese</h3>${d.entrate || d.uscite ? `<p>Entrate <b>${money(d.entrate)}</b> · uscite <b>${money(d.uscite)}</b> · saldo <b class="${d.entrate - d.uscite < 0 ? "neg" : ""}">${money(r2(d.entrate - d.uscite))}</b></p><p>Risultato da inizio anno: <b class="${d.risultatoAnno < 0 ? "neg" : ""}">${money(d.risultatoAnno)}</b> (prima nota, competenza ${mese.slice(0, 4)}).</p>` : `<p class="hint">Nessun movimento in prima nota per questo mese.</p>`}</div>` : ""}

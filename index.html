@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.23">
+<link rel="stylesheet" href="style.css?v=2026-11-01.24">
 </head>
 <body>
 
@@ -310,6 +310,7 @@
       <div class="field t"><label for="b-inizio">Dalle</label><input id="b-inizio" type="time" required value="16:00"></div>
       <div class="field t"><label for="b-fine">Alle</label><input id="b-fine" type="time" required value="20:00"></div>
       <div class="field"><label class="check"><input type="checkbox" id="b-giornata"> Tutto il giorno</label><div id="b-avail"></div></div>
+      <div class="field" id="b-sala-campo"><label class="check"><input type="checkbox" id="b-sala"> Organizzato dalla Sala San Tommaso Moro</label><span class="hint">Non è un affitto: non serve la scheda di richiesta.</span></div>
       <div class="field"><label class="check"><input type="checkbox" id="b-comune"> Serata del Comune (convenzione)</label><span class="hint" id="b-comune-hint"></span></div>
       <div class="field tariffa"><label for="b-spazio">Tariffa</label>
         <div class="tariffa-scelte"><select id="b-spazio"><option value="">Spazio…</option><option value="galleria">Galleria (fino a 134)</option><option value="platea">Platea (fino a 338)</option><option value="tutta">Platea e galleria (fino a 472)</option></select>
@@ -628,7 +629,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.23"></script>
-<script type="module" src="app.js?v=2026-11-01.23"></script>
+<script src="config.js?v=2026-11-01.24"></script>
+<script type="module" src="app.js?v=2026-11-01.24"></script>
 </body>
 </html>

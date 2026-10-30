@@ -301,6 +301,13 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Eventi organizzati dalla Sala
+
+Nella prenotazione la spunta **«Organizzato dalla Sala San Tommaso Moro»** distingue gli eventi della Sala dagli
+affitti (serve lo script `022_eventi_della_sala.sql`). Per questi eventi non si chiede la scheda di richiesta; in
+Affitti → Schede il bottone «È della Sala» li segna con un tocco. In Prenotazioni i filtri «Affitti» e «Della Sala»
+li tengono separati, e il resoconto del mese li conta a parte.
+
 ## Modificare gli eventi del calendario
 
 Tutti i dettagli di una prenotazione si possono cambiare dall'app, anche per gli eventi che arrivano dal Google
