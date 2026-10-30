@@ -429,8 +429,8 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
 
 - **Com'è fatta la pagina**: in alto il benvenuto con il prossimo turno («tra 3 giorni») e i bottoni rapidi
   (contapersone, badge, calendario); poi «I tuoi turni», il filtro «Dove servo / Tutti», la striscia dei giorni (pallino
-  rosso dove mancano persone) e un riquadro per evento con le fasce: i posti sono cerchietti (iniziali di chi c'è,
-  tratteggiati quelli liberi), «Urgente» se mancano persone entro 3 giorni. «Ci sono» si aggiorna subito con «Annulla»
+  rosso dove mancano persone) e un riquadro per evento con le fasce: i posti mostrano il nome completo di chi c'è
+  («libero» tratteggiato dove manca qualcuno), «Urgente» se mancano persone entro 3 giorni. «Ci sono» si aggiorna subito con «Annulla»
   nel messaggio; per togliersi si tocca «✓ Ci sei» e poi «Toglimi».
 
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.

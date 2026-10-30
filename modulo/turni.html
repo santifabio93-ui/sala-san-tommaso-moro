@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.47">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.48">
 <style>
 .wrap { max-width: 640px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -70,9 +70,9 @@
 .f-ora { text-align: center; font-variant-numeric: tabular-nums } .f-ora b { display: block } .f-ora span { font-size: .78rem; color: var(--muted) }
 .f-n { font-weight: 700; font-size: .92rem }
 .avs { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 3px }
-.av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 800; color: #fff; background: hsl(var(--h) 45% 42%) }
+.av { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 11px; border-radius: 999px; font-size: .84rem; font-weight: 700; color: #fff; background: hsl(var(--h) 45% 40%); line-height: 1.2 }
 .av.io { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent) }
-.av.vuoto { background: transparent; border: 2px dashed color-mix(in oklab, var(--muted) 55%, transparent) }
+.av.vuoto { background: transparent; color: var(--muted); font-weight: 600; border: 2px dashed color-mix(in oklab, var(--muted) 55%, transparent); padding: 1px 11px }
 .f-s { font-size: .78rem; font-weight: 700 } .f-s.manca { color: var(--opz-fg) } .f-s.ok { color: var(--ok-fg) }
 .tb { border: 0; border-radius: 14px; padding: 12px 14px; font: inherit; font-weight: 800; cursor: pointer; white-space: nowrap; touch-action: manipulation }
 .tb.ci-sono { background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 85%, #fff), var(--accent)); color: #fff; box-shadow: 0 4px 12px color-mix(in oklab, var(--accent) 30%, transparent) }
@@ -94,7 +94,7 @@
   <div id="app"><p class="muted">Caricamento dei turni…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.47"></script>
-<script type="module" src="turni.js?v=2026-11-01.47"></script>
+<script src="../config.js?v=2026-11-01.48"></script>
+<script type="module" src="turni.js?v=2026-11-01.48"></script>
 </body>
 </html>

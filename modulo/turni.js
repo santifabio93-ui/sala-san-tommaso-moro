@@ -124,8 +124,7 @@ async function mostraBadge() {
   } catch (e) { toast("Non riesco a mostrare il badge: controlla la connessione"); }
 }
 
-// colore e iniziali di una persona, sempre uguali per lo stesso nome
-const iniziali = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((p) => p[0] || "").join("").toUpperCase();
+// colore di una persona, sempre uguale per lo stesso nome
 const tinta = (n) => { let h = 0; for (const c of String(n)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const tra = (d) => { const g = Math.round((new Date(d + "T12:00:00") - new Date(new Date().toDateString() + " 12:00")) / 864e5); return g <= 0 ? "oggi" : g === 1 ? "domani" : `tra ${g} giorni`; };
 const giornoBreve = (d) => new Date(d + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
@@ -147,8 +146,8 @@ function disegna() {
   }
   const prossimo = mie[0];
   const posti = (f) => Array.from({ length: Math.max(f.posti, f.nomi.length) }, (_, i) => f.nomi[i]
-    ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}" style="--h:${tinta(f.nomi[i])}" title="${esc(f.nomi[i])}">${esc(iniziali(f.nomi[i]))}</span>`
-    : `<span class="av vuoto" title="posto libero"></span>`).join("");
+    ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}" style="--h:${tinta(f.nomi[i])}">${esc(f.nomi[i])}</span>`
+    : `<span class="av vuoto">libero</span>`).join("");
   const azione = (f) => {
     const k = fasce.indexOf(f);
     if (f.mio) return conferma === k ? `<button class="tb togli" type="button" data-k="${k}" data-si="0">Toglimi</button>` : `<button class="tb ci-sei" type="button" data-chiedi="${k}">✓ Ci sei</button>`;
