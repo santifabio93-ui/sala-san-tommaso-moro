@@ -432,6 +432,8 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
   rosso dove mancano persone) e un riquadro per evento con le fasce: i posti mostrano il nome completo di chi c'è
   («libero» tratteggiato dove manca qualcuno), «Urgente» se mancano persone entro 3 giorni. «Ci sono» si aggiorna subito con «Annulla»
   nel messaggio; per togliersi si tocca «✓ Ci sei» e poi «Toglimi».
+  Anche quando una fascia è al completo «Ci sono» resta: chi si aggiunge compare con il suo nome come gli altri
+  (script `031_turni_oltre.sql`, al massimo 10 persone oltre i posti).
 
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.
 

@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.49";
+const VERSIONE = "2026-11-01.50";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1001,7 +1001,7 @@ function shiftEvent(b) {
     if (isOpen) action = `<form class="signup" novalidate><input aria-label="Nome del volontario" placeholder="Nome e cognome" maxlength="60"><button class="btn primary sm" type="submit">Conferma</button><button class="btn sm" type="button" data-cancel>Annulla</button></form>`;
     else if (b.data >= TODAY && (S.canWrite || !amIn)) {
       const full = ppl.length >= n;
-      const label = S.canWrite ? (full ? "+ Riserva" : "+ Aggiungi nome") : (full ? "+ Mi segno come riserva" : "+ Mi segno");
+      const label = S.canWrite ? "+ Aggiungi nome" : full ? "+ Mi segno anch'io" : "+ Mi segno";
       action = `<button class="btn sm${full ? "" : " primary"}" type="button" data-join="${esc(b.id)}|${esc(t.id)}">${label}</button>`;
     }
     const miss = n - ppl.length;
@@ -4005,6 +4005,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["031_turni_oltre.sql", "Ci si può segnare anche nelle fasce al completo", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],
     ["029_foglietto.sql", "Email del giovedì per il foglietto parrocchiale", k.has("foglietto_attivo"), "Dopo lo script SQL ricopia lo script Google (2026-11-02.2) e il file appsscript.json, e aggiungi «+foglietto» alla MODALITA"],
     ["028_cassa_tessera.sql", "Cassa con la tessera sanitaria", S.cassaNomi, "Serve solo se usi il lettore di tessere in biglietteria", true],

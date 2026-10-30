@@ -151,7 +151,7 @@ function disegna() {
   const azione = (f) => {
     const k = fasce.indexOf(f);
     if (f.mio) return conferma === k ? `<button class="tb togli" type="button" data-k="${k}" data-si="0">Toglimi</button>` : `<button class="tb ci-sei" type="button" data-chiedi="${k}">✓ Ci sei</button>`;
-    return manca(f) ? `<button class="tb ci-sono" type="button" data-k="${k}" data-si="1">Ci sono</button>` : `<span class="tb pieno">Completo</span>`;
+    return `<button class="tb ci-sono${manca(f) ? "" : " anche"}" type="button" data-k="${k}" data-si="1">Ci sono</button>`;
   };
   mostra(`
     <section class="ciao">
