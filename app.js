@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.14";
+const VERSIONE = "2026-11-01.15";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -166,7 +166,7 @@ async function loadAll() {
       S.tariffeDb = "tariffe" in st.data; // aggiornamento 13
       S.preventivoDb = "preventivo" in st.data; // aggiornamento 15
       S.preventivo = st.data.preventivo || {};
-      S.sasCfg = { nome: st.data.sas_nome || "", email: st.data.sas_email || "" };
+      S.sasContatti = Array.isArray(st.data.sas_contatti) ? st.data.sas_contatti : [];
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
@@ -3024,7 +3024,9 @@ function renderSas() {
       <div class="hint">${esc(dateTxt(r))}${r.motivo ? ` · ${esc(r.motivo)}` : ""}${r.biglietto ? "" : " · ingresso libero"}</div>
       ${r.stato === "confermata" ? `<div>${[r.minimo ? `minimo ${money(r.minimo)}` : "", r.percentuale ? `${r.percentuale}%` : "", r.supporto, r.agenzia && `agenzia ${esc(r.agenzia)}`, r.distributore && esc(r.distributore)].filter(Boolean).join(" · ")}</div>` : ""}
       ${r.risposta ? `<div class="hint">${esc(r.risposta)}</div>` : ""}</div><div class="az">${extra}</div></div>`;
-  const cfg = S.sasCfg || { nome: "", email: "" };
+  const contatti = S.sasContatti || [];
+  S.sasA = (S.sasA || []).filter((e) => contatti.some((c) => c.email === e));
+  if (!S.sasA.length && contatti.length) S.sasA = [contatti[0].email];
   el.innerHTML = `
     <div class="panel promemoria"><div class="section-head"><h3>Nuova richiesta</h3><span class="hint">Cerca il titolo nel catalogo del SAS, nei film di Cinebot o in quelli già proiettati; se non c'è, scrivilo</span></div>
       <form id="sas-form" class="form" novalidate>
@@ -3039,7 +3041,10 @@ function renderSas() {
       </form></div>
     <div class="panel promemoria"><div class="section-head"><h3>Da inviare (${bozze.length})</h3><span class="hint">Più film vanno in un'unica email: il SAS chiede di raggruppare le richieste</span></div>
       ${bozze.map((r) => riga(r, `${vicine(r) ? '<span class="pill acconto" title="Alcune agenzie rispondono anche dopo 10 giorni">data vicina</span>' : ""}<button class="btn ghost sm" type="button" data-sas-del="${esc(r.id)}">Togli</button>`)).join("") || `<p class="hint">Nessun film da chiedere. Aggiungili qui sopra.</p>`}
-      <div class="sas-dest"><span class="hint">Destinatario</span><input id="sas-nome" value="${esc(cfg.nome)}" placeholder="Nome (es. Christian)" aria-label="Nome del referente SAS"><input id="sas-email" type="email" value="${esc(cfg.email)}" placeholder="Email del SAS" aria-label="Email del SAS"><button class="btn sm" type="button" id="sas-dest-salva">Salva</button></div>
+      <div class="sas-dest"><span class="hint">Scrivi a</span>${contatti.map((c) => `<label class="check"><input type="checkbox" data-sas-a="${esc(c.email)}"${S.sasA.includes(c.email) ? " checked" : ""}> ${esc(c.nome)}</label>`).join("") || `<span class="hint">aggiungi qui sotto i referenti del SAS</span>`}</div>
+      <details class="sas-contatti"><summary class="hint">Referenti del SAS (${contatti.length})</summary>
+        ${contatti.map((c, i) => `<div class="sas-dest"><b>${esc(c.nome)}</b> <span class="hint">${esc(c.email)}</span><button class="btn ghost sm" type="button" data-sas-cdel="${i}" aria-label="Togli ${esc(c.nome)}">✕</button></div>`).join("")}
+        <div class="sas-dest"><input id="sas-nome" placeholder="Nome (es. Arianna)" aria-label="Nome del referente"><input id="sas-email" type="email" placeholder="Email" aria-label="Email del referente"><button class="btn sm" type="button" id="sas-dest-salva">Aggiungi</button></div></details>
       <div class="actions"><button class="btn primary" type="button" id="sas-email-btn"${bozze.length ? "" : " disabled"}>Prepara l'email${bozze.length > 1 ? ` (${bozze.length} film)` : ""}</button></div></div>
     <div class="panel promemoria"><div class="section-head"><h3>In attesa di risposta (${attesa.length})</h3><span class="hint">Quando il SAS risponde, segna le condizioni: servono per «Conviene?» e per i conti</span></div>
       ${attesa.map((r) => riga(r, `<span class="hint">inviata ${esc(ago(r.inviata_il))}</span><button class="btn sm" type="button" data-sas-ris="${esc(r.id)}">Segna la risposta</button>`)).join("") || `<p class="hint">Nessuna richiesta in attesa.</p>`}</div>
@@ -3087,7 +3092,15 @@ function renderSas() {
     try { S.sasDate = null; await run(sb.from("richieste_film").insert(rec), `«${titolo}» aggiunto: puoi aggiungerne altri prima di preparare l'email`); } catch (x) { toast(errText(x)); }
   };
   el.querySelectorAll("[data-sas-del]").forEach((b) => (b.onclick = async () => { try { await run(sb.from("richieste_film").delete().eq("id", b.dataset.sasDel), "Tolto dalla richiesta"); } catch (x) { toast(errText(x)); } }));
-  $("#sas-dest-salva").onclick = async () => { try { await run(sb.from("settings").update({ sas_nome: $("#sas-nome").value.trim(), sas_email: $("#sas-email").value.trim() }).eq("id", 1), "Destinatario salvato"); } catch (x) { toast(errText(x)); } };
+  const salvaContatti = async (lista, msg) => { try { await run(sb.from("settings").update({ sas_contatti: lista }).eq("id", 1), msg); } catch (x) { toast(errText(x)); } };
+  $("#sas-dest-salva").onclick = () => {
+    const nome = $("#sas-nome").value.trim(), email = $("#sas-email").value.trim().toLowerCase();
+    if (!nome || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Scrivi nome ed email del referente"); return; }
+    if (contatti.some((c) => c.email === email)) { toast("Questa email c'è già"); return; }
+    salvaContatti([...contatti, { nome, email }], `${nome} aggiunto ai referenti`);
+  };
+  el.querySelectorAll("[data-sas-cdel]").forEach((b) => (b.onclick = () => salvaContatti(contatti.filter((_, i) => i !== +b.dataset.sasCdel), "Referente tolto")));
+  el.querySelectorAll("[data-sas-a]").forEach((c) => (c.onchange = () => { S.sasA = [...el.querySelectorAll("[data-sas-a]:checked")].map((x) => x.dataset.sasA); }));
   $("#sas-email-btn").onclick = () => apriEmailSas(bozze);
   el.querySelectorAll("[data-sas-ris]").forEach((b) => (b.onclick = () => apriRispostaSas(S.richiesteFilm.find((r) => r.id === b.dataset.sasRis))));
   $("#sas-importa").onclick = async () => {
@@ -3107,23 +3120,24 @@ function renderSas() {
     try { await run(sb.from("catalogo_film").insert(da), `${da.length} film aggiunti al catalogo`); } catch (x) { toast(errText(x)); }
   };
 }
+const destinatariSas = () => (S.sasContatti || []).filter((c) => (S.sasA || []).includes(c.email));
 function testoEmailSas(lista) {
-  const nome = ((S.sasCfg && S.sasCfg.nome) || "").split(" ")[0], firma = (S.me.nome || "").split(" ")[0];
+  const nomi = destinatariSas().map((c) => c.nome.split(" ")[0]), nome = nomi.length > 1 ? nomi.slice(0, -1).join(", ") + " e " + nomi[nomi.length - 1] : nomi[0] || "", firma = (S.me.nome || "").split(" ")[0];
   const data = (d) => `${parse(d.data).toLocaleDateString("it-IT", { weekday: "long" })} ${parse(d.data).toLocaleDateString("it-IT")}`;
   const tuttiBiglietto = lista.every((r) => r.biglietto), nessuno = lista.every((r) => !r.biglietto);
   const righe = lista.map((r) => {
     const chi = [r.anno, r.regista && `regia di ${r.regista}`].filter(Boolean).join(", ");
     return `- «${r.titolo}»${chi ? ` (${chi})` : ""}: ${(r.date || []).map((d) => `${data(d)}, ${d.fasce}`).join("; ")}${r.motivo && r.motivo !== "Altro" ? ` — ${r.motivo}` : ""}${!tuttiBiglietto && !nessuno ? (r.biglietto ? ", con biglietto" : ", ingresso libero") : ""}${r.note ? ` (${r.note})` : ""}`;
   });
-  return [`Ciao${nome ? " " + nome : ""},`, `${lista.length > 1 ? "ti chiedo questi film" : "ti chiedo questo film"} per la Sala San Tommaso Moro di Piombino Dese:`, ...righe, "",
-    tuttiBiglietto ? `Ingresso con biglietto.` : nessuno ? "Ingresso libero." : "", "Mi fai sapere disponibilità, condizioni e supporto (DVD o link)?", "", "Grazie", firma || ""].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").trim();
+  return [`Ciao${nome ? " " + nome : ""},`, `${nomi.length > 1 ? "vi chiedo" : "ti chiedo"} ${lista.length > 1 ? "questi film" : "questo film"} per la Sala San Tommaso Moro di Piombino Dese:`, ...righe, "",
+    tuttiBiglietto ? `Ingresso con biglietto.` : nessuno ? "Ingresso libero." : "", `Mi ${nomi.length > 1 ? "fate" : "fai"} sapere disponibilità, condizioni e supporto (DVD o link)?`, "", "Grazie", firma || ""].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").trim();
 }
 function apriEmailSas(lista) {
   if (!lista.length) return;
-  const cfg = S.sasCfg || {}, testo = testoEmailSas(lista), oggetto = lista.length > 1 ? `Richiesta film - Sala San Tommaso Moro` : `Richiesta film «${lista[0].titolo}» - Sala San Tommaso Moro`;
+  const a = destinatariSas().map((c) => c.email).join(","), testo = testoEmailSas(lista), oggetto = lista.length > 1 ? `Richiesta film - Sala San Tommaso Moro` : `Richiesta film «${lista[0].titolo}» - Sala San Tommaso Moro`;
   openCopyText(testo);
   // pulsante per aprire direttamente la bozza in Gmail; aprire il messaggio vale come invio
-  $("#copy-status").innerHTML = `<a class="btn sm" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cfg.email || "")}&su=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Apri in Gmail</a> <a class="btn ghost sm" href="mailto:${encodeURIComponent(cfg.email || "")}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Altra app di posta</a>`;
+  $("#copy-status").innerHTML = `<a class="btn sm" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(a)}&su=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Apri in Gmail</a> <a class="btn ghost sm" href="mailto:${a}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Altra app di posta</a>`;
   const ids = lista.map((r) => r.id);
   sb.from("richieste_film").update({ stato: "inviata", inviata_il: new Date().toISOString(), aggiornato: new Date().toISOString() }).in("id", ids).then(({ error }) => { if (error) toast(errText(error)); else loadAll(); });
 }

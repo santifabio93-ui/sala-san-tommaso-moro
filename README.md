@@ -150,7 +150,8 @@ tra quelli già proiettati, oppure lo si scrive; si indicano date, pomeriggio o 
 ingresso libero e note. «Prepara l'email» raccoglie tutti i film da chiedere in un'unica email (come chiede il SAS),
 da aprire in Gmail o copiare; la richiesta passa «in attesa di risposta». Con «Segna la risposta» si salvano
 esito, supporto, minimo garantito, percentuale, agenzia e distributore: «Conviene?» usa queste condizioni.
-Nome ed email del referente SAS si salvano nel database, non nel codice.
+I referenti del SAS (nome ed email) si aggiungono nella stessa pagina e per ogni email si sceglie a chi scrivere;
+restano nel database, non nel codice.
 
 ## Incassi C1
 Esegui `supabase/006_c1.sql` nel SQL Editor (si può rieseguire). Con `+c1` nella proprietà `MODALITA` dello script Google

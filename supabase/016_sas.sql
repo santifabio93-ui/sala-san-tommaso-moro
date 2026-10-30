@@ -49,9 +49,8 @@ create policy "richieste film: staff" on public.richieste_film
   for all using (public.my_role() in ('admin', 'coordinatore'))
   with check (public.my_role() in ('admin', 'coordinatore'));
 
--- a chi si scrivono le richieste
-alter table public.settings add column if not exists sas_nome text not null default '';
-alter table public.settings add column if not exists sas_email text not null default '';
+-- a chi si scrivono le richieste: i referenti del SAS, [{ "nome": "…", "email": "…" }]
+alter table public.settings add column if not exists sas_contatti jsonb not null default '[]'::jsonb;
 
 do $$
 begin
