@@ -428,7 +428,7 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
   un turno, va cancellato anche dal calendario.
 
 - **Com'è fatta la pagina**: in alto il benvenuto con il prossimo turno («tra 3 giorni») e i bottoni rapidi
-  (contapersone, badge, calendario); poi «I tuoi turni», il filtro «Dove servo / Tutti», la striscia dei giorni (pallino
+  (contapersone, badge, calendario); poi «I tuoi turni» (schede da scorrere a destra e sinistra), il filtro «Dove servo / Tutti», la striscia dei giorni (pallino
   rosso dove mancano persone) e un riquadro per evento con le fasce: i posti mostrano il nome completo di chi c'è
   («libero» tratteggiato dove manca qualcuno), «Urgente» se mancano persone entro 3 giorni. «Ci sono» si aggiorna subito con «Annulla»
   nel messaggio; per togliersi si tocca «✓ Ci sei» e poi «Toglimi».

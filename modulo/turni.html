@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.48">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.49">
 <style>
 .wrap { max-width: 640px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -45,9 +45,12 @@
 .ciao p { margin: 0; color: rgba(244,240,230,.9) } .ciao p b { color: #E9CF7E }
 .ciao-az { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px }
 .pill-az { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: #fff; font: inherit; font-weight: 700; font-size: .9rem; text-decoration: none; cursor: pointer }
-.miei { margin-top: 16px } .miei h3 { margin: 0 0 8px }
+.miei { margin-top: 16px } .miei h3 { margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px }
+.miei-fila { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; margin-inline: -16px; padding: 2px 16px 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch }
+.miei-fila::-webkit-scrollbar { display: none }
+.miei-fila .mio { flex: 0 0 min(84%, 360px); scroll-snap-align: start }
+.miei-fila .mio:only-child { flex-basis: 100% }
 .mio { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; border-radius: 16px; background: var(--accent-soft); border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent) }
-.mio + .mio { margin-top: 8px }
 .mio-q { text-align: center; background: var(--surface); border-radius: 12px; padding: 8px 4px } .mio-q b { display: block; font-size: .92rem } .mio-q span { font-size: .75rem; color: var(--accent); font-weight: 700 }
 .mio-c .t { font-weight: 800 }
 .filtri { display: flex; gap: 6px; margin: 18px 0 6px; background: var(--sunk); padding: 4px; border-radius: 999px; width: fit-content }
@@ -94,7 +97,7 @@
   <div id="app"><p class="muted">Caricamento dei turni…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.48"></script>
-<script type="module" src="turni.js?v=2026-11-01.48"></script>
+<script src="../config.js?v=2026-11-01.49"></script>
+<script type="module" src="turni.js?v=2026-11-01.49"></script>
 </body>
 </html>

@@ -164,10 +164,10 @@ function disegna() {
       </div>
     </section>
     ${salvaLink()}
-    ${mie.length ? `<section class="miei"><h3>I tuoi turni</h3>${mie.map((f) => { const k = fasce.indexOf(f), altri = f.nomi.filter((n) => n !== io);
+    ${mie.length ? `<section class="miei"><h3>I tuoi turni ${mie.length > 1 ? `<span class="hint">${mie.length} · scorri →</span>` : ""}</h3><div class="miei-fila">${mie.map((f) => { const k = fasce.indexOf(f), altri = f.nomi.filter((n) => n !== io);
       return `<div class="mio"><div class="mio-q"><b>${esc(giornoBreve(f.data))}</b><span>${esc(tra(f.data))}</span></div>
         <div class="mio-c"><div class="t">${esc(f.titolo)}</div><div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}${altri.length ? ` · con ${esc(altri.join(", "))}` : ""}</div>
-          ${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}</div></div>`; }).join("")}</section>` : ""}
+          ${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}</div></div>`; }).join("")}</div></section>` : ""}
     <div class="filtri"><button type="button" data-filtro="servo" class="${filtro === "servo" ? "on" : ""}">Dove servo <span>${servono.length}</span></button><button type="button" data-filtro="tutti" class="${filtro === "tutti" ? "on" : ""}">Tutti <span>${fasce.length}</span></button></div>
     ${giorni.length > 1 ? `<nav class="giorni-strip" aria-label="Giorni">${giorni.map((g) => { const tutte = g.eventi.flatMap((e) => e.fasce);
       return `<a href="#g-${g.data}" class="${tutte.some((f) => f.mio) ? "c-me" : ""}"><small>${esc(new Date(g.data + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short" }))}</small><b>${+g.data.slice(8)}</b>${tutte.some((f) => manca(f) && !f.mio) ? `<i class="punto"></i>` : ""}</a>`; }).join("")}</nav>` : ""}
