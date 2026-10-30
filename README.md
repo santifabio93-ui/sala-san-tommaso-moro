@@ -200,6 +200,12 @@ scelgono spazio e supplementi e l'app calcola il prezzo; se c'è la scheda dell'
 base al pubblico previsto. Esegui `supabase/013_tariffe.sql` per poter cambiare le cifre da Economia → Spese e
 tariffe e per ricordare in ogni prenotazione come è stato calcolato il prezzo.
 
+Il pannello **Le tariffe coprono i costi?** (Economia → Spese e tariffe) stima dalla prima nota il costo di una giornata
+di sala (costi annui della struttura ÷ giornate di apertura) e lo confronta con le tariffe: dice se e di quanto
+aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della struttura non sono coperti da affitti,
+donazioni e attività, quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
+possono correggere a mano quando una bolletta non è ancora registrata.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

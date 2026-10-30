@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.3";
+const VERSIONE = "2026-11-01.4";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -508,6 +508,7 @@ function renderEconomy() {
   for (const k of ["galleria", "platea", "tutta", "iva", "biglietteria", "tappeto", "commerciale"]) fill("#r-" + k, S.tariffe[k]);
   if (document.activeElement !== $("#r-iva-supp")) $("#r-iva-supp").checked = !!S.tariffe.iva_supplementi;
   fill("#r-biglietto", S.prezzoBiglietto);
+  renderTariffeCosti();
   $("#r-avviso").innerHTML = S.tariffeDb ? "" : `<div class="warn">Per salvare le tariffe esegui in Supabase lo script <b>013_tariffe.sql</b>. Intanto l'app usa le tariffe 2026.</div>`;
 }
 
@@ -2305,7 +2306,7 @@ $("#expense-form").addEventListener("submit", async (e) => {
 $("#rates-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const r = { prezzo_biglietto: $("#r-biglietto").value === "" ? null : Number($("#r-biglietto").value) };
-  if (S.tariffeDb) r.tariffe = { ...Object.fromEntries(["galleria", "platea", "tutta", "iva", "biglietteria", "tappeto", "commerciale"].map((k) => [k, Number($("#r-" + k).value) || 0])), iva_supplementi: $("#r-iva-supp").checked };
+  if (S.tariffeDb) r.tariffe = { ...Object.fromEntries(["galleria", "platea", "tutta", "iva", "biglietteria", "tappeto", "commerciale"].map((k) => [k, Number($("#r-" + k).value) || 0])), iva_supplementi: $("#r-iva-supp").checked, costi_annui: S.tariffe.costi_annui ?? null, giornate_annue: S.tariffe.giornate_annue ?? null };
   try { await run(sb.from("settings").update(r).eq("id", 1), "Tariffe salvate"); } catch (x) { toast(errText(x)); }
 });
 
@@ -2421,6 +2422,77 @@ function renderSito() {
       scelte.forEach((v) => (S.sitoSel[v.chiave] = false));
       try { await run(sb.rpc("sito_segna", { p_avvisati: [...new Set([...[...avvisate].filter((k) => attuali.has(k)), ...scelte.map((v) => v.chiave)])] })); } catch (e) { toast(errText(e)); }
     }
+  };
+}
+
+/* ---------- le tariffe coprono i costi? ---------- */
+// costi della struttura che una giornata di sala fa sostenere: si escludono biglietteria online (U03) e comunicazione (U11),
+// che riguardano le attività della sala e non gli affitti; l'assicurazione (U13) si paga una volta l'anno e non si proietta
+const TC_ESCLUSE = /^(U03|U11)$/i, TC_ANNUALI = /^U13$/i, TC_VARIABILI = /^(U08|U09)$/i;
+function analisiTariffe() {
+  const anno = new Date().getFullYear(), Y = String(anno), T = S.tariffe;
+  const giorni = Math.round((parse(TODAY) - parse(`${Y}-01-01`)) / 864e5) + 1, f = 365 / giorni;
+  const pn = S.primaNota.filter((r) => r.anno === anno);
+  const struttura = pn.filter((r) => r.uscite && (r.cod_settore || 0) < 100);
+  const rilevanti = struttura.filter((r) => !TC_ESCLUSE.test(r.cod_cat || ""));
+  const stima = (lista) => r2(sommaU(lista.filter((r) => TC_ANNUALI.test(r.cod_cat || ""))) + sommaU(lista.filter((r) => !TC_ANNUALI.test(r.cod_cat || ""))) * f);
+  const costiAuto = stima(rilevanti), costiAnnui = Number(T.costi_annui) > 0 ? Number(T.costi_annui) : costiAuto;
+  // giornate di apertura: prenotazioni, proiezioni e serate con borderò, una volta per data
+  const date = new Set([...S.bookings.filter((b) => active(b)).map((b) => b.data), ...S.proiezioni.map((p) => p.data), ...S.c1.map((c) => c.data)].filter((d) => d.startsWith(Y) && d <= TODAY));
+  const giornateAuto = Math.round(date.size * f), giornate = Number(T.giornate_annue) > 0 ? Number(T.giornate_annue) : giornateAuto;
+  const costoGiorno = giornate ? costiAnnui / giornate : NaN;
+  const variabileGiorno = giornate ? stima(rilevanti.filter((r) => TC_VARIABILI.test(r.cod_cat || ""))) / giornate : 0;
+  // copertura dei costi della struttura da inizio anno
+  const costiStruttura = sommaU(struttura);
+  const affitti = sommaE(pn.filter((r) => r.entrate > 0 && (/^E02$/i.test(r.cod_cat) || /affitt/i.test(r.categoria))));
+  const donazioni = sommaE(pn.filter(isDonazione));
+  const margineAttivita = r2(sommaE(pn.filter(isAttivita)) - sommaU(pn.filter(isAttivita)));
+  const scoperto = r2(costiStruttura - affitti - donazioni - margineAttivita);
+  const affittiN = S.bookings.filter((b) => active(b) && !b.comune && b.prezzo > 0 && b.data.startsWith(Y) && b.data <= TODAY).length;
+  const previstiN = S.bookings.filter((b) => active(b) && !b.comune && b.prezzo > 0 && b.data.startsWith(Y) && b.data > TODAY).length;
+  return { anno, giorni, f, costiAuto, costiAnnui, giornateAuto, giornate, giorniUsati: date.size, costoGiorno, variabileGiorno, costiStruttura, affitti, donazioni, margineAttivita, scoperto, affittiN, previstiN, rilevanti };
+}
+
+function renderTariffeCosti() {
+  const el = $("#tc-body");
+  if (!el) return;
+  if (!S.primaNota.length) { el.innerHTML = `<p class="hint">Servono i movimenti della prima nota (Economia → Bilancio) per confrontare tariffe e costi.</p>`; return; }
+  const a = analisiTariffe(), T = S.tariffe, iva = (Number(T.iva) || 0) / 100;
+  if (!a.giornate || !isFinite(a.costoGiorno)) { el.innerHTML = `<p class="hint">Non ci sono ancora giornate di apertura nel ${a.anno} per fare il calcolo.</p>`; return; }
+  const pct = (x) => (x >= 0 ? "+" : "") + Math.round(x * 100).toLocaleString("it-IT") + "%";
+  const arrot = (x) => Math.ceil(x / 10) * 10;
+  const spazi = Object.keys(SPAZI).map((k) => ({ k, nome: SPAZI[k].replace(/ \(.*\)/, ""), netto: Number(T[k]) || 0 }));
+  const sotto = spazi.filter((s) => s.netto < a.costoGiorno);
+  const minimo = spazi.reduce((m, s) => (s.netto < m.netto ? s : m), spazi[0]);
+  const margineMin = minimo.netto / a.costoGiorno - 1;
+  const verdetto = sotto.length
+    ? `<div class="warn">Da aumentare: ${sotto.map((s) => `<b>${esc(s.nome)}</b> almeno ${money(arrot(a.costoGiorno))} + IVA (oggi ${money(s.netto)}, ${pct(arrot(a.costoGiorno) / s.netto - 1)})`).join("; ")}. Una giornata di sala costa circa ${money(Math.round(a.costoGiorno))}.</div>`
+    : `<div class="ok-note">Le tariffe coprono il costo di una giornata di sala (circa <b>${money(Math.round(a.costoGiorno))}</b>). Il margine più stretto è la ${esc(minimo.nome.toLowerCase())}: i costi possono crescere del <b>${Math.round(margineMin * 100)}%</b> prima che vada sotto costo. Per ora non serve aumentare.</div>`;
+  const gapAnnuo = a.scoperto * a.f, contributoPlatea = (Number(T.platea) || 0) - a.variabileGiorno;
+  const copertura = a.scoperto > 0
+    ? `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)}, donazioni ${money(a.donazioni)} e margine delle attività ${money(a.margineAttivita)}: restano <b class="neg">scoperti ${money(a.scoperto)}</b> (circa ${money(Math.round(gapAnnuo))} sull'anno). Per coprirli servirebbero circa <b>${contributoPlatea > 0 ? Math.ceil(gapAnnuo / contributoPlatea) : "—"} affitti di platea in più</b> all'anno${a.affitti > 0 ? `, oppure, con gli stessi affitti, tariffe più alte del <b>${Math.round(a.scoperto / a.affitti * 100)}%</b>` : ""}.</p>`
+    : `<p>Da inizio anno i costi della struttura (${money(a.costiStruttura)}) sono coperti da affitti ${money(a.affitti)}, donazioni ${money(a.donazioni)} e margine delle attività ${money(a.margineAttivita)}, con un <b>avanzo di ${money(-a.scoperto)}</b>.</p>`;
+  const quota = a.costiStruttura ? Math.round(a.affitti / a.costiStruttura * 100) : 0;
+  el.innerHTML = `${verdetto}
+    <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Spazio</th><th class="n">Tariffa netta</th><th class="n">Con IVA</th><th class="n">Costo giornata</th><th class="n">Margine</th></tr></thead><tbody>
+      ${spazi.map((s) => `<tr><td>${esc(s.nome)}</td><td class="n">${money(s.netto)}</td><td class="n">${money(r2(s.netto * (1 + iva)))}</td><td class="n">${money(Math.round(a.costoGiorno))}</td><td class="n ${s.netto < a.costoGiorno ? "neg" : ""}">${money(Math.round(s.netto - a.costoGiorno))} (${pct(s.netto / a.costoGiorno - 1)})</td></tr>`).join("")}
+    </tbody></table></div>
+    <h3 style="margin-top:14px">E i costi della struttura?</h3>
+    ${copertura}
+    <p class="hint">Gli affitti coprono il ${quota}% dei costi della struttura: ${a.affittiN} ${a.affittiN === 1 ? "affitto" : "affitti"} a pagamento da inizio anno${a.previstiN ? `, ${a.previstiN === 1 ? "un altro" : "altri " + a.previstiN} già in calendario` : ""}.${quota < 25 ? " Più che il prezzo, conta quante volte la sala viene affittata." : ""}</p>
+    <details><summary>Come si calcola e cosa puoi correggere</summary><div>
+      <p><b>Costo di una giornata</b> = costi annui della struttura ÷ giornate di apertura. Costi: prima nota ${a.anno}, settori della struttura, senza biglietteria online e comunicazione (servono alle attività, non agli affitti); l'assicurazione conta una volta, il resto è proiettato sull'anno (${a.giorni} giorni trascorsi): <b>${money(a.costiAuto)}</b>. Giornate: date con prenotazioni, proiezioni o borderò fino a oggi (${a.giorniUsati}), proiettate sull'anno: <b>${a.giornateAuto}</b>.</p>
+      <p>Se una bolletta non è ancora registrata (per esempio l'energia) la stima è bassa: puoi scrivere qui i valori che conosci. Vuoto = calcolo automatico.</p>
+      <form id="tc-form" class="sito-contatto"><label class="hint" for="tc-costi">Costi annui (€)</label><input id="tc-costi" type="number" min="0" step="100" inputmode="decimal" placeholder="${Math.round(a.costiAuto)}" value="${Number(T.costi_annui) > 0 ? T.costi_annui : ""}">
+        <label class="hint" for="tc-giornate">Giornate di apertura</label><input id="tc-giornate" type="number" min="0" step="1" inputmode="numeric" placeholder="${a.giornateAuto}" value="${Number(T.giornate_annue) > 0 ? T.giornate_annue : ""}">
+        <button class="btn sm" type="submit">${S.tariffeDb ? "Salva" : "Ricalcola"}</button></form>
+      <p class="hint">Gli «affitti in più» considerano per ogni affitto la tariffa della platea meno energia e acqua di una giornata (${money(Math.round(a.variabileGiorno))}). Gli importi della prima nota sono quelli incassati, IVA compresa se c'era.</p>
+    </div></details>`;
+  $("#tc-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const nuovo = { ...S.tariffe, costi_annui: Number($("#tc-costi").value) || null, giornate_annue: Number($("#tc-giornate").value) || null };
+    if (!S.tariffeDb) { S.tariffe = nuovo; renderTariffeCosti(); return; }
+    try { await run(sb.from("settings").update({ tariffe: nuovo }).eq("id", 1), "Valori salvati"); } catch (x) { toast(errText(x)); }
   };
 }
 
