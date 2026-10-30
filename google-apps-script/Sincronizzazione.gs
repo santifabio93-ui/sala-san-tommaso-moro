@@ -22,6 +22,8 @@
  *   C1_CARTELLA    (facoltativo) id della cartella Drive con i C1; se manca si usa quella della sala
  *                  aggiungi "+primanota" per leggere la contabilità (file .xlsx nella cartella PRIMA NOTA)
  *   PRIMA_NOTA_FILE (facoltativo) id del file .xlsx della prima nota; se manca si usa il più recente della cartella
+ *                  aggiungi "+sas" per copiare nell'app le email di ACEC Triveneta (conferme di programmazione e
+ *                  risposte alle richieste di film); va messo nell'account che riceve le email del SAS
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *
  * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
@@ -31,7 +33,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.9"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-01.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -65,6 +67,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
     if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 30));
     if (cfg.modalita.indexOf("primanota") !== -1) prova("prima nota", () => leggiPrimaNota(cfg, false));
+    if (cfg.modalita.indexOf("sas") !== -1) prova("sas", () => leggiSas(cfg));
   } finally {
     lock.releaseLock();
   }
@@ -761,6 +764,41 @@ function leggiEmail(cfg) {
   });
   const nuove = items.length ? rpc(cfg, "sync_email_push", { p_account: account, p_items: items }) : 0;
   Logger.log("Email: controllate " + items.length + ", nuove richieste " + nuove);
+}
+
+/* ---------------- email del SAS (ACEC Triveneta) ---------------- */
+// copia nell'app le email arrivate da acectriveneta.it: l'app ne ricava programmazione confermata e risposte.
+// La prima volta guarda un anno indietro, poi gli ultimi 30 giorni; gli id già consegnati restano in memoria.
+const SAS_RICERCA = "from:(acectriveneta.it) -from:me";
+function leggiSas(cfg) {
+  const mem = PropertiesService.getUserProperties();
+  const visti = JSON.parse(mem.getProperty("SAS_VISTI") || "[]");
+  const prima = !mem.getProperty("SAS_INIZIATO");
+  const lista = Gmail.Users.Messages.list("me", { q: SAS_RICERCA + (prima ? " newer_than:365d" : " newer_than:30d"), maxResults: prima ? 200 : 50 });
+  const account = Session.getActiveUser().getEmail() || "account";
+  const nuovi = (lista.messages || []).filter((m) => visti.indexOf(m.id) === -1);
+  const messaggi = nuovi.slice(0, 60).map((m) => {
+    const msg = Gmail.Users.Messages.get("me", m.id, { format: "full" });
+    const intestazione = (nome) => ((msg.payload.headers || []).find((h) => h.name.toLowerCase() === nome) || {}).value || "";
+    return {
+      id: m.id, thread_id: msg.threadId,
+      data: new Date(Number(msg.internalDate)).toISOString(),
+      mittente: intestazione("from"), oggetto: intestazione("subject"),
+      testo: (corpoTesto(msg.payload) || msg.snippet || "").replace(/\r/g, "").slice(0, 20000),
+      link: "https://mail.google.com/mail/?authuser=" + encodeURIComponent(account) + "#all/" + msg.threadId,
+    };
+  });
+  for (let i = 0; i < messaggi.length; i += 20) rpc(cfg, "sync_sas_push", { p_messaggi: messaggi.slice(i, i + 20) });
+  // memoria degli ultimi 500 id consegnati (solo dopo l'invio riuscito)
+  mem.setProperty("SAS_VISTI", JSON.stringify(messaggi.map((m) => m.id).concat(visti).slice(0, 500)));
+  mem.setProperty("SAS_INIZIATO", "1");
+  Logger.log("SAS: " + messaggi.length + " email nuove consegnate" + (nuovi.length > messaggi.length ? " (altre " + (nuovi.length - messaggi.length) + " al prossimo giro)" : ""));
+}
+// da eseguire a mano per provare la lettura delle email del SAS
+function provaSas() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Modalità: " + cfg.modalita + (cfg.modalita.indexOf("sas") === -1 ? "  ← manca «+sas»: la lettura automatica non partirà" : ""));
+  leggiSas(cfg);
 }
 
 // il servizio Gmail di Apps Script restituisce i contenuti a volte già come byte, a volte come testo base64

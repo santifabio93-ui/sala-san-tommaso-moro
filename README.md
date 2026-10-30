@@ -92,6 +92,14 @@ script installato in quell'account con `MODALITA` = `email`.
 Prima di passare a `calendario+email` (scrittura sul calendario), fai un backup:
 Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 
+## Oggi
+La prima pagina dell'app. Per amministratori e coordinatori raccoglie in un solo elenco, dal più urgente:
+pagamenti anticipati, DVD e link dei film confermati, supporti e prove dei film, risposte del SAS da confermare,
+film da chiedere, turni scoperti ed eventi senza turni, richieste di sala, schede da verificare o mancanti, permessi
+SIAE da ricevere, affitti da incassare, sopralluoghi, correzioni al sito e settori oltre il preventivo. Ogni voce
+porta alla pagina giusta; le cose dei film si segnano «Fatto» da lì. I volontari vedono i propri turni e i posti
+scoperti. A destra, cosa c'è in sala oggi e nei due giorni successivi.
+
 ## La serata
 La pagina **La serata** mostra su un'unica schermata, anche dal telefono, la serata di oggi o la prossima con qualcosa
 in sala (con ‹ › per le altre): eventi e orari, capienza, chi è di turno e chi manca, i film con supporto, dove si
@@ -153,6 +161,17 @@ da aprire in Gmail o copiare; la richiesta passa «in attesa di risposta». Con 
 esito, supporto, minimo garantito, percentuale, agenzia e distributore: «Conviene?» usa queste condizioni.
 I referenti del SAS (nome ed email) si aggiungono nella stessa pagina e per ogni email si sceglie a chi scrivere;
 restano nel database, non nel codice.
+
+## Email del SAS lette da sole
+Esegui `supabase/017_sas_email.sql` e, nell'account Google che riceve le email del SAS, aggiungi `+sas` alla
+MODALITA dello script (la prima volta guarda un anno indietro). Lo script copia nell'app le email di
+acectriveneta.it; l'app (`sas-email.js`) ne ricava:
+- la **programmazione confermata** dalle email automatiche «Conferme/Proposta programmazione» (data, film, agenzia,
+  distributore, supporto, minimo, percentuale, note), mese per mese con spettatori e incasso dai C1;
+- le **risposte** di Christian e Arianna alle richieste in attesa («OK mg 150 al 40% - DVD», «in embargo»…):
+  in Richieste al SAS compaiono già compilate, da confermare con un tocco;
+- le **cose da fare** per ogni film confermato: bonifico anticipato del minimo (10 giorni prima), DVD da
+  ricevere o ritirare, link da controllare (7 giorni prima), DVD da restituire, file da cancellare dopo la proiezione.
 
 ## Incassi C1
 Esegui `supabase/006_c1.sql` nel SQL Editor (si può rieseguire). Con `+c1` nella proprietà `MODALITA` dello script Google

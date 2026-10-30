@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.16";
+const VERSIONE = "2026-11-01.17";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -23,6 +23,7 @@ const DEFAULT_TARIFFE = { galleria: 400, platea: 500, tutta: 800, iva: 22, iva_s
 const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino a 338 persone)", tutta: "Platea e galleria (fino a 472 persone)" };
 const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
+  oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario"] },
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
   serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
@@ -51,7 +52,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 }
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
-  { k: "calendario" }, { k: "serata" },
+  { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
   { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
@@ -65,7 +66,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], catalogo: [], richiesteFilm: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], catalogo: [], richiesteFilm: [], sasEmail: [], programmazione: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -155,6 +156,11 @@ async function loadAll() {
     S.loadErr2.sas = rf.error && (rf.error.message || "errore");
     if (rf.data) S.richiesteFilm = rf.data;
     if (cf.data) S.catalogo = cf.data;
+    // email del SAS e programmazione confermata (aggiornamento 17)
+    const [se, pg] = S.canWrite ? await Promise.all([sb.from("sas_email").select("*").order("data", { ascending: false }).limit(400), sb.from("programmazione").select("*").order("data").limit(3000)]) : [{ data: null }, { data: null }];
+    S.loadErr2.sasEmail = se.error && (se.error.message || "errore");
+    if (se.data) S.sasEmail = se.data;
+    if (pg.data) S.programmazione = pg.data;
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
@@ -168,7 +174,7 @@ async function loadAll() {
       S.preventivo = st.data.preventivo || {};
       S.sasContatti = Array.isArray(st.data.sas_contatti) ? st.data.sas_contatti : [];
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file, sas: st.data.sync_sas };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
@@ -186,6 +192,11 @@ async function loadAll() {
     if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
     render();
+    // le email del SAS si leggono con il modulo a parte: lo carico la prima volta e ridisegno
+    if (S.canWrite && (S.sasEmail.length || S.programmazione.length || S.richiesteFilm.length)) {
+      if (!sasMod) import(`./sas-email.js?v=${VERSIONE}`).then((m) => { sasMod = m; render(); elaboraEmailSas(); });
+      else elaboraEmailSas();
+    }
   })();
   try { await loading; } finally { loading = null; }
 }
@@ -195,7 +206,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -308,6 +319,7 @@ function render() {
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
   if (S.view === "serata") renderSerata();
+  if (S.view === "oggi") renderOggi();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
@@ -3047,7 +3059,12 @@ function renderSas() {
         <div class="sas-dest"><input id="sas-nome" placeholder="Nome (es. Arianna)" aria-label="Nome del referente"><input id="sas-email" type="email" placeholder="Email" aria-label="Email del referente"><button class="btn sm" type="button" id="sas-dest-salva">Aggiungi</button></div></details>
       <div class="actions"><button class="btn primary" type="button" id="sas-email-btn"${bozze.length ? "" : " disabled"}>Prepara l'email${bozze.length > 1 ? ` (${bozze.length} film)` : ""}</button></div></div>
     <div class="panel promemoria"><div class="section-head"><h3>In attesa di risposta (${attesa.length})</h3><span class="hint">Quando il SAS risponde, segna le condizioni: servono per «Conviene?» e per i conti</span></div>
-      ${attesa.map((r) => riga(r, `<span class="hint">inviata ${esc(ago(r.inviata_il))}</span><button class="btn sm" type="button" data-sas-ris="${esc(r.id)}">Segna la risposta</button>`)).join("") || `<p class="hint">Nessuna richiesta in attesa.</p>`}</div>
+      ${attesa.map((r) => { const pr = propostaSas(r);
+        return riga(r, `<span class="hint">inviata ${esc(ago(r.inviata_il))}</span><button class="btn sm" type="button" data-sas-ris="${esc(r.id)}">Segna la risposta</button>`)
+          + (pr ? `<div class="sas-proposta"><span class="pill ${pr.stato === "confermata" ? "saldato" : "annullata"}">${pr.fonte === "conferma" ? "Conferma del SAS" : "Risposta trovata"}</span> ${esc(pr.testo)}${pr.stato === "confermata" ? ` <b>${esc([pr.minimo ? `minimo ${money(pr.minimo)}` : "", pr.percentuale ? `${pr.percentuale}%` : "", pr.supporto].filter(Boolean).join(" · "))}</b>` : " <b>non disponibile</b>"}
+            ${pr.link ? `<a href="${esc(pr.link)}" target="_blank" rel="noopener">apri l'email</a>` : ""} <button class="btn primary sm" type="button" data-sas-ok="${esc(r.id)}">${pr.stato === "confermata" ? "Conferma" : "Segna non disponibile"}</button></div>` : ""); }).join("") || `<p class="hint">Nessuna richiesta in attesa.</p>`}</div>
+    ${renderFilmConfermati()}
+    ${renderProgrammazione()}
     <details class="panel promemoria"><summary><b>Confermati (${conf.length}) e non disponibili (${nd.length})</b></summary>
       ${conf.slice(0, 60).map((r) => riga(r, `<button class="btn ghost sm" type="button" data-sas-ris="${esc(r.id)}">Modifica</button>`)).join("")}
       ${nd.slice(0, 30).map((r) => riga(r, `<span class="pill annullata">non disponibile</span>`)).join("")}</details>
@@ -3114,6 +3131,13 @@ function renderSas() {
   el.querySelectorAll("[data-sas-a]").forEach((c) => (c.onchange = () => { S.sasA = [...el.querySelectorAll("[data-sas-a]:checked")].map((x) => x.dataset.sasA); }));
   $("#sas-email-btn").onclick = () => apriEmailSas(bozze);
   el.querySelectorAll("[data-sas-ris]").forEach((b) => (b.onclick = () => apriRispostaSas(S.richiesteFilm.find((r) => r.id === b.dataset.sasRis))));
+  el.querySelectorAll("[data-sas-ok]").forEach((b) => (b.onclick = async () => {
+    const r = S.richiesteFilm.find((x) => x.id === b.dataset.sasOk), pr = propostaSas(r);
+    b.disabled = true;
+    try { await run(sb.from("richieste_film").update({ stato: pr.stato, minimo: pr.minimo ?? null, percentuale: pr.percentuale ?? null, supporto: pr.supporto || r.supporto, agenzia: pr.agenzia || r.agenzia, distributore: pr.distributore || r.distributore, risposta: pr.risposta || "", risposta_il: new Date().toISOString(), aggiornato: new Date().toISOString() }).eq("id", r.id), pr.stato === "confermata" ? `«${r.titolo}» confermato` : `«${r.titolo}» non disponibile`); } catch (x) { b.disabled = false; toast(errText(x)); }
+  }));
+  el.querySelectorAll("[data-pm]").forEach((b) => (b.onclick = () => { S.progMese = b.dataset.pm; renderSas(); }));
+  el.querySelectorAll("[data-ff]").forEach((b) => (b.onclick = () => { const [i, k] = b.dataset.ff.split("|"); b.disabled = true; segnaFattoFilm(filmConfermati()[+i], k); }));
   $("#sas-importa").onclick = async () => {
     const righe = $("#sas-incolla").value.split(/\n/).map((r) => r.trim()).filter(Boolean), fonte = $("#sas-fonte").value.trim(), nuovi = [];
     let sezione = "";
@@ -3132,6 +3156,31 @@ function renderSas() {
   };
 }
 const destinatariSas = () => (S.sasContatti || []).filter((c) => (S.sasA || []).includes(c.email));
+// cose da fare per i film confermati (pagamenti anticipati, supporti, restituzioni)
+function renderFilmConfermati() {
+  const lista = filmConfermati().map((g, i) => ({ g, i })).filter(({ g }) => g.cose.length && g.ultima >= addDays(TODAY, -14));
+  if (!lista.length) return "";
+  return `<div class="panel promemoria"><div class="section-head"><h3>Da fare per i film confermati</h3><span class="hint">Dalle conferme del SAS: pagamenti anticipati, DVD e link, restituzioni</span></div>
+    ${lista.flatMap(({ g, i }) => g.cose.map((c) => `<div class="todo-riga"><div><b>${esc(g.titolo)}</b> <span class="hint">· ${esc(fmtShort(g.prima))}${g.ultima !== g.prima ? ` – ${esc(fmtShort(g.ultima))}` : ""}</span><div>${esc(c.testo)}</div></div>
+      <div class="az">${c.entro < TODAY ? `<span class="pill dapagare">in ritardo</span>` : `<span class="hint">entro ${esc(fmtShort(c.entro))}</span>`}<button class="btn sm" type="button" data-ff="${i}|${c.k}">Fatto</button></div></div>`)).join("")}</div>`;
+}
+// la programmazione confermata dal SAS, mese per mese, con spettatori e incasso dai C1 (come il foglio «Programmazione»)
+function renderProgrammazione() {
+  if (S.loadErr2?.sasEmail) return `<div class="panel promemoria"><div class="hint">Per leggere da sole le email del SAS esegui in Supabase lo script <b>017_sas_email.sql</b> e aggiungi «+sas» alla MODALITA dello script Google.</div></div>`;
+  if (!S.programmazione.length) return `<div class="panel promemoria"><div class="section-head"><h3>Programmazione confermata</h3></div><p class="hint">Qui compare da sola la programmazione confermata dal SAS, appena lo script Google legge le loro email (modalità «+sas»).</p></div>`;
+  const mesi = [...new Set(S.programmazione.map((p) => p.data.slice(0, 7)))].sort();
+  const cur = S.progMese && mesi.includes(S.progMese) ? S.progMese : mesi.find((m) => m >= TODAY.slice(0, 7)) || mesi[mesi.length - 1];
+  const righe = S.programmazione.filter((p) => p.data.startsWith(cur)).sort((a, b) => a.data.localeCompare(b.data));
+  const c1Di = (p) => S.c1.filter((c) => c.data === p.data && (normT(c.titolo).includes(normT(p.titolo).slice(0, 10)) || normT(p.titolo).includes(normT(c.titolo).slice(0, 10))));
+  const tot = righe.reduce((s, p) => s + (Number(p.minimo) || Number(p.fisso) || 0), 0);
+  return `<div class="panel promemoria"><div class="section-head"><h3>Programmazione confermata</h3><div class="seg" role="group" aria-label="Mese">${mesi.slice(-8).map((m) => `<button type="button" data-pm="${m}" aria-pressed="${m === cur}">${esc(parse(m + "-01").toLocaleDateString("it-IT", { month: "short", year: "2-digit" }))}</button>`).join("")}</div></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Film</th><th>Agenzia · distributore</th><th>Supporto</th><th class="n">Condizioni</th><th class="n">Spettatori</th><th class="n">Incasso</th></tr></thead><tbody>
+    ${righe.map((p) => { const cs = c1Di(p), sp = cs.reduce((s, c) => s + c.spettatori, 0), inc = cs.reduce((s, c) => s + c.lordo, 0);
+      return `<tr><td>${esc(fmtShort(p.data))}</td><td><b>${esc(p.titolo)}</b>${p.originale ? `<div class="hint">${esc(p.originale)}</div>` : ""}${p.note ? `<div class="hint">${esc(p.note)}</div>` : ""}</td><td>${esc(p.agenzia)}<div class="hint">${esc(p.distributore)}</div></td><td>${esc(p.supporto || "—")}</td>
+        <td class="n">${p.fisso ? money(p.fisso) + " fissi" : [p.minimo ? `min. ${money(p.minimo)}` : "", p.percentuale ? `${p.percentuale}%` : ""].filter(Boolean).join(" + ") || "—"}</td><td class="n">${cs.length ? sp : ""}</td><td class="n">${cs.length ? money(inc) : ""}</td></tr>`; }).join("")}
+    <tr class="tot"><td colspan="4"><b>${righe.length} ${righe.length === 1 ? "data" : "date"}</b></td><td class="n"><b>${money(tot)}</b> <span class="hint">minimi e fissi</span></td><td class="n">${righe.reduce((s, p) => s + c1Di(p).reduce((a, c) => a + c.spettatori, 0), 0) || ""}</td><td class="n">${money(righe.reduce((s, p) => s + c1Di(p).reduce((a, c) => a + c.lordo, 0), 0))}</td></tr>
+    </tbody></table></div>${S.sync && S.sync.sas ? `<p class="hint">Email del SAS lette ${esc(ago(S.sync.sas))}.</p>` : ""}</div>`;
+}
 function testoEmailSas(lista) {
   const nomi = destinatariSas().map((c) => c.nome.split(" ")[0]), nome = nomi.length > 1 ? nomi.slice(0, -1).join(", ") + " e " + nomi[nomi.length - 1] : nomi[0] || "", firma = (S.me.nome || "").split(" ")[0];
   const data = (d) => `${parse(d.data).toLocaleDateString("it-IT", { weekday: "long" })} ${parse(d.data).toLocaleDateString("it-IT")}`;
@@ -3169,9 +3218,131 @@ $("#sr-form").addEventListener("submit", async (e) => {
 // condizioni confermate dal SAS per un titolo (per «Conviene?»)
 const condizioniSas = (titolo) => S.richiesteFilm.filter((r) => r.stato === "confermata" && normT(r.titolo) === normT(titolo)).sort((a, b) => (b.risposta_il || "").localeCompare(a.risposta_il || ""))[0];
 
+/* ---------- email del SAS: programmazione confermata e risposte ---------- */
+let sasMod = null;
+// le email nuove arrivate dallo script: le conferme diventano righe della programmazione (una per data e film)
+async function elaboraEmailSas() {
+  const nuove = S.sasEmail.filter((m) => !m.elaborata);
+  if (!nuove.length) return;
+  sasMod = sasMod || (await import(`./sas-email.js?v=${VERSIONE}`));
+  for (const m of nuove.sort((a, b) => a.data.localeCompare(b.data))) {
+    const righe = /Agenzia:/i.test(m.testo) && /Distributore:/i.test(m.testo) ? sasMod.confermeProgrammazione(m.testo, m.data) : [];
+    for (const r of righe) {
+      const gia = S.programmazione.find((p) => p.data === r.data && sasMod.norm(p.titolo) === sasMod.norm(r.titolo));
+      const rec = { ...r, email_id: m.id, aggiornato: new Date().toISOString() };
+      const { data, error } = gia ? await sb.from("programmazione").update(rec).eq("id", gia.id).select("*").single() : await sb.from("programmazione").insert(rec).select("*").single();
+      if (error) { toast("Programmazione dal SAS: " + error.message); return; }
+      if (data) S.programmazione = [...S.programmazione.filter((p) => p.id !== data.id), data];
+    }
+    await sb.from("sas_email").update({ elaborata: true }).eq("id", m.id);
+    m.elaborata = true;
+  }
+  render();
+}
+// per ogni richiesta in attesa: la conferma automatica o la riga della risposta scritta che parla di quel film
+function propostaSas(r) {
+  if (!sasMod || r.stato !== "inviata") return null;
+  const date = (r.date || []).map((d) => d.data), k = sasMod.norm(r.titolo);
+  const simile = (t) => { const n = sasMod.norm(t); return n === k || (k.length >= 6 && (n.includes(k) || k.includes(n))); };
+  const conf = S.programmazione.find((p) => simile(p.titolo) && (date.includes(p.data) || !date.length));
+  if (conf) return { fonte: "conferma", testo: `Confermato dal SAS per il ${fmtShort(conf.data)}`, stato: "confermata", minimo: conf.minimo ?? conf.fisso, percentuale: conf.percentuale, supporto: conf.supporto, agenzia: conf.agenzia, distributore: conf.distributore, risposta: conf.note };
+  const dal = r.inviata_il ? addDays(r.inviata_il.slice(0, 10), -1) : "";
+  for (const m of [...S.sasEmail].filter((x) => !/programmazioni@/i.test(x.mittente) && x.data.slice(0, 10) >= dal).sort((a, b) => b.data.localeCompare(a.data))) {
+    const p = sasMod.rispostaPerFilm(m.testo, r.titolo);
+    if (p) return { fonte: "email", testo: `«${p.riga}»`, link: m.link, stato: p.nonDisponibile ? "non_disponibile" : "confermata", minimo: p.minimo ?? p.fisso, percentuale: p.percentuale, supporto: p.supporto, agenzia: p.agenzia, distributore: "", risposta: p.riga };
+  }
+  return null;
+}
+// film confermati raggruppati per titolo (proiezioni a meno di tre settimane l'una dall'altra), con le cose da fare
+function filmConfermati() {
+  if (!sasMod) return [];
+  const gruppi = [];
+  for (const p of [...S.programmazione].sort((a, b) => a.data.localeCompare(b.data))) {
+    const g = gruppi.find((x) => sasMod.norm(x.titolo) === sasMod.norm(p.titolo) && p.data <= addDays(x.ultima, 21));
+    if (g) { g.ultima = p.data; g.righe.push(p); if (p.note && !g.note.includes(p.note)) g.note += " " + p.note; }
+    else gruppi.push({ titolo: p.titolo, prima: p.data, ultima: p.data, supporto: p.supporto, agenzia: p.agenzia, minimo: p.minimo, note: p.note || "", righe: [p], dove: { tabella: "programmazione", id: p.id, fatti: p.fatti || {} } });
+  }
+  // richieste confermate a mano che non hanno una conferma del SAS
+  for (const r of S.richiesteFilm.filter((x) => x.stato === "confermata" && (x.date || []).length)) {
+    const date = r.date.map((d) => d.data).sort();
+    if (gruppi.some((g) => sasMod.norm(g.titolo) === sasMod.norm(r.titolo) && date.some((d) => d >= g.prima && d <= g.ultima))) continue;
+    gruppi.push({ titolo: r.titolo, prima: date[0], ultima: date[date.length - 1], supporto: r.supporto, agenzia: r.agenzia, minimo: r.minimo, note: r.note || "", risposta: r.risposta, righe: [], dove: { tabella: "richieste_film", id: r.id, fatti: r.fatti || {} } });
+  }
+  return gruppi.map((g) => ({ ...g, cose: sasMod.scadenzeFilm(g).filter((c) => !g.dove.fatti[c.k]) }));
+}
+async function segnaFattoFilm(g, k) {
+  const fatti = { ...g.dove.fatti, [k]: TODAY };
+  try { await run(sb.from(g.dove.tabella).update({ fatti }).eq("id", g.dove.id), "Fatto"); } catch (e) { toast(errText(e)); }
+}
+
+/* ---------- oggi: tutto quello che c'è da fare, in un elenco ---------- */
+function coseDiOggi() {
+  const out = [], tra = (g) => addDays(TODAY, g);
+  const add = (liv, testo, link, extra = {}) => out.push({ liv, testo, link, ...extra });
+  const quando = (d) => (d < TODAY ? `in ritardo dal ${fmtShort(d)}` : d === TODAY ? "oggi" : `entro ${fmtShort(d)}`);
+  if (!S.canWrite) {
+    // volontari: i propri turni e i posti scoperti dei prossimi giorni
+    const miei = S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= tra(7) && S.signups.some((x) => x.bookingId === b.id && isMine(x))).sort(byWhen);
+    miei.forEach((b) => add("info", `Sei di turno: ${b.titolo}, ${fmtShort(b.data)} ${b.giornata_intera ? "" : b.inizio}`, "#turni"));
+    S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= tra(7)).forEach((b) => { const c = coverage(b); if (c.need > c.have) add("warn", `Servono ancora ${c.need - c.have} ${c.need - c.have === 1 ? "persona" : "persone"} per ${b.titolo} (${fmtShort(b.data)})`, "#turni"); });
+    return out;
+  }
+  // film confermati dal SAS: pagamenti, supporti, restituzioni
+  for (const g of filmConfermati()) for (const c of g.cose) if (c.entro <= tra(7) && g.ultima >= tra(-14)) add(c.entro < TODAY ? "ko" : "warn", `${c.testo} · «${g.titolo}» (${fmtShort(g.prima)})`, "#sas", { entro: c.entro, quando: quando(c.entro), fatto: () => segnaFattoFilm(g, c.k) });
+  // film in programma: supporto, prova, sito
+  for (const x of coseDaFareFilm()) if (x.entro <= tra(7)) add(x.entro < TODAY ? "ko" : "warn", `${x.testo} · «${x.f.titolo}»`, "#cinema", { entro: x.entro, quando: quando(x.entro) });
+  // richieste al SAS
+  const bozze = S.richiesteFilm.filter((r) => r.stato === "bozza"), attesa = S.richiesteFilm.filter((r) => r.stato === "inviata");
+  const trovate = attesa.filter((r) => propostaSas(r));
+  if (trovate.length) add("warn", `Il SAS ha risposto per ${trovate.length} ${trovate.length === 1 ? "film" : "film"}: controlla e conferma con un tocco`, "#sas");
+  if (bozze.length) add("info", `${bozze.length} ${bozze.length === 1 ? "film da chiedere" : "film da chiedere"} al SAS: prepara l'email`, "#sas");
+  attesa.filter((r) => !propostaSas(r) && r.inviata_il && r.inviata_il.slice(0, 10) <= tra(-7)).forEach((r) => add("info", `Nessuna risposta dal SAS su «${r.titolo}» da più di una settimana: sollecita?`, "#sas"));
+  // turni
+  S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= tra(7)).sort(byWhen).forEach((b) => { const c = coverage(b); if (c.need > c.have) add(b.data <= tra(2) ? "ko" : "warn", `Mancano ${c.need - c.have} ${c.need - c.have === 1 ? "persona" : "persone"} nei turni di ${b.titolo} (${fmtShort(b.data)})`, "#turni", { entro: b.data, quando: quando(b.data) }); });
+  const senzaTurni = S.bookings.filter((b) => b.stato === "confermata" && b.data >= TODAY && b.data <= tra(14) && !turni(b).length);
+  if (senzaTurni.length) add("warn", `${senzaTurni.length} ${senzaTurni.length === 1 ? "evento confermato senza turni" : "eventi confermati senza turni"} nei prossimi 14 giorni`, "#turni");
+  // affitti: richieste di sala, schede, SIAE, incassi
+  const nReq = S.requests.filter((r) => r.stato === "nuova").length;
+  if (nReq) add("warn", `${nReq} ${nReq === 1 ? "nuova richiesta" : "nuove richieste"} di sala da leggere`, "#richieste");
+  const daVer = schedeDaVerificare();
+  if (daVer) add("warn", `${daVer} ${daVer === 1 ? "scheda compilata" : "schede compilate"} da verificare e approvare`, "#schede");
+  righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
+  S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
+  S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  // sopralluoghi
+  S.sopralluoghi.filter((x) => x.stato === "da_fare" && (x.data === TODAY || x.data === tra(1))).forEach((x) => add("info", `Sopralluogo ${x.data === TODAY ? "oggi" : "domani"} alle ${x.ora}: ${x.nome}${x.evento ? ` per «${x.evento}»` : ""}`, "#sopralluoghi"));
+  // sito e conti
+  const nSito = sitoNuovi().length;
+  if (nSito) add("info", `${nSito} ${nSito === 1 ? "cosa da correggere" : "cose da correggere"} sul sito della sala`, "#sito");
+  if (S.isAdmin && S.preventivo && S.preventivo[String(new Date().getFullYear())]) {
+    const prev = S.preventivo[String(new Date().getFullYear())];
+    Object.entries(prev).forEach(([k, p]) => { const cu = sommaU(S.primaNota.filter((r) => r.anno === new Date().getFullYear() && String(r.cod_settore) === k)); if (p.u > 0 && cu > p.u) add("warn", `${p.nome || k}: uscite oltre il preventivo di ${money(Math.round(cu - p.u))}`, "#bilancio"); });
+  }
+  const ordine = { ko: 0, warn: 1, info: 2 };
+  return out.sort((a, b) => ordine[a.liv] - ordine[b.liv] || (a.entro || "9").localeCompare(b.entro || "9"));
+}
+function renderOggi() {
+  const el = $("#oggi-body"), cose = coseDiOggi();
+  const prossimi = [...S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= addDays(TODAY, 2)).map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, t: b.titolo })),
+    ...S.proiezioni.filter((p) => p.data >= TODAY && p.data <= addDays(TODAY, 2)).map((p) => ({ data: p.data, ora: p.ora, t: (S.films.find((f) => f.id === p.film_id) || {}).titolo || "Film" }))].sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
+  const ciao = new Date().getHours() < 13 ? "Buongiorno" : new Date().getHours() < 18 ? "Buon pomeriggio" : "Buonasera";
+  el.innerHTML = `
+    <div class="toolbar"><div><span class="eyebrow">${esc(fmtDay(TODAY, { weekday: "long", day: "numeric", month: "long" }))}</span><h2>${ciao}${S.me.nome ? " " + esc(S.me.nome.split(" ")[0]) : ""}</h2></div>
+      <a class="btn" href="#serata">La serata</a></div>
+    <div class="oggi-grid">
+      <div class="panel"><div class="section-head"><h3>Da fare</h3><span class="hint">${cose.length ? `${cose.length} ${cose.length === 1 ? "cosa" : "cose"} · le più urgenti in alto` : ""}</span></div>
+        ${cose.length ? `<div class="oggi-lista">${cose.map((c, i) => `<div class="oggi-cosa liv-${c.liv}"><span class="pallino" aria-hidden="true"></span><div><div>${esc(c.testo)}</div>${c.quando ? `<span class="hint">${esc(c.quando)}</span>` : ""}</div><div class="az">${c.fatto ? `<button class="btn sm" type="button" data-fatto="${i}">Fatto</button>` : ""}<a class="btn ghost sm" href="${c.link}">Apri</a></div></div>`).join("")}</div>`
+          : `<div class="empty">Tutto in ordine: oggi non c'è niente da sistemare. ✓</div>`}</div>
+      <div class="panel"><div class="section-head"><h3>In sala</h3><span class="hint">oggi e nei prossimi due giorni</span></div>
+        ${prossimi.length ? prossimi.map((x) => `<div class="sr-riga"><span>${esc(x.data === TODAY ? "oggi" : x.data === addDays(TODAY, 1) ? "domani" : fmtShort(x.data))}${x.ora ? " " + esc(x.ora) : ""}</span><div>${esc(x.t)}</div></div>`).join("") : `<p class="hint">Niente in programma.</p>`}
+      </div>
+    </div>`;
+  el.querySelectorAll("[data-fatto]").forEach((b) => (b.onclick = () => { b.disabled = true; cose[+b.dataset.fatto].fatto(); }));
+}
+
 function route() {
   const h = location.hash.slice(1);
-  S.view = VIEWS[h] && canSee(h) ? h : "calendario";
+  S.view = VIEWS[h] && canSee(h) ? h : canSee("oggi") ? "oggi" : "calendario";
   render();
 }
 addEventListener("hashchange", route);

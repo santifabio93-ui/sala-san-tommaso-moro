@@ -491,3 +491,14 @@ table.pv tr.tot td { border-top: 2px solid var(--ink) }
 .sas-riga-titolo { display: flex; gap: 6px; align-items: center }
 .sas-riga-titolo input { flex: 1; min-width: 0 }
 @media (max-width: 560px) { .sas-riga-titolo { flex-wrap: wrap } }
+/* oggi */
+.oggi-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 14px; align-items: start }
+@media (max-width: 860px) { .oggi-grid { grid-template-columns: minmax(0, 1fr) } }
+.oggi-cosa { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line) }
+.oggi-cosa .pallino { width: 10px; height: 10px; border-radius: 50%; background: var(--line) }
+.oggi-cosa.liv-ko .pallino { background: var(--due-fg) }
+.oggi-cosa.liv-warn .pallino { background: var(--opz-fg) }
+.oggi-cosa.liv-info .pallino { background: var(--accent) }
+.oggi-cosa .az { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end }
+@media (max-width: 560px) { .oggi-cosa { grid-template-columns: 12px minmax(0, 1fr) } .oggi-cosa .az { grid-column: 2; justify-content: flex-start } }
+.sas-proposta { margin: -2px 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--sunk); font-size: .9rem; display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
