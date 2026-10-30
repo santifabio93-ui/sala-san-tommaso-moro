@@ -97,6 +97,9 @@ function modulo(d, info) {
     <div class="griglia" style="margin-top:12px">
       <div class="campo"><span class="lbl">Possiamo pubblicare l'evento nel programma della sala?</span>${scelta("pubblicabile", [["si", "sì"], ["no", "no"]], d.pubblicabile)}</div>
       ${campo("locandina_entro", "Ci mandate la locandina entro il", d.locandina_entro, "type=\"date\"")}
+      <div class="campo full cond" data-se="pubblicabile=si"><label for="f-locandina-file">Se la locandina è già pronta, allegatela qui (immagine o PDF, massimo 15 MB)</label>
+        <input id="f-locandina-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="no-print">
+        <div id="locandina-caricati" class="hint">${(d.locandina_file || []).map((f) => `✓ ${esc(f.nome)} allegata`).join("<br>")}</div></div>
       <div class="campo full"><label for="f-altro">Altre richieste o esigenze</label><textarea id="f-altro" name="altro">${esc(d.altro)}</textarea></div>
     </div></section>
 
@@ -142,7 +145,8 @@ function leggi() {
     } else if (el.type === "number") { if (el.value !== "") d[el.name] = Number(el.value); }
     else if (el.value.trim()) d[el.name] = el.value.trim();
   }
-  d.siae_file = allegati.slice();
+  d.siae_file = allegati.siae.slice();
+  d.locandina_file = allegati.locandina.slice();
   d.orari = [...document.querySelectorAll(".riga-orari")].map((r) => {
     const v = (n) => r.querySelector(`[name="o_${n}"]`).value;
     return { data: v("data"), all_da: v("all_da"), all_a: v("all_a"), porte: v("porte"), inizio: v("inizio"), fine: v("fine"), sgombero: v("sgombero") };
@@ -172,20 +176,26 @@ function controlla(d) {
   return mancano;
 }
 
-// --- allegati (permesso SIAE): caricati nella cartella della scheda, visibili solo alla sala ---
-let allegati = [];
-async function caricaAllegato(file) {
-  const out = $("#siae-caricati");
-  if (file.size > 10 * 1024 * 1024) { toast("Il file supera i 10 MB: provate con una foto o un PDF più leggero"); return; }
+// --- allegati, caricati nella cartella della scheda: il permesso SIAE lo vede solo la sala,
+// la locandina va nell'archivio delle locandine (staff e Social) quando la scheda viene inviata ---
+const TIPI_ALLEGATO = {
+  siae: { spazio: "schede", mb: 10, out: "#siae-caricati", input: "#f-siae-file", fatto: "allegato" },
+  locandina: { spazio: "locandine", mb: 15, out: "#locandina-caricati", input: "#f-locandina-file", fatto: "allegata" },
+};
+const allegati = { siae: [], locandina: [] };
+async function caricaAllegato(tipo, file) {
+  const T = TIPI_ALLEGATO[tipo], out = $(T.out);
+  if (file.size > T.mb * 1024 * 1024) { toast(`Il file supera i ${T.mb} MB: provate con una foto o un PDF più leggero`); return; }
   const est = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
-  const percorso = `${token}/siae-${Date.now()}${est}`;
+  const percorso = `${token}/${tipo}-${Date.now()}${est}`;
   out.textContent = "Caricamento in corso…";
-  const { error } = await sb.storage.from("schede").upload(percorso, file, { contentType: file.type || "application/octet-stream", upsert: false });
-  if (error) { out.innerHTML = `<span style="color:var(--due-fg)">Caricamento non riuscito: ${esc(error.message)}. Potete mandarlo per email a salatommasomoro@gmail.com</span>`; return; }
-  allegati.push({ percorso, nome: file.name, caricato: new Date().toISOString() });
-  out.innerHTML = allegati.map((f) => `✓ ${esc(f.nome)} allegato`).join("<br>");
+  const { error } = await sb.storage.from(T.spazio).upload(percorso, file, { contentType: file.type || "application/octet-stream", upsert: false });
+  const elenco = () => allegati[tipo].map((f) => `✓ ${esc(f.nome)} ${T.fatto}`).join("<br>");
+  if (error) { out.innerHTML = `${elenco()}${allegati[tipo].length ? "<br>" : ""}<span style="color:var(--due-fg)">Caricamento non riuscito: ${esc(error.message)}. Potete mandarlo per email a salatommasomoro@gmail.com</span>`; return; }
+  allegati[tipo].push({ percorso, nome: file.name, caricato: new Date().toISOString() });
+  out.innerHTML = elenco();
   salvaBozza();
-  document.querySelector("#f-siae-file").classList.remove("errore-campo");
+  document.querySelector(T.input).classList.remove("errore-campo");
 }
 
 // --- avvio ---
@@ -196,9 +206,9 @@ async function avvia() {
   if (info.chiusa) { mostra(`<div class="esito"><h2>Scheda già approvata</h2><p>La sala ha già approvato la scheda${info.titolo ? ` per <b>${esc(info.titolo)}</b>` : ""}. Per modifiche contattate la sala: salatommasomoro@gmail.com</p></div>`); return; }
   let d = info.dati || {};
   try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0)) d = { ...d, ...b }; } catch (e) {}
-  allegati = Array.isArray(d.siae_file) ? d.siae_file.slice() : [];
+  for (const tipo of Object.keys(allegati)) allegati[tipo] = Array.isArray(d[tipo + "_file"]) ? d[tipo + "_file"].slice() : [];
   mostra(modulo(d, info));
-  $("#f-siae-file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) caricaAllegato(f); e.target.value = ""; });
+  for (const [tipo, T] of Object.entries(TIPI_ALLEGATO)) $(T.input).addEventListener("change", (e) => { const f = e.target.files[0]; if (f) caricaAllegato(tipo, f); e.target.value = ""; });
   const f = $("#scheda");
   aggiornaCondizioni();
   f.addEventListener("input", (e) => { e.target.closest(".errore-campo")?.classList.remove("errore-campo"); aggiornaCondizioni(); salvaBozza(); });

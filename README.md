@@ -179,6 +179,19 @@ l'organizzatore può solo caricare nella cartella della sua scheda (finché non 
 coordinatori possono aprire i file. Il cruscotto mostra «SIAE allegata / da ricevere / non serve» e avvisa prima di
 approvare una scheda senza permesso.
 
+## Social: programma da pubblicare e locandine
+Esegui `supabase/012_social.sql`. Aggiunge il ruolo **Social** (da assegnare in **Persone**): chi lo ha vede solo il
+menu Social, cioè proiezioni del cinema, eventi pubblicabili e locandine, senza prezzi d'affitto, contatti, cassa,
+economia o donatori.
+- **Programma da pubblicare**: appuntamenti di questa settimana, della prossima o di un mese, con il testo pronto da
+  copiare per il post e un'immagine del programma da scaricare o condividere (post 4:5 o storia 9:16), con le
+  locandine dell'archivio. Un evento della sala compare se è confermato e pubblicabile: decide la sala con
+  Sì / No, altrimenti vale la risposta della scheda dell'organizzatore («possiamo pubblicare?»).
+- **Locandine**: archivio unico con le locandine di Cinebot, quelle che l'organizzatore allega alla scheda online e
+  quelle caricate da staff e Social (spazio file privato `locandine`); segnala gli appuntamenti dei prossimi 30
+  giorni ancora senza locandina. Le locandine di Cinebot si possono aprire ma non entrano nell'immagine (Cinebot
+  non lo permette): per usarle, caricane una copia.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
