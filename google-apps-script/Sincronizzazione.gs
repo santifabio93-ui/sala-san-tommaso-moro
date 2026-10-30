@@ -33,7 +33,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-01.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-01.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -777,8 +777,24 @@ function leggiSas(cfg) {
   const lista = Gmail.Users.Messages.list("me", { q: SAS_RICERCA + (prima ? " newer_than:365d" : " newer_than:30d"), maxResults: prima ? 200 : 50 });
   const account = Session.getActiveUser().getEmail() || "account";
   const nuovi = (lista.messages || []).filter((m) => visti.indexOf(m.id) === -1);
+  // Gmail a volte risponde «Internal error» su un messaggio: riprovo, poi lo salto e lo ritento ai giri successivi
+  const falliti = JSON.parse(mem.getProperty("SAS_FALLITI") || "{}"), saltati = [];
+  const leggi = (id) => {
+    for (let i = 0; i < 3; i++) {
+      try { return Gmail.Users.Messages.get("me", id, { format: "full" }); }
+      catch (e) { if (i === 2) throw e; Utilities.sleep(1500 * (i + 1)); }
+    }
+  };
   const messaggi = nuovi.slice(0, 60).map((m) => {
-    const msg = Gmail.Users.Messages.get("me", m.id, { format: "full" });
+    let msg;
+    try { msg = leggi(m.id); }
+    catch (e) {
+      falliti[m.id] = (falliti[m.id] || 0) + 1;
+      Logger.log("SAS: email " + m.id + " non leggibile (" + e.message + "), tentativo " + falliti[m.id] + " di 3");
+      if (falliti[m.id] >= 3) saltati.push(m.id);
+      return null;
+    }
+    delete falliti[m.id];
     const intestazione = (nome) => ((msg.payload.headers || []).find((h) => h.name.toLowerCase() === nome) || {}).value || "";
     return {
       id: m.id, thread_id: msg.threadId,
@@ -787,12 +803,16 @@ function leggiSas(cfg) {
       testo: (corpoTesto(msg.payload) || msg.snippet || "").replace(/\r/g, "").slice(0, 20000),
       link: "https://mail.google.com/mail/?authuser=" + encodeURIComponent(account) + "#all/" + msg.threadId,
     };
-  });
+  }).filter(Boolean);
   for (let i = 0; i < messaggi.length; i += 20) rpc(cfg, "sync_sas_push", { p_messaggi: messaggi.slice(i, i + 20) });
-  // memoria degli ultimi 500 id consegnati (solo dopo l'invio riuscito)
-  mem.setProperty("SAS_VISTI", JSON.stringify(messaggi.map((m) => m.id).concat(visti).slice(0, 500)));
-  mem.setProperty("SAS_INIZIATO", "1");
-  Logger.log("SAS: " + messaggi.length + " email nuove consegnate" + (nuovi.length > messaggi.length ? " (altre " + (nuovi.length - messaggi.length) + " al prossimo giro)" : ""));
+  // memoria degli ultimi 500 id consegnati (solo dopo l'invio riuscito) e di quelli lasciati perdere dopo 3 tentativi
+  saltati.forEach((id) => delete falliti[id]);
+  mem.setProperty("SAS_FALLITI", JSON.stringify(falliti));
+  mem.setProperty("SAS_VISTI", JSON.stringify(messaggi.map((m) => m.id).concat(saltati, visti).slice(0, 500)));
+  const resto = nuovi.length - Math.min(nuovi.length, 60);
+  // il primo giro (un anno indietro) finisce solo quando non resta più niente da leggere
+  if (!resto) mem.setProperty("SAS_INIZIATO", "1");
+  Logger.log("SAS: " + messaggi.length + " email nuove consegnate" + (resto ? " (altre " + resto + " al prossimo giro)" : "") + (Object.keys(falliti).length ? ", " + Object.keys(falliti).length + " da riprovare" : ""));
 }
 // da eseguire a mano per provare la lettura delle email del SAS
 function provaSas() {
