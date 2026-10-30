@@ -323,6 +323,12 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
   pubblico (spettacoli a pagamento e galleria) senza nessun addetto antincendio sono segnalate.
 - **Esporta elenco**: un file CSV da aprire con Excel, ad esempio per l'assicurazione o i controlli.
 
+- **Link perso**: c'è anche un link uguale per tutti (`modulo/turni.html`, in Turni → «Link per la descrizione del
+  gruppo»), da mettere nella descrizione del gruppo WhatsApp. Il telefono che ha già aperto il link personale viene
+  riconosciuto da solo; altrimenti il volontario scrive cellulare e data di nascita e ritrova il suo link (serve lo
+  script `021_turni_recupero.sql`; dopo 20 tentativi sbagliati in un'ora la pagina si ferma per un po'). La pagina
+  suggerisce anche di aggiungere il link alla schermata Home del telefono.
+
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.
 
 ## Resoconto mensile

@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.22";
+const VERSIONE = "2026-11-01.23";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2775,9 +2775,11 @@ function testoSondaggio(giorni) {
 
 /* ---------- volontari con link personale ---------- */
 const linkTurni = (v) => new URL("modulo/turni.html?t=" + v.token, location.href.split("#")[0]).href;
+// lo stesso per tutti: riconosce il telefono di chi l'ha già aperto, gli altri ritrovano il loro con cellulare e data di nascita
+const linkTurniGruppo = () => new URL("modulo/turni.html", location.href.split("#")[0]).href;
 function mandaLinkTurni(v) {
   const io = (S.me.nome || "").split(" ")[0];
-  openCopyText([`Ciao ${v.nome}!`, "Questo è il tuo link per i turni della Sala San Tommaso Moro: lo apri, vedi le fasce con chi c'è già e tocchi «Ci sono» dove puoi esserci.", linkTurni(v), "Salvalo, vale sempre (anche per i prossimi turni). Grazie!" + (io ? `\n${io}` : "")].join("\n"), v.cellulare);
+  openCopyText([`Ciao ${v.nome}!`, "Questo è il tuo link per i turni della Sala San Tommaso Moro: lo apri, vedi le fasce con chi c'è già e tocchi «Ci sono» dove puoi esserci.", linkTurni(v), "Salvalo, vale sempre (anche per i prossimi turni). Se lo perdi, apri " + linkTurniGruppo() + " e scrivi cellulare e data di nascita. Grazie!" + (io ? `\n${io}` : "")].join("\n"), v.cellulare);
 }
 function renderVolontari() {
   const el = $("#shift-volontari");
@@ -2794,7 +2796,7 @@ function renderVolontari() {
     <form id="vol-form" class="sito-contatto" style="margin-top:10px"><input id="vol-nome" placeholder="Nome (come lo vedranno gli altri)" aria-label="Nome del volontario" maxlength="60"><input id="vol-cell" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm primary" type="submit">Aggiungi</button></form>
     ${att.map(riga).join("") || `<p class="hint">Nessun volontario ancora: aggiungili qui sopra e manda a ciascuno il suo link.</p>`}
     ${off.length ? `<p class="hint" style="margin-top:8px">Disattivati: il loro link non funziona più.</p>${off.map(riga).join("")}` : ""}
-    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button></div></details></div>`;
+    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button><button class="btn" type="button" id="vol-link-gruppo">Link per la descrizione del gruppo</button></div></details></div>`;
   $("#vol-det").ontoggle = (e) => (S.volAperto = e.target.open);
   $("#vol-form").onsubmit = async (e) => {
     e.preventDefault();
@@ -2808,11 +2810,12 @@ function renderVolontari() {
     const id = b.dataset.voff || b.dataset.von, on = !!b.dataset.von;
     try { await run(sb.from("volontari").update({ attivo: on }).eq("id", id), on ? "Volontario riattivato" : "Link disattivato"); } catch (x) { toast(errText(x)); }
   }));
+  $("#vol-link-gruppo").onclick = () => openCopyText(["📅 Turni della Sala San Tommaso Moro", linkTurniGruppo(), "Il telefono vi riconosce da solo; se non succede, scrivete cellulare e data di nascita e ritrovate il vostro link."].join("\n"));
   $("#vol-gruppo").onclick = () => {
     const fino = addDays(TODAY, 14), eventi = S.bookings.filter((b) => b.stato === "confermata" && b.data >= TODAY && b.data <= fino && turni(b).length).sort(byWhen);
     const righe = eventi.flatMap((b) => turni(b).map((t) => ({ b, t, m: Math.max(0, (Number(t.posti) || 0) - signupsFor(b.id, t.id).length) }))).filter((x) => x.m);
     if (!righe.length) { toast("Nei prossimi 14 giorni i turni sono tutti coperti"); return; }
-    openCopyText([`📋 Turni in sala dei prossimi giorni: ci sono ancora posti!`, "", ...righe.map((x) => `• ${fmtShort(x.b.data)} · ${x.b.titolo} · ${x.t.inizio}–${x.t.fine} (${x.m === 1 ? "serve 1 persona" : `servono ${x.m} persone`})`), "", "Segnatevi dal vostro link personale. Se non lo trovate, scrivetemi e ve lo rimando. Grazie! 🙏"].join("\n"));
+    openCopyText([`📋 Turni in sala dei prossimi giorni: ci sono ancora posti!`, "", ...righe.map((x) => `• ${fmtShort(x.b.data)} · ${x.b.titolo} · ${x.t.inizio}–${x.t.fine} (${x.m === 1 ? "serve 1 persona" : `servono ${x.m} persone`})`), "", `Segnatevi da qui: ${linkTurniGruppo()}`, "(se il telefono non vi riconosce, scrivete cellulare e data di nascita). Grazie! 🙏"].join("\n"));
   };
 }
 
@@ -2875,6 +2878,7 @@ function renderVolontariPagina() {
       <div class="kpi"><span class="eyebrow">Compleanni</span><b>${prossimi.length}</b><small>nei prossimi 30 giorni</small></div>
     </section>
     ${prossimi.length ? `<div class="panel"><h3>Prossimi compleanni</h3>${prossimi.map(({ v, c }) => `<div class="todo-riga"><div>${c.data === TODAY ? "<b>Oggi</b>" : c.data === addDays(TODAY, 1) ? "<b>Domani</b>" : esc(fmtShort(c.data))} · ${esc(v.nome)} <span class="hint">compie ${c.anni} anni</span></div><div class="az"><button class="btn sm${c.data === TODAY ? " primary" : ""}" type="button" data-vauguri="${esc(v.id)}">Auguri</button></div></div>`).join("")}</div>` : ""}
+    ${nuovo && att.some((v) => !v.data_nascita || (v.cellulare || "").replace(/\D/g, "").length < 8) ? `<div class="panel"><h3>Non possono ritrovare il link da soli</h3><p class="hint">Senza cellulare e data di nascita il volontario che perde il link deve chiederlo a te. Completa le schede:</p>${att.filter((v) => !v.data_nascita || (v.cellulare || "").replace(/\D/g, "").length < 8).map((v) => `<div class="todo-riga"><div>${esc(v.nome)} <span class="hint">manca ${[(v.cellulare || "").replace(/\D/g, "").length < 8 ? "cellulare" : "", !v.data_nascita ? "data di nascita" : ""].filter(Boolean).join(" e ")}</span></div><div class="az"><button class="btn sm" type="button" data-vedit="${esc(v.id)}">Completa</button></div></div>`).join("")}</div>` : ""}
     ${inScad.length ? `<div class="panel"><h3>Attestati antincendio da rinnovare</h3>${inScad.map((v) => `<div class="todo-riga"><div>${esc(v.nome)} ${pillAI(v)}</div><div class="az"><button class="btn sm" type="button" data-vedit="${esc(v.id)}">Aggiorna</button></div></div>`).join("")}</div>` : ""}
     <div class="panel">
       <div class="section-head"><h3>Elenco</h3><div class="actions"><input type="search" id="vol-q" placeholder="Cerca nome o telefono" aria-label="Cerca volontario" value="${esc(S.volQ || "")}"><label class="check"><input type="checkbox" id="vol-tutti"${S.volTutti ? " checked" : ""}> anche i disattivati</label></div></div>
@@ -3568,6 +3572,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["021_turni_recupero.sql", "I volontari ritrovano da soli il link dei turni", chk.recupero],
     ["019_volontari_dati.sql", "Compleanni e attestati antincendio dei volontari", !manca(e2.volontari) && !manca(e2.volDati)],
     ["018_calendario_app.sql", "Secondo calendario (in standby, facoltativo)", chk.calApp, "Serve solo se attivi il calendario dell'app", true],
   ].map(([file, cosa, ok, nota, facoltativo]) => ({ file, cosa, ok: ok === undefined ? null : !!ok, nota, facoltativo }));
@@ -3588,6 +3593,7 @@ function lettureScript() {
 async function controlliStato() {
   const chk = {};
   try { const r = await sb.storage.from("schede").list("", { limit: 1 }); chk.siae = !r.error || !/not found/i.test(r.error.message || ""); } catch (x) { chk.siae = false; }
+  try { const r = await sb.rpc("turni_recupera", { p_cellulare: "", p_nascita: "1900-01-01" }); chk.recupero = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.recupero = false; }
   try { const r = await sb.rpc("sync_calendario_app", { p_token: "-" }); chk.calApp = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.calApp = false; }
   S.statoChk = chk;
   if (S.view === "stato") renderStato();
