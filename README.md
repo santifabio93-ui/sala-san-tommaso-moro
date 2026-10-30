@@ -308,6 +308,15 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Parroco
+
+Il ruolo **Parroco** (script `027_parroco.sql`) vede la sala in sola lettura: la pagina «In breve» (cosa c'è in sala
+nelle prossime due settimane, i numeri del mese, cose da sapere come richieste da confermare, attestati antincendio,
+serate del Comune usate e segnalazioni delle pulizie), il calendario, i film con gli spettatori, le serate del Comune
+e il resoconto del mese. Dei conti vede **solo i totali** (entrate e uscite per mese dalla prima nota). Non legge
+direttamente le tabelle: la funzione `parroco_dati` gli prepara i dati già ridotti, senza telefoni ed email di chi
+affitta e senza dati dei volontari. Si assegna in Persone; può entrare con Google o con email e password.
+
 ## Contapersone alla porta
 
 Il giorno di un evento, nel link personale dei turni compare «🚪 Contapersone di stasera» (`modulo/conta.html`).

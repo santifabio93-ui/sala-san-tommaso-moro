@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.40">
+<link rel="stylesheet" href="style.css?v=2026-11-01.41">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -292,6 +292,7 @@
     </div>
   </main>
 
+  <main id="view-breve" hidden><div id="breve-body"></div></main>
   <main id="view-volontari" hidden><div id="volontari-body"></div></main>
   <main id="view-resoconto" hidden><div id="reso-body"></div></main>
   <main id="view-stato" hidden>
@@ -305,7 +306,7 @@
       <div class="section-head"><h3>Email pre-approvate</h3><span class="hint">Chi è in elenco entra subito con il ruolo indicato al primo accesso con Google</span></div>
       <form id="invite-form" class="invite-form">
         <textarea id="inv-emails" placeholder="Una o più email Gmail, separate da virgola o una per riga" aria-label="Email da pre-approvare"></textarea>
-        <div class="actions"><select id="inv-ruolo" aria-label="Ruolo"><option value="volontario">Volontario</option><option value="coordinatore">Coordinatore</option><option value="segreteria">Segreteria (agenda e prenotazioni)</option><option value="admin">Amministratore</option></select><button class="btn" type="submit">Aggiungi</button></div>
+        <div class="actions"><select id="inv-ruolo" aria-label="Ruolo"><option value="volontario">Volontario</option><option value="coordinatore">Coordinatore</option><option value="segreteria">Segreteria (agenda e prenotazioni)</option><option value="parroco">Parroco (sola lettura)</option><option value="admin">Amministratore</option></select><button class="btn" type="submit">Aggiungi</button></div>
       </form>
       <div class="tbl-wrap" id="invites" style="margin-top:10px"></div>
     </div>
@@ -666,7 +667,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.40"></script>
-<script type="module" src="app.js?v=2026-11-01.40"></script>
+<script src="config.js?v=2026-11-01.41"></script>
+<script type="module" src="app.js?v=2026-11-01.41"></script>
 </body>
 </html>

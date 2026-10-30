@@ -765,3 +765,5 @@ nav.tabs { position: relative }
 @media (max-width: 640px) { #app > .top .seal.ritratto { width: 44px; height: 44px } }
 .nuova-versione { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 60; border: 0; cursor: pointer;
   padding: 12px 18px; border-radius: 999px; font: inherit; font-weight: 700; color: #1E1704; background: linear-gradient(180deg, #E2BE55, var(--gold)); box-shadow: 0 8px 26px rgba(0,0,0,.28); max-width: calc(100vw - 32px) }
+.breve-giorno + .breve-giorno { margin-top: 10px }
+.breve-giorno > .eyebrow { display: block; margin: 6px 0 2px; color: var(--accent) }

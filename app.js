@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.40";
+const VERSIONE = "2026-11-01.41";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -17,21 +17,22 @@ const fmtDay = (s, opts) => parse(s).toLocaleDateString("it-IT", opts || { weekd
 const fmtShort = (s) => parse(s).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
 const MESI = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1).toLocaleDateString("it-IT", { month: "short" }).replace(".", ""));
 const STATI = { opzione: "Opzione", confermata: "Confermata", annullata: "Annullata" };
-const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", segreteria: "Segreteria", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
+const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", segreteria: "Segreteria", parroco: "Parroco", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
 // tariffe 2026 a giornata (documento «Tariffe in uso 2026»); le cifre aggiornate stanno in settings.tariffe
 const DEFAULT_TARIFFE = { galleria: 400, platea: 500, tutta: 800, iva: 22, iva_supplementi: false, biglietteria: 100, tappeto: 200, commerciale: 100 };
 const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino a 338 persone)", tutta: "Platea e galleria (fino a 472 persone)" };
 const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
+  breve: { label: "In breve", roles: ["parroco"] },
   oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
-  calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario", "segreteria", "parroco"] },
   serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore", "segreteria"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore", "segreteria"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
-  comune: { label: "Comune", roles: ["admin", "coordinatore", "segreteria"] },
+  comune: { label: "Comune", roles: ["admin", "coordinatore", "segreteria", "parroco"] },
   schede: { label: "Schede", roles: ["admin", "coordinatore", "segreteria"] },
-  cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
+  cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario", "parroco"] },
   sito: { label: "Sito web", roles: ["admin", "coordinatore"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
@@ -42,7 +43,7 @@ const VIEWS = {
   bilancio: { label: "Bilancio", roles: ["admin"] },
   donazioni: { label: "Donazioni", roles: ["admin"] },
   economia: { label: "Economia", roles: ["admin"] },
-  resoconto: { label: "Resoconto", roles: ["admin", "coordinatore"] },
+  resoconto: { label: "Resoconto", roles: ["admin", "coordinatore", "parroco"] },
   utenti: { label: "Persone", roles: ["admin"] },
   stato: { label: "Stato", roles: ["admin"] },
 };
@@ -55,7 +56,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 }
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
-  { k: "oggi" }, { k: "calendario" }, { k: "serata" },
+  { k: "breve" }, { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
   { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { label: "Turni", children: ["turni", "volontari"] }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
@@ -120,7 +121,7 @@ async function start() {
   const { data: me, error } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
   if (error || !me) { $("#pending-email").textContent = user.email; show("pending"); return; }
   S.me = me; S.role = me.ruolo;
-  if (!["admin", "coordinatore", "segreteria", "volontario"].includes(S.role)) {
+  if (!["admin", "coordinatore", "segreteria", "parroco", "volontario"].includes(S.role)) {
     $("#pending-email").textContent = me.email || user.email;
     $("#pending-title").textContent = S.role === "bloccato" ? "Accesso non abilitato" : "Richiesta inviata";
     if (S.role === "bloccato") $("#pending-text").textContent = "Il tuo account non è abilitato. Contatta chi gestisce la sala.";
@@ -133,6 +134,9 @@ async function start() {
   S.canWrite = S.staff || S.role === "segreteria";
   S.canSign = true;
   S.canCassa = S.staff || !!me.cassa;
+  // il parroco vede in sola lettura, con i soli totali dei conti (aggiornamento 27)
+  S.isParroco = S.role === "parroco";
+  S.vedeConti = S.isAdmin || S.isParroco;
   $("#me-name").textContent = me.nome || me.email;
   $("#me-role").textContent = RUOLI[S.role];
   if (me.avatar) { $("#me-avatar").src = me.avatar; $("#me-avatar").hidden = false; }
@@ -149,7 +153,25 @@ const mapBooking = (r) => ({ ...r, inizio: hm(r.inizio), fine: hm(r.fine), prezz
 const mapSignup = (r) => ({ id: r.id, bookingId: r.booking_id, slotId: r.slot_id, nome: r.nome, uid: r.user_id, volontarioId: r.volontario_id || null, creato: r.creato });
 
 let loading = null;
+// il parroco riceve dal database una versione ridotta dei dati, già senza telefoni, email e movimenti
+async function caricaParroco() {
+  const { data, error } = await sb.rpc("parroco_dati", {});
+  S.loadErr2 = { ...(S.loadErr2 || {}), parroco: error && (error.message || "errore") };
+  if (data) {
+    S.bookings = (data.bookings || []).map((r) => mapBooking({ referente: "", telefono: "", email: "", note: "", incassato: 0, ...r }));
+    S.signups = (data.signups || []).map(mapSignup);
+    S.films = data.films || [];
+    S.proiezioni = (data.proiezioni || []).map((r) => ({ ...r, ora: hm(r.ora) }));
+    S.c1 = (data.c1 || []).map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, spettatori: Number(r.spettatori) || 0 }));
+    // i totali di ogni mese diventano una riga «di prima nota» per mese: il resoconto li somma come fa per l'amministratore
+    S.primaNota = (data.conti || []).map((r) => ({ data: r.mese + "-15", anno: r.anno, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
+    if (data.convenzione) S.conv = { inizio: data.convenzione.inizio || null, serate: data.convenzione.serate || 25, anni: data.convenzione.anni || 20 };
+    S.avvisiParroco = data.avvisi || {};
+  }
+  render();
+}
 async function loadAll() {
+  if (S.isParroco) return caricaParroco();
   if (loading) return loading;
   loading = (async () => {
     const q = [
@@ -333,10 +355,10 @@ function renderTabs() {
   const cur = (on) => (on ? ' aria-current="page"' : "");
   let sub = null;
   $("#tabs").innerHTML = MENU.map((m) => {
-    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : m.k === "sito" ? badge(sitoNuovi().length) : m.k === "stato" ? badge(problemiStato()) : ""}</a>` : "";
+    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" && !S.isParroco ? badge(filmsToFix()) : m.k === "sito" ? badge(sitoNuovi().length) : m.k === "stato" ? badge(problemiStato()) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
-    const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
+    const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") && !S.isParroco ? badge(filmsToFix()) : "");
     if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}${groupBadge(kids)}</a>`;
     const inside = kids.includes(S.view);
     if (inside) { sub = kids; S.lastSub = S.view; }
@@ -376,12 +398,16 @@ function render() {
   if (S.view === "stato") renderStato();
   if (S.view === "resoconto") renderResoconto();
   if (S.view === "volontari") renderVolontariPagina();
+  if (S.view === "breve") renderBreve();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
 function renderKpis() {
+  // il parroco ha già i suoi numeri nella pagina «In breve»
+  $("#kpis").hidden = !!S.isParroco;
+  if (S.isParroco) return;
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
   const next = upcoming[0];
   const scoperti = upcoming.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
@@ -467,6 +493,7 @@ function wireCards(root) {
   root.querySelectorAll("[data-b]").forEach((el) => (el.onclick = () => {
     const b = S.bookings.find((x) => x.id === el.dataset.b);
     if (S.canWrite) openBooking(b);
+    else if (S.isParroco) return;
     else { S.shiftFilter = b.data >= TODAY ? "prossimi" : "passati"; location.hash = "turni"; }
   }));
 }
@@ -1094,13 +1121,13 @@ function renderCinema() {
       <div class="body">
         <div class="t">${esc(f.titolo)}</div>
         <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
-        ${(() => { const cs = c1OfFilm(f); return cs.length && S.canWrite ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
+        ${(() => { const cs = c1OfFilm(f); return cs.length && (S.canWrite || S.isParroco) ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
         ${S.canWrite && upcoming[0] && !r.spettacolo ? (() => { const st = stimaSpettatori(upcoming[0]); return st ? `<div class="stima">Stima per ${esc(fmtShort(upcoming[0].data))}: circa <b>${st.n}</b> spettatori <span title="${esc(st.base)}">ⓘ</span></div>` : ""; })() : ""}
         <div class="meta">${r.spettacolo ? `<span>Non è un film: niente supporto né prova di proiezione</span>` : `<span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}`}</div>
       </div>
     </button>`;
   }).join("")}</div>`;
-  el.querySelectorAll("[data-film]").forEach((b) => (b.onclick = () => openFilm(S.films.find((f) => f.id === b.dataset.film))));
+  if (!S.isParroco) el.querySelectorAll("[data-film]").forEach((b) => (b.onclick = () => openFilm(S.films.find((f) => f.id === b.dataset.film))));
   el.querySelectorAll(".poster img").forEach((img) => (img.onerror = () => { img.replaceWith(Object.assign(document.createElement("span"), { className: "ph", textContent: img.alt.replace(/^Locandina di /, "") })); }));
 }
 
@@ -1950,7 +1977,7 @@ function renderComune() {
         <h3 style="margin-top:16px">Le serate dell'anno</h3>
         ${serate.length ? `<div class="tbl-wrap"><table><tbody>${serate.map((b, i) => `<tr class="click" data-b="${esc(b.id)}"><td class="n" style="width:2.5em">${i + 1}.</td><td style="white-space:nowrap">${esc(fmtShort(b.data))}</td><td>${esc(b.titolo)}</td><td>${b.data <= TODAY ? '<span class="pill saldato">Fatta</span>' : '<span class="pill dafare">In programma</span>'}</td></tr>`).join("")}</tbody></table></div>`
           : `<div class="hint">Nessuna serata segnata. Per contarla, apri la prenotazione e spunta «Serata del Comune».</div>`}
-        ${sospette.length ? `<h3 style="margin-top:16px">Forse sono serate del Comune?</h3><span class="hint">Eventi dell'anno con «Comune», «sindaco», «assessore» o «patrocinio», non ancora segnati</span>
+        ${sospette.length && S.canWrite ? `<h3 style="margin-top:16px">Forse sono serate del Comune?</h3><span class="hint">Eventi dell'anno con «Comune», «sindaco», «assessore» o «patrocinio», non ancora segnati</span>
           <div class="blist" style="margin-top:8px">${sospette.map((b) => `<div class="req panel" style="padding:10px 12px"><div class="top-line"><span><b>${esc(fmtShort(b.data))}</b> · ${esc(b.titolo)}</span><button class="btn sm" type="button" data-segna="${esc(b.id)}">Segna come serata del Comune</button></div></div>`).join("")}</div>` : ""}
       </div>
       ${S.conv.inizio ? `<div class="panel"><h2>Tutti gli anni della convenzione</h2>
@@ -2778,6 +2805,7 @@ function coseDaFareFilm() {
 function renderCoseFilm() {
   const el = $("#film-todo");
   if (!el) return;
+  if (S.isParroco) { el.innerHTML = ""; return; }
   const lista = coseDaFareFilm();
   el.hidden = !lista.length;
   if (!lista.length) { el.innerHTML = ""; return; }
@@ -3785,6 +3813,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["027_parroco.sql", "Ruolo Parroco (sola lettura, conti solo totali)", undefined, "Serve solo se dai a qualcuno il ruolo Parroco", true],
     ["026_contapersone.sql", "Contapersone alla porta", chk.conta],
     ["025_segreteria.sql", "Ruolo Segreteria (agenda e prenotazioni)", undefined, "Serve solo se dai a qualcuno il ruolo Segreteria", true],
     ["024_pulizie.sql", "Gruppo pulizie: link, referenti e scorte", k.has("pulizie_referenti") && !manca(e2.scorte), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche referenti e scorte"],
@@ -3877,8 +3906,8 @@ function datiResoconto(mese) {
   c1.forEach((c) => { const k = normT(c.titolo); const f = perFilm.get(k) || { titolo: c.titolo, sp: 0, lordo: 0, n: 0 }; f.sp += c.spettatori; f.lordo += c.lordo; f.n++; perFilm.set(k, f); });
   const film = [...perFilm.values()].sort((a, b) => b.sp - a.sp);
   // conti dalla prima nota (solo amministratore)
-  const pn = S.isAdmin ? S.primaNota.filter((r) => nel(r.data)) : [];
-  const pnAnno = S.isAdmin ? S.primaNota.filter((r) => r.anno === y && r.data <= `${mese}-31`) : [];
+  const pn = S.vedeConti ? S.primaNota.filter((r) => nel(r.data)) : [];
+  const pnAnno = S.vedeConti ? S.primaNota.filter((r) => r.anno === y && r.data <= `${mese}-31`) : [];
   // il mese dopo: film confermati e in programma, eventi
   const nelMese = S.proiezioni.filter((p) => p.data.startsWith(prossimo)).map((p) => S.films.find((f) => f.id === p.film_id)).filter(Boolean);
   const spettacoliProssimi = [...new Set(nelMese.filter((f) => !isFilm(f)).map((f) => f.titolo))];
@@ -3903,7 +3932,7 @@ function testoResoconto(d, note) {
     `${d.eventi.length === 1 ? "Evento" : "Eventi"}: ${d.eventi.length}${d.affitti.length ? `, di cui ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"} (${money(d.affitti.reduce((s, b) => s + b.prezzo, 0))})` : ""}${d.sala.length ? `, ${d.sala.length} ${d.sala.length === 1 ? "organizzato" : "organizzati"} dalla Sala` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.`,
     d.posti ? `Volontari: ${d.coperti} posti coperti su ${d.posti} nei turni, ${d.persone} persone diverse.` : "",
     d.film.length ? `Film più visti: ${d.film.slice(0, 3).map((f) => `${f.titolo} (${f.sp})`).join(", ")}.` : "",
-    S.isAdmin && (d.entrate || d.uscite) ? `Conti del mese (prima nota): entrate ${money(d.entrate)}, uscite ${money(d.uscite)}, saldo ${money(r2(d.entrate - d.uscite))}; risultato da inizio anno ${money(d.risultatoAnno)}.` : "",
+    S.vedeConti && (d.entrate || d.uscite) ? `Conti del mese (prima nota): entrate ${money(d.entrate)}, uscite ${money(d.uscite)}, saldo ${money(r2(d.entrate - d.uscite))}; risultato da inizio anno ${money(d.risultatoAnno)}.` : "",
     ...(d.recente ? ["", `A ${nomeMese(d.prossimo)}:`, d.filmProssimi.length ? `- film: ${d.filmProssimi.join(", ")}` : "- film: ancora da definire",
       d.spettacoliProssimi.length ? `- spettacoli: ${d.spettacoliProssimi.join(", ")}` : "",
       d.eventiProssimi.length ? `- eventi: ${d.eventiProssimi.slice(0, 10).map((b) => `${b.titolo} (${fmtShort(b.data)})`).join("; ")}` : ""] : []),
@@ -3935,7 +3964,7 @@ function renderResoconto() {
           <p>${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"}${d.affitti.length ? `, ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}` : ""}${d.sala.length ? `, ${d.sala.length} della Sala` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.</p>
           ${d.posti ? `<p>Turni: <b>${d.coperti}</b> posti coperti su ${d.posti} (${Math.round(d.coperti / d.posti * 100)}%), <b>${d.persone}</b> volontari diversi.</p>` : ""}
           ${d.eventi.length ? `<ul class="reso-lista">${d.eventi.slice(0, 12).map((b) => `<li>${esc(fmtShort(b.data))} · ${esc(b.titolo)}</li>`).join("")}</ul>` : ""}</div>
-        ${S.isAdmin ? `<div class="panel"><h3>Conti del mese</h3>${d.entrate || d.uscite ? `<p>Entrate <b>${money(d.entrate)}</b> · uscite <b>${money(d.uscite)}</b> · saldo <b class="${d.entrate - d.uscite < 0 ? "neg" : ""}">${money(r2(d.entrate - d.uscite))}</b></p><p>Risultato da inizio anno: <b class="${d.risultatoAnno < 0 ? "neg" : ""}">${money(d.risultatoAnno)}</b> (prima nota, competenza ${mese.slice(0, 4)}).</p>` : `<p class="hint">Nessun movimento in prima nota per questo mese.</p>`}</div>` : ""}
+        ${S.vedeConti ? `<div class="panel"><h3>Conti del mese</h3>${d.entrate || d.uscite ? `<p>Entrate <b>${money(d.entrate)}</b> · uscite <b>${money(d.uscite)}</b> · saldo <b class="${d.entrate - d.uscite < 0 ? "neg" : ""}">${money(r2(d.entrate - d.uscite))}</b></p><p>Risultato da inizio anno: <b class="${d.risultatoAnno < 0 ? "neg" : ""}">${money(d.risultatoAnno)}</b> (prima nota, competenza ${mese.slice(0, 4)}).</p>` : `<p class="hint">Nessun movimento in prima nota per questo mese.</p>`}</div>` : ""}
         ${d.recente ? `<div class="panel"><h3>${esc(nomeMese(d.prossimo).replace(/^./, (c) => c.toUpperCase()))}</h3>
           <p><b>Film:</b> ${d.filmProssimi.length ? esc(d.filmProssimi.join(", ")) : "ancora da definire"}</p>
           ${d.spettacoliProssimi.length ? `<p><b>Spettacoli:</b> ${esc(d.spettacoliProssimi.join(", "))}</p>` : ""}
@@ -3961,9 +3990,40 @@ function renderResoconto() {
   };
 }
 
+/* ---------- in breve: la pagina del parroco ---------- */
+function renderBreve() {
+  const el = $("#breve-body"), fino = addDays(TODAY, 13), mese = TODAY.slice(0, 7), d = datiResoconto(mese), av = S.avvisiParroco || {};
+  if (S.loadErr2?.parroco) { el.innerHTML = `<div class="panel"><div class="warn">I dati non sono ancora disponibili: chi gestisce l'app deve eseguire lo script <b>027_parroco.sql</b>.</div></div>`; return; }
+  const etichetta = (b) => (b.comune ? "Comune" : b.della_sala ? "Sala" : b.prezzo > 0 ? "Affitto" : "Evento");
+  const voci = [...S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= fino).map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, t: b.titolo, tag: etichetta(b), opz: b.stato === "opzione" })),
+    ...S.proiezioni.filter((p) => p.data >= TODAY && p.data <= fino).map((p) => { const f = S.films.find((x) => x.id === p.film_id) || {}; return { data: p.data, ora: p.ora, t: f.titolo || "Film", tag: isFilm(f) ? "Film" : TIPI_SPETT[tipoSpettacolo(f)] }; })]
+    .sort((x, y) => (x.data + x.ora).localeCompare(y.data + y.ora));
+  const giorni = []; for (const v of voci) { const g = giorni[giorni.length - 1]; if (g && g.data === v.data) g.voci.push(v); else giorni.push({ data: v.data, voci: [v] }); }
+  const anno = String(new Date().getFullYear()), contiAnno = S.primaNota.filter((r) => r.anno === +anno), risultato = r2(sommaE(contiAnno) - sommaU(contiAnno));
+  const p = periodoConv(TODAY), cm = contaComune(p);
+  const daSapere = [
+    (() => { const n = S.bookings.filter((b) => b.stato === "opzione" && b.data >= TODAY && b.data <= addDays(TODAY, 30)).length; return n ? `${n} ${n === 1 ? "richiesta di sala ancora da confermare" : "richieste di sala ancora da confermare"} nei prossimi 30 giorni` : ""; })(),
+    av.antincendio ? `${av.antincendio} ${av.antincendio === 1 ? "attestato antincendio" : "attestati antincendio"} di volontari scaduti o da rinnovare entro 60 giorni` : "",
+    `Serate del Comune: ${cm.totale} usate su ${S.conv.serate} quest'anno`,
+    ...(av.pulizie || []).slice(0, 3).map((x) => `Segnalazione delle pulizie: «${x.note}»`),
+  ].filter(Boolean);
+  const ciao = new Date().getHours() < 13 ? "Buongiorno" : new Date().getHours() < 18 ? "Buon pomeriggio" : "Buonasera";
+  const kpi = (et, v, sub) => `<div class="kpi"><span class="eyebrow">${et}</span><b>${v}</b><small>${sub || ""}</small></div>`;
+  el.innerHTML = `
+    <div class="toolbar"><div><span class="eyebrow">${esc(fmtDay(TODAY, { weekday: "long", day: "numeric", month: "long" }))}</span><h2>${ciao}${S.me.nome ? " " + esc(S.me.nome.split(" ")[0]) : ""}</h2></div>
+      <a class="btn" href="#resoconto">Resoconto del mese</a></div>
+    <section class="kpis">${kpi(`${nomeMese(mese).split(" ")[0].replace(/^./, (c) => c.toUpperCase())} in sala`, d.giorni, "giornate di apertura")}${kpi("Spettatori del mese", d.spettatori, `${d.c1.length} proiezioni`)}${kpi("Eventi del mese", d.eventi.length, `${d.sala.length} della Sala · ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}`)}${kpi(`Risultato ${anno}`, money(risultato), "entrate − uscite, solo totali")}</section>
+    <div class="oggi-grid">
+      <div class="panel"><div class="section-head"><h3>In sala nelle prossime due settimane</h3></div>
+        ${giorni.length ? giorni.map((g) => `<div class="breve-giorno"><span class="eyebrow">${esc(fmtDay(g.data, { weekday: "long", day: "numeric", month: "long" }))}</span>${g.voci.map((v) => `<div class="sr-riga"><span>${esc(v.ora || "tutto il giorno")}</span><div>${esc(v.t)} <span class="pill ${v.tag === "Film" ? "confermata" : v.tag === "Sala" ? "sala" : v.tag === "Comune" ? "comune" : "esempio"}">${esc(v.tag)}</span>${v.opz ? ` <span class="hint">da confermare</span>` : ""}</div></div>`).join("")}</div>`).join("") : `<p class="hint">Niente in programma.</p>`}</div>
+      <div class="panel"><div class="section-head"><h3>Da sapere</h3></div>${daSapere.map((x) => `<div class="oggi-cosa liv-info"><span class="pallino" aria-hidden="true"></span><div>${esc(x)}</div></div>`).join("")}
+        <h3 style="margin-top:16px">Conti ${anno}</h3><p>Entrate <b>${money(sommaE(contiAnno))}</b> · uscite <b>${money(sommaU(contiAnno))}</b></p><p>Risultato: <b class="${risultato < 0 ? "neg" : ""}">${money(risultato)}</b> <span class="hint">(prima nota, solo totali)</span></p></div>
+    </div>`;
+}
+
 function route() {
   const h = location.hash.slice(1);
-  S.view = VIEWS[h] && canSee(h) ? h : canSee("oggi") ? "oggi" : "calendario";
+  S.view = VIEWS[h] && canSee(h) ? h : canSee("oggi") ? "oggi" : canSee("breve") ? "breve" : "calendario";
   render();
 }
 addEventListener("hashchange", route);
