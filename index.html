@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.1">
+<link rel="stylesheet" href="style.css?v=2026-10-31.2">
 </head>
 <body>
 
@@ -117,14 +117,6 @@
     </div>
     <section class="kpis" id="sc-kpis" aria-label="Riepilogo schede"></section>
     <div id="sc-list"></div>
-  </main>
-
-  <main id="view-social" hidden>
-    <div id="so-body"></div>
-  </main>
-
-  <main id="view-locandine" hidden>
-    <div id="lo-body"></div>
   </main>
 
   <main id="view-comune" hidden>
@@ -251,7 +243,7 @@
       <div class="section-head"><h3>Email pre-approvate</h3><span class="hint">Chi è in elenco entra subito con il ruolo indicato al primo accesso con Google</span></div>
       <form id="invite-form" class="invite-form">
         <textarea id="inv-emails" placeholder="Una o più email Gmail, separate da virgola o una per riga" aria-label="Email da pre-approvare"></textarea>
-        <div class="actions"><select id="inv-ruolo" aria-label="Ruolo"><option value="volontario">Volontario</option><option value="social">Social</option><option value="coordinatore">Coordinatore</option><option value="admin">Amministratore</option></select><button class="btn" type="submit">Aggiungi</button></div>
+        <div class="actions"><select id="inv-ruolo" aria-label="Ruolo"><option value="volontario">Volontario</option><option value="coordinatore">Coordinatore</option><option value="admin">Amministratore</option></select><button class="btn" type="submit">Aggiungi</button></div>
       </form>
       <div class="tbl-wrap" id="invites" style="margin-top:10px"></div>
     </div>
@@ -261,7 +253,6 @@
         <tr><td><b>Amministratore</b></td><td>Tutto: prenotazioni, economia, tariffe, turni, persone e ruoli.</td></tr>
         <tr><td><b>Coordinatore</b></td><td>Prenotazioni e turni, compresi prezzi e contatti dei clienti. Non vede spese e tariffe.</td></tr>
         <tr><td><b>Volontario</b></td><td>Calendario e turni, senza prezzi né contatti. Si segna e si toglie dai turni.</td></tr>
-        <tr><td><b>Social</b></td><td>Programma da pubblicare e locandine: proiezioni del cinema ed eventi pubblicabili, senza prezzi d'affitto, contatti, cassa o economia.</td></tr>
         <tr><td><b>Bloccato</b></td><td>Non vede nulla.</td></tr>
       </tbody></table>
     </div>
@@ -421,19 +412,6 @@
   </form>
 </dialog>
 
-<dialog id="dlg-locandina">
-  <form class="dlg" id="lo-form" novalidate>
-    <div class="dlg-head"><h2>Carica locandina</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
-    <div class="form">
-      <div class="field"><label for="lo-file">File (JPG, PNG, WebP o PDF, massimo 15 MB)</label><input id="lo-file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"></div>
-      <div class="field"><label for="lo-per">Per</label><select id="lo-per"></select></div>
-      <div class="field" id="lo-altro" style="display:contents"><div class="field q"><label for="lo-titolo">Titolo</label><input id="lo-titolo"></div><div class="field t"><label for="lo-data">Data</label><input id="lo-data" type="date"></div></div>
-    </div>
-    <div id="lo-error"></div>
-    <div class="dlg-foot"><span class="hint">La vedono solo staff e Social.</span><div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Carica</button></div></div>
-  </form>
-</dialog>
-
 <dialog id="dlg-donatore">
   <form class="dlg" id="donatore-form" novalidate>
     <div class="dlg-head"><h2 id="d-head">Donatore</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -546,7 +524,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.1"></script>
-<script type="module" src="app.js?v=2026-11-01.1"></script>
+<script src="config.js?v=2026-10-31.2"></script>
+<script type="module" src="app.js?v=2026-10-31.2"></script>
 </body>
 </html>

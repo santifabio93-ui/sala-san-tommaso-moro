@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.1";
+const VERSIONE = "2026-10-31.2";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -16,7 +16,7 @@ const fmtDay = (s, opts) => parse(s).toLocaleDateString("it-IT", opts || { weekd
 const fmtShort = (s) => parse(s).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
 const MESI = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1).toLocaleDateString("it-IT", { month: "short" }).replace(".", ""));
 const STATI = { opzione: "Opzione", confermata: "Confermata", annullata: "Annullata" };
-const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", volontario: "Volontario", social: "Social", in_attesa: "In attesa", bloccato: "Bloccato" };
+const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
 const DEFAULT_RATES = { tariffaOra: 25, tariffaMezza: 80, tariffaGiorno: 150 };
 const VIEWS = {
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
@@ -25,8 +25,6 @@ const VIEWS = {
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
   comune: { label: "Comune", roles: ["admin", "coordinatore"] },
   schede: { label: "Schede", roles: ["admin", "coordinatore"] },
-  social: { label: "Programma", roles: ["admin", "coordinatore", "social"] },
-  locandine: { label: "Locandine", roles: ["admin", "coordinatore", "social"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
@@ -48,9 +46,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { label: "Social", children: ["social", "locandine"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", social: "Programma da pubblicare", locandine: "Locandine", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -60,7 +58,6 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  programma: [], locandine: [], locUrl: {}, soPer: "settimana", soMese: null, soFmt: "post", soLoc: true, loQ: "", loFilter: "prossimi",
   c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, schede: [], scFilter: "attive", editingScheda: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
@@ -95,7 +92,7 @@ async function start() {
   const { data: me, error } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
   if (error || !me) { $("#pending-email").textContent = user.email; show("pending"); return; }
   S.me = me; S.role = me.ruolo;
-  if (!["admin", "coordinatore", "volontario", "social"].includes(S.role)) {
+  if (!["admin", "coordinatore", "volontario"].includes(S.role)) {
     $("#pending-email").textContent = me.email || user.email;
     $("#pending-title").textContent = S.role === "bloccato" ? "Accesso non abilitato" : "Richiesta inviata";
     if (S.role === "bloccato") $("#pending-text").textContent = "Il tuo account non è abilitato. Contatta chi gestisce la sala.";
@@ -104,7 +101,6 @@ async function start() {
   }
   S.isAdmin = S.role === "admin";
   S.canWrite = S.isAdmin || S.role === "coordinatore";
-  S.isSocial = S.role === "social";
   S.canSign = true;
   S.canCassa = S.canWrite || !!me.cassa;
   $("#me-name").textContent = me.nome || me.email;
@@ -125,14 +121,14 @@ async function loadAll() {
   if (loading) return loading;
   loading = (async () => {
     const q = [
-      S.canWrite ? sb.from("bookings").select("*") : S.isSocial ? null : sb.from("eventi").select("*"),
-      S.isSocial ? null : sb.from("signups").select("*"),
+      S.canWrite ? sb.from("bookings").select("*") : sb.from("eventi").select("*"),
+      sb.from("signups").select("*"),
       S.isAdmin ? sb.from("expenses").select("*") : null,
       S.canWrite || S.canCassa ? sb.from("settings").select("*").eq("id", 1).maybeSingle() : null,
       S.canWrite ? sb.from("profiles").select("*").order("creato") : null,
       S.canWrite ? sb.from("richieste").select("*").order("ricevuta", { ascending: false }).limit(300) : null,
       S.isAdmin ? sb.from("inviti").select("*").order("creato") : null,
-      S.isSocial ? null : sb.from("sopralluoghi").select("*").order("data").order("ora"),
+      sb.from("sopralluoghi").select("*").order("data").order("ora"),
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
       sb.from("films").select("*").order("titolo"),
       sb.from("proiezioni").select("*").order("data").order("ora"),
@@ -141,13 +137,7 @@ async function loadAll() {
       S.canWrite ? sb.from("schede").select("*").order("creato", { ascending: false }).limit(2000) : null,
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
-    // social: programma pubblicabile e archivio delle locandine (aggiornamento 12); se manca lo spiega la pagina
-    const daA = (g) => { const d = new Date(); d.setDate(d.getDate() + g); return iso(d); };
-    const qs = S.canWrite || S.isSocial ? [sb.rpc("programma_pubblico", { p_da: daA(-60), p_a: daA(400) }), sb.from("locandine").select("*").order("creato", { ascending: false }).limit(2000)] : [];
-    const [[b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r], [pg, lo]] = await Promise.all([Promise.all(q.map((x) => x || Promise.resolve({ data: null }))), Promise.all(qs.map((x) => x.then((r) => r, (er) => ({ error: er }))))]);
-    S.loadErr2 = { programma: pg && pg.error && (pg.error.message || "errore"), locandine: lo && lo.error && (lo.error.message || "errore") };
-    if (pg && pg.data) S.programma = pg.data;
-    if (lo && lo.data) S.locandine = lo.data;
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
@@ -182,7 +172,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "locandine"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -289,13 +279,10 @@ function render() {
   if (S.view === "donazioni") renderDonazioni();
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
-  if (S.view === "social") renderSocial();
-  if (S.view === "locandine") renderLocandine();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
 function renderKpis() {
-  if (S.isSocial) { $("#kpis").innerHTML = kpiSocial(); return; }
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
   const next = upcoming[0];
   const scoperti = upcoming.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
@@ -1591,12 +1578,12 @@ const ETICHETTE = {
   luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
   tecnico: "Tecnico", tecnico_nome: "Nome tecnico", tecnico_cell: "Cellulare tecnico", attrezzature: "Attrezzature da collegare", attrezzature_quali: "Quali", potenza_w: "Potenza totale (W)",
   scenografie: "Scenografie", scenografie_quali: "Cosa portano", ignifughi: "Materiali ignifughi classe 1", effetti: "Effetti", effetti_quali: "Quali effetti", durante: "Durante l'evento", pubblicabile: "Pubblicabile nel programma", locandina_entro: "Locandina entro", altro: "Altre richieste",
-  siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", locandina_file: "Locandina", siae_dopo: "Permesso SIAE",
+  siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", siae_dopo: "Permesso SIAE",
   ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
 };
 const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
   ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
-  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "locandina_file", "altro"]], ["SIAE", ["siae", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
+  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
 // permesso SIAE: a carico dell'organizzatore, da allegare alla scheda
 function siaeStato(d) {
   if (!d || !d.siae) return "";
@@ -1609,7 +1596,7 @@ function risposteHtml(d, conLink = true) {
     const righe = ks.flatMap((k) => {
       if (k === "orari") return (d.orari || []).map((o, i) => `<dt>Giorno ${i + 1}</dt><dd>${esc(o.data ? fmtDay(o.data) : "")}${o.all_da ? ` · allestimento ${esc(o.all_da)}–${esc(o.all_a)}` : ""}${o.porte ? ` · porte ${esc(o.porte)}` : ""} · inizio ${esc(o.inizio)}${o.fine ? `, fine ${esc(o.fine)}` : ""}${o.sgombero ? ` · sgombero ${esc(o.sgombero)}` : ""}</dd>`);
       const v = d[k];
-      if (k === "siae_file" || k === "locandina_file") return (Array.isArray(v) ? v : []).map((f) => `<dt>${esc(ETICHETTE[k])}</dt><dd>${conLink ? `<a href="#" data-allegato="${esc(f.percorso)}" data-spazio="${k === "siae_file" ? "schede" : "locandine"}">📎 ${esc(f.nome)}</a>` : `📎 ${esc(f.nome)}`}</dd>`);
+      if (k === "siae_file") return (Array.isArray(v) ? v : []).map((f) => `<dt>${esc(ETICHETTE[k])}</dt><dd>${conLink ? `<a href="#" data-allegato="${esc(f.percorso)}">📎 ${esc(f.nome)}</a>` : `📎 ${esc(f.nome)}`}</dd>`);
       if (k === "siae_dopo" && (d.siae !== "si" || (d.siae_file || []).length)) return [];
       if (v === undefined || v === "" || v === false || (Array.isArray(v) && !v.length)) return [];
       return [`<dt>${esc(ETICHETTE[k] || k)}</dt><dd>${esc(val(k, v))}</dd>`];
@@ -1627,7 +1614,7 @@ function apriScheda(id) {
   $("#sk-risposte").querySelectorAll("[data-allegato]").forEach((a) => (a.onclick = async (e) => {
     e.preventDefault();
     const w = window.open("", "_blank");
-    const { data, error } = await sb.storage.from(a.dataset.spazio).createSignedUrl(a.dataset.allegato, 3600);
+    const { data, error } = await sb.storage.from("schede").createSignedUrl(a.dataset.allegato, 3600);
     if (error || !data) { if (w) w.close(); toast("Allegato non disponibile: " + ((error && error.message) || "riprova")); return; }
     if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
   }));
@@ -2301,363 +2288,9 @@ $("#cal-next").onclick = () => { S.month = new Date(S.month.getFullYear(), S.mon
 $("#cal-today").onclick = () => { S.month = new Date(new Date().getFullYear(), new Date().getMonth(), 1); S.selected = TODAY; renderCalendar(); renderDay(); };
 $("#q").addEventListener("input", (e) => { S.q = e.target.value; renderList(); });
 $("#toggle-table").onclick = () => { S.showTable = !S.showTable; renderEconomy(); };
-/* ---------- social: programma da pubblicare e locandine ---------- */
-const CINEBOT_PUBBLICO = "ticket.cinebot.it/s.tommasomoro";
-const IMG_EST = /\.(jpe?g|png|webp)$/i;
-const addGiorni = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
-const lunedi = (s) => { const d = parse(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return iso(d); };
-const ERR_SOCIAL = () => `<div class="warn">In Supabase manca lo script <b>012_social.sql</b>: eseguilo nel SQL Editor e ricarica la pagina.</div>`;
-// eventi della sala che vanno nel programma pubblico: confermati e pubblicabili (scelta della sala o risposta della scheda)
-const eventiPubblici = () => S.programma.filter((e) => e.pubblico && e.stato === "confermata");
-const INGRESSO = { libero: "Ingresso libero", offerta: "Ingresso a offerta" };
-const infoEvento = (e) => (e.ingresso === "pagamento" && e.prezzo_biglietto ? `Ingresso € ${String(e.prezzo_biglietto).replace(".", ",")}` : INGRESSO[e.ingresso] || "");
-// locandina più recente dell'archivio per un film o un evento (solo immagini: i PDF non si mettono nel programma)
-const locandinaDi = (campo, id) => S.locandine.find((l) => l[campo] === id && IMG_EST.test(l.percorso));
-
-function periodoSocial() {
-  if (S.soPer === "mese") {
-    const m = S.soMese || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const da = iso(m), a = iso(new Date(m.getFullYear(), m.getMonth() + 1, 0));
-    const nome = m.toLocaleDateString("it-IT", { month: "long" });
-    return { da, a, titolo: `${nome[0].toUpperCase()}${nome.slice(1)} in sala`, sotto: `il programma del mese · ${m.getFullYear()}` };
-  }
-  const base = S.soPer === "prossima" ? addGiorni(lunedi(TODAY), 7) : TODAY;
-  const da = base, a = addGiorni(lunedi(base), 6);
-  const f = (s, o) => parse(s).toLocaleDateString("it-IT", o);
-  const sotto = da === a ? f(da, { weekday: "long", day: "numeric", month: "long" }) : parse(da).getMonth() === parse(a).getMonth() ? `dal ${f(da, { day: "numeric" })} al ${f(a, { day: "numeric", month: "long" })}` : `dal ${f(da, { day: "numeric", month: "long" })} al ${f(a, { day: "numeric", month: "long" })}`;
-  return { da, a, titolo: S.soPer === "prossima" ? "La prossima settimana" : "Questa settimana", sotto };
-}
-// appuntamenti del periodo, raggruppati per giorno; lo stesso film nello stesso giorno diventa una riga con più orari
-function appuntamenti(da, a) {
-  const voci = [];
-  for (const p of S.proiezioni) {
-    if (p.data < da || p.data > a) continue;
-    const f = S.films.find((x) => x.id === p.film_id);
-    if (!f) continue;
-    const gia = voci.find((v) => v.film === f.id && v.data === p.data);
-    if (gia) { gia.ore.push(p.ora); continue; }
-    const loc = locandinaDi("film_id", f.id);
-    voci.push({ data: p.data, ore: [p.ora], titolo: f.titolo, tipo: "Cinema", info: "", film: f.id, loc: loc && loc.percorso });
-  }
-  for (const e of eventiPubblici()) {
-    if (e.data < da || e.data > a) continue;
-    const loc = locandinaDi("booking_id", e.id);
-    voci.push({ data: e.data, ore: e.giornata_intera ? [] : [e.inizio], titolo: e.titolo, tipo: e.tipo || "Evento", info: [e.ente, infoEvento(e)].filter(Boolean).join(" · "), evento: e.id, loc: loc && loc.percorso });
-  }
-  voci.forEach((v) => v.ore.sort());
-  voci.sort((x, y) => (x.data + (x.ore[0] || "00")).localeCompare(y.data + (y.ore[0] || "00")));
-  const giorni = [];
-  for (const v of voci) { const g = giorni[giorni.length - 1]; if (g && g.data === v.data) g.voci.push(v); else giorni.push({ data: v.data, voci: [v] }); }
-  return giorni;
-}
-
-// indirizzi temporanei (1 ora) per vedere i file privati dell'archivio
-async function urlLocandine(percorsi) {
-  const ora = Date.now(), manca = [...new Set(percorsi)].filter((p) => p && !(S.locUrl[p] && S.locUrl[p].scade > ora));
-  if (manca.length) {
-    const { data } = await sb.storage.from("locandine").createSignedUrls(manca, 3600);
-    for (const r of data || []) if (r.signedUrl) S.locUrl[r.path] = { url: r.signedUrl, scade: ora + 50 * 60000 };
-  }
-  return Object.fromEntries(percorsi.map((p) => [p, S.locUrl[p] && S.locUrl[p].url]));
-}
-
-function kpiSocial() {
-  const p = periodoSocial(), sett = appuntamenti(TODAY, addGiorni(TODAY, 6)).reduce((n, g) => n + g.voci.length, 0);
-  const mancano = locandineMancanti().length;
-  return `<div class="kpi"><span class="eyebrow">Prossimi 7 giorni</span><b>${sett}</b><small>appuntamenti da comunicare</small></div>
-    <div class="kpi"><span class="eyebrow">Locandine mancanti</span><b class="${mancano ? "neg" : ""}">${mancano}</b><small>nei prossimi 30 giorni</small></div>
-    <div class="kpi"><span class="eyebrow">In archivio</span><b>${S.locandine.length}</b><small>locandine caricate</small></div>
-    <div class="kpi"><span class="eyebrow">Programma</span><b>${esc(p.titolo)}</b><small>${esc(p.sotto)}</small></div>`;
-}
-
-function renderSocial() {
-  const el = $("#so-body");
-  if (S.loadErr2?.programma) { el.innerHTML = ERR_SOCIAL(); return; }
-  const p = periodoSocial(), giorni = appuntamenti(p.da, p.a), n = giorni.reduce((s, g) => s + g.voci.length, 0);
-  const seg = (k, l, cur, attr) => `<button type="button" ${attr}="${k}" aria-pressed="${cur === k}">${l}</button>`;
-  const mese = S.soMese || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  // per lo staff: gli eventi del periodo con la scelta se pubblicarli
-  const daDecidere = S.canWrite ? S.programma.filter((e) => e.data >= p.da && e.data <= p.a) : [];
-  el.innerHTML = `
-    <div class="toolbar">
-      <div class="seg" role="group" aria-label="Periodo">${seg("settimana", "Questa settimana", S.soPer, "data-per")}${seg("prossima", "Prossima settimana", S.soPer, "data-per")}${seg("mese", "Mese", S.soPer, "data-per")}</div>
-      ${S.soPer === "mese" ? `<div class="seg" role="group" aria-label="Mese"><button type="button" data-mese="-1" aria-label="Mese precedente">‹</button><button type="button" aria-pressed="true">${esc(mese.toLocaleDateString("it-IT", { month: "long", year: "numeric" }))}</button><button type="button" data-mese="1" aria-label="Mese successivo">›</button></div>` : ""}
-    </div>
-    <div class="so-grid">
-      <div class="panel">
-        <div class="section-head"><h3>${esc(p.titolo)}</h3><span class="hint">${esc(p.sotto)} · ${n} ${n === 1 ? "appuntamento" : "appuntamenti"}</span></div>
-        ${giorni.length ? giorni.map((g) => `<div class="so-giorno"><div class="eyebrow">${esc(fmtDay(g.data, { weekday: "long", day: "numeric", month: "long" }))}</div>
-          ${g.voci.map((v) => `<div class="so-voce"><b>${v.ore.length ? esc(v.ore.join(" · ")) : "tutto il giorno"}</b><div><div class="t">${esc(v.titolo)}</div><div class="hint">${esc([v.tipo, v.info].filter(Boolean).join(" · "))}${v.loc ? " · 🖼 locandina" : ""}</div></div></div>`).join("")}</div>`).join("")
-          : `<div class="empty">Nessun appuntamento pubblico in questo periodo.${S.canWrite ? " Gli eventi della sala compaiono qui quando li segni «Nel programma»." : ""}</div>`}
-        <div class="actions" style="margin-top:12px"><button class="btn" type="button" id="so-testo"${n ? "" : " disabled"}>Copia il testo per il post</button></div>
-      </div>
-      <div class="panel so-img">
-        <div class="section-head"><h3>Immagine</h3>
-          <div class="seg" role="group" aria-label="Formato">${seg("post", "Post 4:5", S.soFmt, "data-fmt")}${seg("storia", "Storia 9:16", S.soFmt, "data-fmt")}</div></div>
-        <label class="check"><input type="checkbox" id="so-loc"${S.soLoc ? " checked" : ""}> con le locandine dell'archivio</label>
-        <canvas id="so-canvas" aria-label="Anteprima dell'immagine del programma"></canvas>
-        <div class="actions"><button class="btn primary" type="button" id="so-scarica">Scarica l'immagine</button>${navigator.canShare ? `<button class="btn" type="button" id="so-condividi">Condividi</button>` : ""}</div>
-        <p class="hint">Le locandine di Cinebot non si possono inserire nell'immagine (il sito non lo permette): per averle caricane una copia in <a href="#locandine">Locandine</a>.</p>
-      </div>
-    </div>
-    ${S.canWrite ? `<div class="panel" style="margin-top:14px">
-      <div class="section-head"><h3>Eventi della sala in questo periodo</h3><span class="hint">Decidi cosa compare nel programma pubblico e cosa vede chi ha il ruolo Social. Se non scegli, vale la risposta della scheda dell'organizzatore.</span></div>
-      ${daDecidere.length ? `<div class="tbl-wrap"><table><tbody>${daDecidere.map((e) => `<tr>
-        <td>${esc(fmtShort(e.data))}${e.giornata_intera ? "" : " · " + esc(e.inizio)}</td><td><b>${esc(e.titolo)}</b>${e.stato === "opzione" ? ' <span class="pill opzione">Opzione</span>' : ""}<div class="hint">${e.dalla_scheda ? `scheda: «pubblicabile: ${e.dalla_scheda === "si" ? "sì" : "no"}»` : "nessuna risposta dalla scheda"}</div></td>
-        <td>${e.pubblico ? '<span class="pill saldato">Nel programma</span>' : '<span class="pill annullata">Non pubblicato</span>'}</td>
-        <td class="n"><div class="seg" role="group" aria-label="Pubblicare ${esc(e.titolo)}">${[["si", "Sì"], ["no", "No"], ["auto", "Come la scheda"]].map(([k, l]) => `<button type="button" data-pub="${esc(e.id)}" data-v="${k}" aria-pressed="${(e.scelta === true ? "si" : e.scelta === false ? "no" : "auto") === k}">${l}</button>`).join("")}</div></td></tr>`).join("")}</tbody></table></div>`
-        : `<div class="hint">Nessun evento in calendario in questo periodo.</div>`}
-    </div>` : ""}`;
-  el.querySelectorAll("[data-per]").forEach((b) => (b.onclick = () => { S.soPer = b.dataset.per; render(); }));
-  el.querySelectorAll("[data-mese]").forEach((b) => (b.onclick = () => { S.soMese = new Date(mese.getFullYear(), mese.getMonth() + Number(b.dataset.mese), 1); render(); }));
-  el.querySelectorAll("[data-fmt]").forEach((b) => (b.onclick = () => { S.soFmt = b.dataset.fmt; renderSocial(); }));
-  $("#so-loc").onchange = (e) => { S.soLoc = e.target.checked; disegnaSocial(); };
-  $("#so-testo").onclick = () => openCopyText(testoProgramma(p, giorni));
-  $("#so-scarica").onclick = () => esportaSocial(p, false);
-  if ($("#so-condividi")) $("#so-condividi").onclick = () => esportaSocial(p, true);
-  el.querySelectorAll("[data-pub]").forEach((b) => (b.onclick = async () => {
-    const v = b.dataset.v === "si" ? true : b.dataset.v === "no" ? false : null;
-    try { await run(sb.from("bookings").update({ pubblico: v }).eq("id", b.dataset.pub), v === null ? "Vale la risposta della scheda" : v ? "Evento nel programma" : "Evento tolto dal programma"); } catch (e) { toast(errText(e)); }
-  }));
-  disegnaSocial();
-}
-
-function testoProgramma(p, giorni) {
-  const cinema = giorni.some((g) => g.voci.some((v) => v.film));
-  return [`📅 ${p.titolo} alla Sala San Tommaso Moro (${p.sotto})`, "",
-    ...giorni.flatMap((g) => [fmtDay(g.data, { weekday: "long", day: "numeric", month: "long" }).replace(/^./, (c) => c.toUpperCase()),
-      ...g.voci.map((v) => `${v.film ? "🎬" : "🎭"} ${v.ore.length ? v.ore.join(" e ") + " · " : ""}${v.titolo}${v.info ? ` (${v.info})` : ""}`), ""]),
-    cinema ? `🎟️ Biglietti del cinema: https://${CINEBOT_PUBBLICO}` : "",
-    "📍 Sala San Tommaso Moro, Via Roma 75, Piombino Dese"].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").trim();
-}
-
-// ---- immagine del programma (canvas): Spectral per i titoli, Figtree per il resto, colori della sala ----
-const IMG_COL = { bg: "#17212A", panel: "#1F2C36", ink: "#F3F6F7", muted: "#9FB0BA", accent: "#3CC2B3", line: "#33434F" };
-let disegnoN = 0;
-async function disegnaSocial() {
-  const cv = $("#so-canvas");
-  if (!cv) return;
-  const n = ++disegnoN, p = periodoSocial(), giorni = appuntamenti(p.da, p.a);
-  const W = 1080, H = S.soFmt === "storia" ? 1920 : 1350;
-  cv.width = W; cv.height = H;
-  try { await Promise.all(["600 60px Spectral", "500 40px Spectral", "400 30px Figtree", "600 30px Figtree", "700 30px Figtree"].map((f) => document.fonts.load(f))); } catch (e) {}
-  const imgs = {};
-  if (S.soLoc) {
-    const percorsi = giorni.flatMap((g) => g.voci.map((v) => v.loc)).filter(Boolean);
-    if (percorsi.length) {
-      const urls = await urlLocandine(percorsi);
-      await Promise.all(percorsi.map((pc) => new Promise((ok) => {
-        if (!urls[pc]) return ok();
-        const im = new Image(); im.crossOrigin = "anonymous";
-        im.onload = () => { imgs[pc] = im; ok(); }; im.onerror = () => ok(); im.src = urls[pc];
-      })));
-    }
-  }
-  if (n !== disegnoN) return; // nel frattempo è partito un altro disegno
-  disegnaProgramma(cv.getContext("2d"), W, H, p, giorni, imgs);
-}
-
-function disegnaProgramma(ctx, W, H, p, giorni, imgs) {
-  const M = 72, storia = H > 1500;
-  ctx.fillStyle = IMG_COL.bg; ctx.fillRect(0, 0, W, H);
-  ctx.textBaseline = "alphabetic";
-  const font = (peso, px, fam) => `${peso} ${Math.round(px)}px ${fam === "s" ? "Spectral, Georgia, serif" : "Figtree, system-ui, sans-serif"}`;
-  const spazio = (v) => { if ("letterSpacing" in ctx) ctx.letterSpacing = v; };
-  // testata
-  let y = storia ? 170 : 110;
-  ctx.strokeStyle = IMG_COL.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(W - M - 44, y - 20, 44, 0, Math.PI * 2); ctx.stroke();
-  ctx.fillStyle = IMG_COL.accent; ctx.font = font(600, 36, "s"); ctx.textAlign = "center"; ctx.fillText("TM", W - M - 44, y - 7); ctx.textAlign = "left";
-  spazio("4px"); ctx.font = font(700, 24); ctx.fillStyle = IMG_COL.accent; ctx.fillText("SALA SAN TOMMASO MORO", M, y - 30); spazio("0px");
-  ctx.font = font(400, 26); ctx.fillStyle = IMG_COL.muted; ctx.fillText("Piombino Dese", M, y + 6);
-  y += storia ? 150 : 120;
-  ctx.fillStyle = IMG_COL.ink; ctx.font = font(600, 84, "s"); ctx.fillText(p.titolo, M, y, W - 2 * M);
-  y += 54; ctx.font = font(500, 36, "s"); ctx.fillStyle = IMG_COL.muted; ctx.fillText(p.sotto, M, y, W - 2 * M);
-  y += 40; ctx.fillStyle = IMG_COL.accent; ctx.fillRect(M, y, 120, 5);
-  const top = y + (storia ? 70 : 50);
-  const cinema = giorni.some((g) => g.voci.some((v) => v.film));
-  const piede = H - (storia ? 210 : 150);
-  // a capo per parole, al massimo «righe» righe con i puntini
-  const aCapo = (testo, max, righe) => {
-    const parole = String(testo).split(/\s+/), out = [];
-    let r = "";
-    for (const w of parole) { const t = r ? r + " " + w : w; if (ctx.measureText(t).width <= max || !r) r = t; else { out.push(r); r = w; } }
-    if (r) out.push(r);
-    if (out.length > righe) { out.length = righe; let u = out[righe - 1]; while (u && ctx.measureText(u + "…").width > max) u = u.slice(0, -1); out[righe - 1] = u.trimEnd() + "…"; }
-    return out;
-  };
-  const conImg = Object.keys(imgs).length > 0;
-  // impagina con un fattore di scala k; se disegna è falso misura soltanto
-  const impagina = (k, quante, disegna) => {
-    let yy = top, usate = 0;
-    const colOra = 170 * k, thumbW = conImg ? 92 * k : 0, gap = 24 * k, xT = M + colOra + (conImg ? thumbW + gap : 0), maxT = W - M - xT;
-    for (const g of giorni) {
-      if (usate >= quante) break;
-      ctx.font = font(700, 26 * k);
-      if (disegna) { spazio(`${3 * k}px`); ctx.fillStyle = IMG_COL.accent; ctx.fillText(fmtDay(g.data, { weekday: "long", day: "numeric", month: "long" }).toUpperCase(), M, yy + 26 * k); spazio("0px");
-        ctx.fillStyle = IMG_COL.line; ctx.fillRect(M, yy + 42 * k, W - 2 * M, 2); }
-      yy += 66 * k;
-      for (const v of g.voci) {
-        if (usate >= quante) break;
-        ctx.font = font(600, 46 * k, "s");
-        const righe = aCapo(v.titolo, maxT, 2), sub = [v.tipo, v.info].filter(Boolean).join(" · ");
-        const hTesto = righe.length * 52 * k + (sub ? 40 * k : 0), hImg = conImg ? thumbW * 1.5 : 0, h = Math.max(hTesto, hImg, 56 * k);
-        if (disegna) {
-          ctx.font = font(700, 38 * k); ctx.fillStyle = IMG_COL.ink;
-          const ore = v.ore.length ? v.ore : ["tutto il giorno"];
-          ore.slice(0, 3).forEach((o, i) => { ctx.font = font(o.length > 5 ? 600 : 700, (o.length > 5 ? 22 : 38) * k); ctx.fillText(o, M, yy + 40 * k + i * 42 * k, colOra - 12 * k); });
-          if (conImg) {
-            const im = v.loc && imgs[v.loc], x = M + colOra;
-            if (im) { // ritaglio 2:3 centrato
-              const r = 2 / 3, sw = Math.min(im.width, im.height * r), sh = sw / r;
-              ctx.drawImage(im, (im.width - sw) / 2, (im.height - sh) / 2, sw, sh, x, yy, thumbW, thumbW * 1.5);
-            } else { ctx.fillStyle = IMG_COL.panel; ctx.fillRect(x, yy, thumbW, thumbW * 1.5); ctx.fillStyle = IMG_COL.muted; ctx.font = font(600, 34 * k, "s"); ctx.textAlign = "center"; ctx.fillText(v.film ? "🎬" : "✦", x + thumbW / 2, yy + thumbW * 0.85); ctx.textAlign = "left"; }
-          }
-          ctx.font = font(600, 46 * k, "s"); ctx.fillStyle = IMG_COL.ink;
-          righe.forEach((r, i) => ctx.fillText(r, xT, yy + 40 * k + i * 52 * k));
-          if (sub) { ctx.font = font(400, 27 * k); ctx.fillStyle = IMG_COL.muted; ctx.fillText(aCapo(sub, maxT, 1)[0], xT, yy + 40 * k + righe.length * 52 * k + 2 * k); }
-        }
-        yy += h + 26 * k; usate++;
-      }
-      yy += 14 * k;
-    }
-    return yy;
-  };
-  const tot = giorni.reduce((s, g) => s + g.voci.length, 0);
-  // con pochi appuntamenti il testo si ingrandisce, con tanti si rimpicciolisce; se non basta, gli ultimi restano fuori
-  let k = 1.3, quante = tot;
-  while (k > 0.62 && impagina(k, tot, false) > piede) k -= 0.04;
-  if (impagina(k, tot, false) > piede) while (quante > 1 && impagina(k, quante, false) > piede - 50) quante--;
-  if (!tot) { ctx.font = font(500, 44, "s"); ctx.fillStyle = IMG_COL.muted; ctx.fillText("Nessun appuntamento in programma", M, top + 60); }
-  else impagina(k, quante, true);
-  if (quante < tot) { ctx.font = font(600, 28); ctx.fillStyle = IMG_COL.accent; ctx.fillText(tot - quante === 1 ? "… e un altro appuntamento in programma" : `… e altri ${tot - quante} appuntamenti in programma`, M, piede - 14, W - 2 * M); }
-  // piede
-  ctx.fillStyle = IMG_COL.line; ctx.fillRect(M, piede + 20, W - 2 * M, 2);
-  ctx.font = font(600, 28); ctx.fillStyle = IMG_COL.ink; ctx.fillText("Via Roma 75 · Piombino Dese", M, piede + 72);
-  if (cinema) { ctx.font = font(400, 26); ctx.fillStyle = IMG_COL.muted; ctx.fillText(`Biglietti del cinema: ${CINEBOT_PUBBLICO}`, M, piede + 112, W - 2 * M); }
-}
-
-async function esportaSocial(p, condividi) {
-  await disegnaSocial();
-  const cv = $("#so-canvas");
-  const nome = `programma-${p.da}-${S.soFmt}.png`.replace(/[^\w.-]+/g, "-");
-  let blob;
-  try { blob = await new Promise((ok) => cv.toBlob(ok, "image/png")); } catch (e) { blob = null; }
-  if (!blob) { toast("Immagine non disponibile: togli le locandine e riprova"); return; }
-  const file = new File([blob], nome, { type: "image/png" });
-  if (condividi && navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: p.titolo }); } catch (e) {}
-    return;
-  }
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: nome });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-}
-
-// ---- archivio delle locandine ----
-// prossimi 30 giorni: film ed eventi pubblici senza locandina (per i film vale anche quella di Cinebot)
-function locandineMancanti() {
-  const fine = addGiorni(TODAY, 30), out = [];
-  const visti = new Set();
-  for (const p of S.proiezioni) {
-    if (p.data < TODAY || p.data > fine || visti.has(p.film_id)) continue;
-    visti.add(p.film_id);
-    const f = S.films.find((x) => x.id === p.film_id);
-    if (f && !f.locandina_url && !S.locandine.some((l) => l.film_id === f.id)) out.push({ data: p.data, titolo: f.titolo, film: f.id });
-  }
-  for (const e of eventiPubblici()) if (e.data >= TODAY && e.data <= fine && !S.locandine.some((l) => l.booking_id === e.id)) out.push({ data: e.data, titolo: e.titolo, evento: e.id, entro: e.locandina_entro, ente: e.ente });
-  return out.sort((a, b) => a.data.localeCompare(b.data));
-}
-
-function renderLocandine() {
-  const el = $("#lo-body");
-  if (S.loadErr2?.locandine) { el.innerHTML = ERR_SOCIAL(); return; }
-  const q = S.loQ.trim().toLowerCase();
-  const filmDi = (id) => S.films.find((f) => f.id === id), eventoDi = (id) => S.programma.find((e) => e.id === id);
-  const prossimaDi = (fid) => S.proiezioni.find((p) => p.film_id === fid && p.data >= TODAY);
-  // schede: archivio + locandine di Cinebot dei film
-  let schede = [
-    ...S.locandine.map((l) => { const f = filmDi(l.film_id), e = eventoDi(l.booking_id), pr = f && prossimaDi(f.id);
-      return { tipo: "archivio", id: l.id, percorso: l.percorso, nome: l.nome, titolo: (f && f.titolo) || (e && e.titolo) || l.titolo || l.nome, data: (pr && pr.data) || (e && e.data) || l.data, fonte: l.fonte === "organizzatore" ? "Dall'organizzatore" : "Caricata dalla sala", img: IMG_EST.test(l.percorso) }; }),
-    ...S.films.filter((f) => f.locandina_url).map((f) => { const pr = prossimaDi(f.id) || S.proiezioni.filter((p) => p.film_id === f.id).pop();
-      return { tipo: "cinebot", id: f.id, url: f.locandina_url, titolo: f.titolo, data: pr && pr.data, fonte: "Da Cinebot", img: true }; }),
-  ];
-  if (S.loFilter === "prossimi") schede = schede.filter((x) => x.data && x.data >= TODAY);
-  if (q) schede = schede.filter((x) => x.titolo.toLowerCase().includes(q));
-  schede.sort((a, b) => (S.loFilter === "prossimi" ? (a.data || "9").localeCompare(b.data || "9") : (b.data || "").localeCompare(a.data || "")));
-  const mancano = locandineMancanti();
-  el.innerHTML = `
-    <div class="toolbar">
-      <div class="seg" role="group" aria-label="Filtro locandine"><button type="button" data-lf="prossimi" aria-pressed="${S.loFilter === "prossimi"}">Prossimi appuntamenti</button><button type="button" data-lf="tutte" aria-pressed="${S.loFilter === "tutte"}">Tutte</button></div>
-      <div class="actions"><input type="search" id="lo-q" placeholder="Cerca un titolo" value="${esc(S.loQ)}" aria-label="Cerca locandina"><button class="btn primary" type="button" id="lo-nuova">+ Carica locandina</button></div>
-    </div>
-    ${mancano.length ? `<div class="panel" style="margin-bottom:14px"><div class="section-head"><h3>Mancano le locandine</h3><span class="hint">Appuntamenti pubblici dei prossimi 30 giorni senza locandina</span></div>
-      <div class="blist">${mancano.map((m) => `<div class="lo-manca"><span><b>${esc(fmtShort(m.data))}</b> · ${esc(m.titolo)}${m.ente ? ` <span class="hint">(${esc(m.ente)})</span>` : ""}${m.entro ? ` · <span class="hint">l'organizzatore la manda entro il ${esc(fmtShort(m.entro))}</span>` : ""}</span><button class="btn sm" type="button" data-carica="${m.film ? "f:" + esc(m.film) : "e:" + esc(m.evento)}">Carica</button></div>`).join("")}</div></div>` : ""}
-    ${schede.length ? `<div class="lo-grid">${schede.map((x) => `<article class="lo-card">
-        <div class="poster">${x.tipo === "cinebot" ? `<img src="${esc(x.url)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : x.img ? `<img data-path="${esc(x.percorso)}" alt="">` : `<span class="ph">PDF</span>`}</div>
-        <div class="body"><div class="t">${esc(x.titolo)}</div><div class="hint">${x.data ? esc(fmtShort(x.data)) + " · " : ""}${esc(x.fonte)}</div>
-          <div class="actions">${x.tipo === "cinebot" ? `<a class="btn sm" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">Apri</a>` : `<button class="btn sm" type="button" data-scarica="${esc(x.id)}">Scarica</button><button class="btn ghost sm" type="button" data-elimina="${esc(x.id)}">Elimina</button>`}</div></div>
-      </article>`).join("")}</div>`
-      : `<div class="empty">${S.loFilter === "prossimi" ? "Nessuna locandina per i prossimi appuntamenti." : "Nessuna locandina in archivio."} Le locandine arrivano da Cinebot, dalle schede degli organizzatori o da «+ Carica locandina».</div>`}`;
-  el.querySelectorAll("[data-lf]").forEach((b) => (b.onclick = () => { S.loFilter = b.dataset.lf; renderLocandine(); }));
-  $("#lo-q").oninput = (e) => { S.loQ = e.target.value; clearTimeout(S.loT); S.loT = setTimeout(() => { renderLocandine(); const i = $("#lo-q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
-  $("#lo-nuova").onclick = () => apriCaricaLocandina("");
-  el.querySelectorAll("[data-carica]").forEach((b) => (b.onclick = () => apriCaricaLocandina(b.dataset.carica)));
-  el.querySelectorAll(".lo-card img:not([data-path])").forEach((img) => (img.onerror = () => img.replaceWith(Object.assign(document.createElement("span"), { className: "ph", textContent: "Non disponibile" }))));
-  const conPath = [...el.querySelectorAll("img[data-path]")];
-  if (conPath.length) urlLocandine(conPath.map((i) => i.dataset.path)).then((u) => conPath.forEach((i) => { if (u[i.dataset.path]) i.src = u[i.dataset.path]; }));
-  el.querySelectorAll("[data-scarica]").forEach((b) => (b.onclick = async () => {
-    const l = S.locandine.find((x) => x.id === b.dataset.scarica);
-    const w = window.open("", "_blank");
-    const { data, error } = await sb.storage.from("locandine").createSignedUrl(l.percorso, 600, { download: l.nome || true });
-    if (error || !data) { if (w) w.close(); toast("Locandina non disponibile: " + ((error && error.message) || "riprova")); return; }
-    if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
-  }));
-  el.querySelectorAll("[data-elimina]").forEach((b) => (b.onclick = async () => {
-    if (b.dataset.ok !== "1") { b.dataset.ok = "1"; b.textContent = "Conferma"; b.classList.add("danger"); return; }
-    const l = S.locandine.find((x) => x.id === b.dataset.elimina);
-    b.disabled = true;
-    try { await sb.storage.from("locandine").remove([l.percorso]); await run(sb.from("locandine").delete().eq("id", l.id), "Locandina eliminata"); } catch (e) { toast(errText(e)); b.disabled = false; }
-  }));
-}
-
-const dlgLo = $("#dlg-locandina");
-function apriCaricaLocandina(per) {
-  const fine = addGiorni(TODAY, 120);
-  const films = S.films.filter((f) => S.proiezioni.some((p) => p.film_id === f.id && p.data >= TODAY && p.data <= fine));
-  const eventi = (S.canWrite ? S.programma.filter((e) => e.pubblico) : eventiPubblici()).filter((e) => e.data >= TODAY && e.data <= fine);
-  $("#lo-per").innerHTML = `<option value="">Altro (scrivi il titolo)</option>`
-    + (films.length ? `<optgroup label="Film in programma">${films.map((f) => `<option value="f:${esc(f.id)}">${esc(f.titolo)}</option>`).join("")}</optgroup>` : "")
-    + (eventi.length ? `<optgroup label="Eventi">${eventi.map((e) => `<option value="e:${esc(e.id)}">${esc(fmtShort(e.data))} · ${esc(e.titolo)}</option>`).join("")}</optgroup>` : "");
-  $("#lo-per").value = per;
-  $("#lo-file").value = ""; $("#lo-titolo").value = ""; $("#lo-data").value = ""; $("#lo-error").innerHTML = "";
-  const agg = () => { $("#lo-altro").style.display = $("#lo-per").value ? "none" : "contents"; };
-  $("#lo-per").onchange = agg; agg();
-  dlgLo.showModal();
-}
-$("#lo-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const file = $("#lo-file").files[0], per = $("#lo-per").value, btn = $("#lo-form [type=submit]");
-  const err = (t) => ($("#lo-error").innerHTML = `<div class="warn">${esc(t)}</div>`);
-  if (!file) return err("Scegli il file della locandina.");
-  if (file.size > 15 * 1024 * 1024) return err("Il file supera i 15 MB.");
-  if (!/^image\/(jpeg|png|webp|heic|heif)$|^application\/pdf$/.test(file.type)) return err("Va bene un'immagine JPG, PNG o WebP, oppure un PDF.");
-  const f = per.startsWith("f:") ? S.films.find((x) => x.id === per.slice(2)) : null, e = per.startsWith("e:") ? S.programma.find((x) => x.id === per.slice(2)) : null;
-  const titolo = (f && f.titolo) || (e && e.titolo) || $("#lo-titolo").value.trim();
-  if (!titolo) return err("Scrivi il titolo o scegli il film o l'evento.");
-  const est = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
-  const percorso = `sala/${Date.now()}-${titolo.toLowerCase().normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "locandina"}${est}`;
-  btn.disabled = true;
-  try {
-    const up = await sb.storage.from("locandine").upload(percorso, file, { contentType: file.type, upsert: false });
-    if (up.error) throw up.error;
-    const ins = await sb.from("locandine").insert({ percorso, nome: file.name, titolo, data: (e && e.data) || $("#lo-data").value || null, booking_id: e ? e.id : null, film_id: f ? f.id : null });
-    if (ins.error) { await sb.storage.from("locandine").remove([percorso]); throw ins.error; }
-    dlgLo.close(); toast("Locandina caricata"); await loadAll();
-  } catch (x) { err(errText(x)); } finally { btn.disabled = false; }
-});
-
 function route() {
   const h = location.hash.slice(1);
-  S.view = VIEWS[h] && canSee(h) ? h : canSee("calendario") ? "calendario" : Object.keys(VIEWS).find(canSee) || "calendario";
+  S.view = VIEWS[h] && canSee(h) ? h : "calendario";
   render();
 }
 addEventListener("hashchange", route);

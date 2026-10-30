@@ -437,21 +437,3 @@ a.btn.primary { color: var(--accent-ink) }
 .close-grid .field { grid-column: auto }
 #cassa-list td:first-child { white-space: nowrap }
 .version { text-align: center; color: var(--muted); font-size: .72rem; padding-block: 0 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
-
-/* social: programma da pubblicare e archivio delle locandine */
-.so-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 400px); gap: 14px; align-items: start }
-@media (max-width: 860px) { .so-grid { grid-template-columns: minmax(0, 1fr) } }
-.so-giorno + .so-giorno { margin-top: 12px }
-.so-giorno .eyebrow { color: var(--accent); margin-bottom: 4px }
-.so-voce { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px solid var(--line) }
-.so-voce .t { font-weight: 600 }
-.so-img canvas { display: block; width: 100%; height: auto; border-radius: 8px; margin: 8px 0 12px; background: #17212A }
-.lo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px }
-.lo-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; min-width: 0 }
-.lo-card .poster { aspect-ratio: 2 / 3; background: var(--sunk); display: grid; place-items: center; overflow: hidden }
-.lo-card .poster img { width: 100%; height: 100%; object-fit: cover; display: block }
-.lo-card .poster .ph { font-family: var(--f-display); color: var(--muted); padding: 12px; text-align: center }
-.lo-card .body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1 }
-.lo-card .t { font-weight: 600; overflow-wrap: anywhere }
-.lo-card .actions { margin-top: auto; padding-top: 6px; display: flex; gap: 6px; flex-wrap: wrap }
-.lo-manca { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
