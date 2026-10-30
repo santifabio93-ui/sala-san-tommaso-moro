@@ -151,12 +151,29 @@ direttamente dallo script, in sola lettura. Nell'app, in **Cinema → Incassi C1
 incasso lordo, netto IVA e IVA per proiezione, per film e per mese, con il confronto con la Cassa della stessa serata;
 il confronto compare anche nella sezione Cassa. Per controllare la lettura esegui a mano la funzione `provaC1`.
 
+Sotto le statistiche, **Consigli per la programmazione**: soglia di pareggio (spettatori che servono per coprire il
+noleggio medio), giorni e orari da ripensare o da sfruttare, film italiani o stranieri, omaggi; e **le rassegne a
+confronto** (proiezioni, spettatori medi, riempimento e margine dalla prima nota).
+
+## Conviene prendere questo film?
+In Cinema (e in fondo alle Statistiche) «Conviene?» calcola, per un film nuovo (giorno, orario, numero di proiezioni)
+o per uno già in programma, gli spettatori attesi dai C1 degli ultimi 12 mesi nello stesso giorno e orario (con la
+forbice tra una serata scarsa e una buona), l'incasso netto, il noleggio secondo le condizioni del distributore
+(percentuale con minimo garantito, solo percentuale o forfait) e il margine. Dice quanti spettatori servono per
+andare in pari e se conviene, con un po' di rischio o no.
+
 ## Statistiche
 In **Cinema → Statistiche** (amministratori e coordinatori), calcolate dai C1: spettatori, riempimento medio della sala
 (capienza letta dai C1), prezzo medio pagato e quota di omaggi; frasi di sintesi (momento migliore, pomeriggio o sera,
 record, film che ha reso di più, confronto con il periodo precedente); spettatori mese per mese con l'anno prima;
 classifica dei film; mappa giorno × fascia oraria; tipi di biglietto. Nella Programmazione ogni film mostra una stima
 degli spettatori della prossima proiezione, ricavata dai C1 della stessa fascia e del film stesso.
+
+## Preventivo
+In Economia → Bilancio, sotto il bilancio, il **preventivo dell'anno**: entrate e uscite previste per ogni settore
+della prima nota, confrontate con quelle registrate. Avvisa quando un settore ha già superato le uscite previste
+o, a questo ritmo, le supererà, e quando le entrate restano indietro. «Proponi le cifre» parte dal consuntivo
+dell'anno prima (o dalla proiezione dell'anno in corso). Esegui `supabase/015_preventivo.sql`.
 
 ## Bilancio dalla prima nota
 Esegui `supabase/007_prima_nota.sql` nel SQL Editor (si può rieseguire). Con `+primanota` nella proprietà `MODALITA`

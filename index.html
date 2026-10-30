@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.11">
+<link rel="stylesheet" href="style.css?v=2026-11-01.13">
 </head>
 <body>
 
@@ -142,7 +142,7 @@
   <main id="view-cinema" hidden>
     <div class="toolbar">
       <div class="seg" id="film-filters" role="group" aria-label="Filtro film"></div>
-      <div class="actions"><span class="hint" id="film-sync"></span><button class="btn primary" id="btn-film" type="button">+ Aggiungi film</button></div>
+      <div class="actions"><span class="hint" id="film-sync"></span><button class="btn" id="btn-conviene" type="button">Conviene?</button><button class="btn primary" id="btn-film" type="button">+ Aggiungi film</button></div>
     </div>
     <div id="film-todo" hidden></div>
     <div id="films"></div>
@@ -191,6 +191,7 @@
     </div>
     <p class="hint" id="pn-hint" style="margin:-6px 0 14px"></p>
     <div id="pn-body"></div>
+    <div id="pv-body"></div>
   </main>
 
   <main id="view-donazioni" hidden>
@@ -233,7 +234,7 @@
         </div>
         <div class="panel">
           <div class="section-head"><h2>Tariffe</h2><span class="hint">A giornata, usate per proporre il prezzo delle prenotazioni</span></div>
-          <form id="rates-form" class="stack" style="gap:12px">
+          <form id="rates-form" class="stack" style="gap:12px" novalidate>
             <div id="r-avviso"></div>
             <div class="rates">
               <div class="field"><label for="r-galleria">Galleria (€ + IVA)</label><input id="r-galleria" type="number" min="0" step="1" inputmode="decimal"></div>
@@ -438,6 +439,28 @@
   </form>
 </dialog>
 
+<dialog id="dlg-conviene">
+  <form class="dlg" novalidate onsubmit="return false">
+    <div class="dlg-head"><h2>Conviene prendere questo film?</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" style="margin:0">Scrivi le condizioni del distributore: l'app stima gli spettatori dai C1 delle proiezioni passate nello stesso giorno e orario.</p>
+    <div class="form">
+      <div class="field"><label for="cv-film">Film</label><select id="cv-film"></select></div>
+      <div id="cv-quando" style="display:contents">
+        <div class="field t"><label for="cv-giorno">Giorno</label><select id="cv-giorno"><option value="1">lunedì</option><option value="2">martedì</option><option value="3">mercoledì</option><option value="4">giovedì</option><option value="5" selected>venerdì</option><option value="6">sabato</option><option value="0">domenica</option></select></div>
+        <div class="field t"><label for="cv-fascia">Orario</label><select id="cv-fascia"><option value="pomeriggio">pomeriggio</option><option value="sera" selected>sera</option></select></div>
+        <div class="field t"><label for="cv-n">Proiezioni</label><input id="cv-n" type="number" min="1" max="20" value="1" inputmode="numeric"></div>
+      </div>
+      <div class="field h"><label for="cv-tipo">Condizioni del distributore</label><select id="cv-tipo"><option value="perc">Percentuale con minimo garantito</option><option value="solo">Solo percentuale</option><option value="forfait">Cifra fissa (forfait)</option></select></div>
+      <div class="field t" id="cv-perc-wrap"><label for="cv-perc">Percentuale (%)</label><input id="cv-perc" type="number" min="0" max="100" step="1" value="40" inputmode="decimal"></div>
+      <div class="field t" id="cv-min-wrap"><label for="cv-minimo">Minimo garantito (€)</label><input id="cv-minimo" type="number" min="0" step="10" value="150" inputmode="decimal"></div>
+      <div class="field t" id="cv-forfait-wrap"><label for="cv-forfait">Forfait (€)</label><input id="cv-forfait" type="number" min="0" step="10" value="150" inputmode="decimal"></div>
+      <div class="field t"><label for="cv-netto">Incasso netto a spettatore (€)</label><input id="cv-netto" type="number" min="0" step="0.1" inputmode="decimal"><span class="hint" id="cv-netto-hint"></span></div>
+      <div class="field t"><label for="cv-altri">Altri costi a proiezione (€)</label><input id="cv-altri" type="number" min="0" step="5" inputmode="decimal"><span class="hint">energia, acqua, materiali</span></div>
+    </div>
+    <div id="cv-esito"></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-donatore">
   <form class="dlg" id="donatore-form" novalidate>
     <div class="dlg-head"><h2 id="d-head">Donatore</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -550,7 +573,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.11"></script>
-<script type="module" src="app.js?v=2026-11-01.11"></script>
+<script src="config.js?v=2026-11-01.13"></script>
+<script type="module" src="app.js?v=2026-11-01.13"></script>
 </body>
 </html>

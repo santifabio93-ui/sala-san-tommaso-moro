@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.11";
+const VERSIONE = "2026-11-01.13";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -158,6 +158,8 @@ async function loadAll() {
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
       S.tariffeDb = "tariffe" in st.data; // aggiornamento 13
+      S.preventivoDb = "preventivo" in st.data; // aggiornamento 15
+      S.preventivo = st.data.preventivo || {};
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
@@ -294,7 +296,7 @@ function render() {
   if (S.view === "cinema") renderCinema();
   if (S.view === "c1") renderC1();
   if (S.view === "stats") renderStats();
-  if (S.view === "bilancio") renderBilancio();
+  if (S.view === "bilancio") { renderBilancio(); renderPreventivo(); }
   if (S.view === "donazioni") renderDonazioni();
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
@@ -932,6 +934,7 @@ const FILM_FILTERS = [
 const pillCls = { ok: "saldato", warn: "acconto", ko: "dapagare", none: "annullata" };
 function renderCinema() {
   $("#btn-film").hidden = !S.canWrite;
+  $("#btn-conviene").hidden = !S.canWrite;
   renderCoseFilm();
   $("#film-sync").textContent = S.sync.cinebot ? `Programmazione da Cinebot aggiornata ${ago(S.sync.cinebot)}` : "";
   $("#film-filters").innerHTML = FILM_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.filmFilter === k}">${l}<span class="c">${S.films.filter(f).length}</span></button>`).join("");
@@ -1268,6 +1271,11 @@ function renderStats() {
     { name: "Spettatori", color: "var(--accent)", values: mesi.map((k) => sumBy(list, k, (c) => c.spettatori)), extra: mesi.map((k) => `${list.filter((c) => meseKey(c) === k).length} pr. · ${money(sumBy(list, k, (c) => c.lordo))}`) },
     ...(prev.length ? [{ name: "Anno prima", color: "color-mix(in oklab, var(--accent) 35%, var(--surface))", values: mesi.map(prevSameMonth) }] : []),
   ], (v) => Math.round(v).toLocaleString("it-IT"));
+  // consigli per la programmazione (solo cinema) e rassegne a confronto
+  const cin = list.filter((c) => !c.tipo_evento || /cinema|film|proiez/i.test(c.tipo_evento));
+  const { out } = cin.length >= 6 ? consigliProgrammazione(cin) : { out: [] };
+  el.insertAdjacentHTML("beforeend", (out.length ? `<div class="panel" style="margin-top:14px"><h2>Consigli per la programmazione</h2><span class="hint">Dai C1 del cinema nel periodo scelto${S.isAdmin ? " e dalla prima nota" : ""}</span><ul class="consigli">${out.map((x) => `<li>${x}</li>`).join("")}</ul>${S.canWrite ? `<div class="actions"><button class="btn sm" type="button" id="st-conviene">Conviene prendere un film?</button></div>` : ""}</div>` : "") + renderRassegne(list));
+  if ($("#st-conviene")) $("#st-conviene").onclick = apriConviene;
 }
 
 /* ---------- bilancio (dalla prima nota) ---------- */
@@ -2501,7 +2509,7 @@ function renderTariffeCosti() {
     <details><summary>Come si calcola e cosa puoi correggere</summary><div>
       <p><b>Costo di una giornata</b> = costi annui della struttura ÷ giornate di apertura. Costi: prima nota ${a.anno}, settori della struttura, senza biglietteria online e comunicazione (servono alle attività, non agli affitti); l'assicurazione conta una volta, il resto è proiettato sull'anno (${a.giorni} giorni trascorsi): <b>${money(a.costiAuto)}</b>. Giornate: date con prenotazioni, proiezioni o borderò fino a oggi (${a.giorniUsati}), proiettate sull'anno: <b>${a.giornateAuto}</b>.</p>
       <p>Se una bolletta non è ancora registrata (per esempio l'energia) la stima è bassa: puoi scrivere qui i valori che conosci. Vuoto = calcolo automatico.</p>
-      <form id="tc-form" class="sito-contatto"><label class="hint" for="tc-costi">Costi annui (€)</label><input id="tc-costi" type="number" min="0" step="100" inputmode="decimal" placeholder="${Math.round(a.costiAuto)}" value="${Number(T.costi_annui) > 0 ? T.costi_annui : ""}">
+      <form id="tc-form" class="sito-contatto" novalidate><label class="hint" for="tc-costi">Costi annui (€)</label><input id="tc-costi" type="number" min="0" step="1" inputmode="decimal" placeholder="${Math.round(a.costiAuto)}" value="${Number(T.costi_annui) > 0 ? T.costi_annui : ""}">
         <label class="hint" for="tc-giornate">Giornate di apertura</label><input id="tc-giornate" type="number" min="0" step="1" inputmode="numeric" placeholder="${a.giornateAuto}" value="${Number(T.giornate_annue) > 0 ? T.giornate_annue : ""}">
         <button class="btn sm" type="submit">${S.tariffeDb ? "Salva" : "Ricalcola"}</button></form>
       <p class="hint">Gli «affitti in più» considerano per ogni affitto la tariffa della platea meno energia e acqua di una giornata (${money(Math.round(a.variabileGiorno))}). Gli importi della prima nota sono quelli incassati, IVA compresa se c'era.</p>
@@ -2653,7 +2661,7 @@ function renderSenzaTurni() {
       + `<div class="actions" style="margin-top:8px"><button class="btn" type="button" id="crea-tutti"${lista.some((b) => pubblicoDi(b).k && orarioTurni(b)) ? "" : " disabled"}>Crea i turni per tutti quelli con il pubblico indicato</button></div>`
       : `<div class="hint">Tutti gli eventi dei prossimi 30 giorni hanno i turni. ✓</div>`}
     <details class="regole-turni"><summary>Regole: quante persone servono</summary>
-      <form id="regole-form" class="sito-contatto">${Object.entries(PUBBLICO).map(([k, l]) => `<label class="hint" for="rt-${k}">${esc(l.split(" (")[0])}</label><input id="rt-${k}" type="number" min="0" max="20" step="1" value="${R[k]}"${S.isAdmin ? "" : " disabled"}>`).join("")}
+      <form id="regole-form" class="sito-contatto" novalidate>${Object.entries(PUBBLICO).map(([k, l]) => `<label class="hint" for="rt-${k}">${esc(l.split(" (")[0])}</label><input id="rt-${k}" type="number" min="0" max="20" step="1" value="${R[k]}"${S.isAdmin ? "" : " disabled"}>`).join("")}
         ${S.isAdmin ? `<button class="btn sm" type="submit">Salva regole</button>` : ""}</form>
       ${S.isAdmin && !S.tariffeDb ? `<p class="hint">Per salvare le regole esegui in Supabase lo script 013_tariffe.sql.</p>` : ""}
     </details></div>`;
@@ -2806,6 +2814,172 @@ function renderSerata() {
       <li>Alla chiusura: luci, riscaldamento o condizionatore spenti, porte chiuse, allarme inserito.</li>
     </ul></details>`;
   el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.serataData = b.dataset.g || null; renderSerata(); }));
+}
+
+/* ---------- conviene prendere questo film? ---------- */
+// proiezioni di cinema degli ultimi 12 mesi (le serate di danza, teatro e concerti hanno un altro pubblico)
+const c1Cinema = () => { const da = addDays(TODAY, -365); return S.c1.filter((c) => c.data >= da && c.data < TODAY && c.spettatori > 0 && (!c.tipo_evento || /cinema|film|proiez/i.test(c.tipo_evento))); };
+const nettoPerSpettatore = (list) => { const sp = list.reduce((s, c) => s + c.spettatori, 0); return sp ? list.reduce((s, c) => s + (Number(c.imponibile_iva) || Number(c.lordo) / 1.1 || 0), 0) / sp : 0; };
+const quantile = (a, q) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), i = (s.length - 1) * q, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+// spettatori attesi in un giorno della settimana e fascia: media e forbice (un quarto delle serate sotto, un quarto sopra)
+function attesiSlot(g, fa) {
+  const tutti = c1Cinema(), slot = tutti.filter((c) => giorno(c) === g && fascia(c.ora) === fa), fasciaTutta = tutti.filter((c) => fascia(c.ora) === fa);
+  const base = slot.length >= 3 ? slot : fasciaTutta.length >= 3 ? fasciaTutta : tutti;
+  const v = base.map((c) => c.spettatori);
+  return { media: mean(v), basso: quantile(v, 0.25), alto: quantile(v, 0.75), n: base.length, come: slot.length >= 3 ? `${slot.length} proiezioni di ${GIORNI[g]} ${fa}` : fasciaTutta.length >= 3 ? `${fasciaTutta.length} proiezioni di ${fa}` : `${tutti.length} proiezioni` };
+}
+// margine di una proiezione con n spettatori: incasso netto meno noleggio (minimo garantito o percentuale) e altri costi
+function margineProiezione(n, c) {
+  const incasso = n * c.netto;
+  const noleggio = c.tipo === "forfait" ? c.forfait : Math.max(c.minimo || 0, incasso * (c.perc || 0) / 100);
+  return { incasso, noleggio, margine: incasso - noleggio - (c.altri || 0) };
+}
+function pareggio(c) { for (let n = 0; n <= 600; n++) if (margineProiezione(n, c).margine >= 0) return n; return null; }
+
+const dlgConv = $("#dlg-conviene");
+$("#btn-conviene").onclick = apriConviene;
+["#cv-film", "#cv-giorno", "#cv-fascia", "#cv-n", "#cv-tipo", "#cv-perc", "#cv-minimo", "#cv-forfait", "#cv-netto", "#cv-altri"].forEach((x) => $(x).addEventListener("input", aggiornaConviene));
+function apriConviene() {
+  const lista = c1Cinema(), netto = nettoPerSpettatore(lista);
+  const prossimi = S.films.filter((f) => nextShow(f));
+  $("#cv-film").innerHTML = `<option value="">Un film nuovo (scegli giorno e orario)</option>${prossimi.map((f) => `<option value="${esc(f.id)}">${esc(f.titolo)} · ${showsOf(f).filter((p) => p.data >= TODAY).length} proiezioni in programma</option>`).join("")}`;
+  $("#cv-netto").value = netto ? r2(netto) : "";
+  $("#cv-netto-hint").textContent = lista.length ? `media degli ultimi 12 mesi (${lista.length} proiezioni), IVA esclusa` : "nessun C1 di cinema negli ultimi 12 mesi: scrivilo tu";
+  const a = S.isAdmin && S.primaNota.length ? analisiTariffe() : null;
+  $("#cv-altri").value = a && isFinite(a.variabileGiorno) ? Math.round(a.variabileGiorno) : 0;
+  aggiornaConviene();
+  dlgConv.showModal();
+}
+function aggiornaConviene() {
+  const fid = $("#cv-film").value, tipo = $("#cv-tipo").value;
+  $("#cv-quando").hidden = !!fid;
+  $("#cv-perc-wrap").hidden = tipo === "forfait"; $("#cv-min-wrap").hidden = tipo !== "perc"; $("#cv-forfait-wrap").hidden = tipo !== "forfait";
+  const c = { tipo, perc: Number($("#cv-perc").value) || 0, minimo: Number($("#cv-minimo").value) || 0, forfait: Number($("#cv-forfait").value) || 0, netto: Number($("#cv-netto").value) || 0, altri: Number($("#cv-altri").value) || 0 };
+  const f = fid && S.films.find((x) => x.id === fid);
+  const slot = f ? showsOf(f).filter((p) => p.data >= TODAY).map((p) => ({ g: parse(p.data).getDay(), fa: fascia(p.ora), et: `${fmtShort(p.data)} ${p.ora}` }))
+    : Array.from({ length: Math.max(1, Number($("#cv-n").value) || 1) }, () => ({ g: Number($("#cv-giorno").value), fa: $("#cv-fascia").value, et: `${GIORNI[Number($("#cv-giorno").value)]} ${$("#cv-fascia").value}` }));
+  if (!c.netto || !c1Cinema().length) { $("#cv-esito").innerHTML = `<div class="warn">Servono i C1 delle proiezioni passate e l'incasso netto per spettatore.</div>`; return; }
+  const righe = slot.map((s) => ({ ...s, ...attesiSlot(s.g, s.fa) })), pa = pareggio(c);
+  // il minimo garantito di solito vale per il film intero se le proiezioni sono più d'una: lo spalmo sulle proiezioni
+  const cTot = { ...c, minimo: c.minimo / righe.length, forfait: c.forfait / righe.length };
+  const tot = (k) => righe.reduce((s, r) => s + margineProiezione(r[k], cTot).margine, 0);
+  const mMedia = tot("media"), mBasso = tot("basso"), mAlto = tot("alto");
+  const paTot = pareggio(cTot), attesiMedia = mean(righe.map((r) => r.media));
+  const verdetto = mBasso >= 0 ? `<div class="ok-note">Conviene: anche in una serata scarsa si va in pari. Margine previsto <b>${money(Math.round(mMedia))}</b> (tra ${money(Math.round(mBasso))} e ${money(Math.round(mAlto))}).</div>`
+    : mMedia >= 0 ? `<div class="warn" style="background:var(--opz-bg);color:var(--opz-fg)">Si può fare, con un po' di rischio: in media si guadagnano <b>${money(Math.round(mMedia))}</b>, ma con poco pubblico si perdono fino a ${money(Math.round(-mBasso))}. Servono almeno <b>${paTot}</b> spettatori a proiezione; di solito ne vengono ${Math.round(attesiMedia)}.</div>`
+    : `<div class="warn">Non conviene a queste condizioni: servono <b>${paTot ?? "oltre 600"}</b> spettatori a proiezione per andare in pari, di solito ne vengono ${Math.round(attesiMedia)}. Perdita prevista <b>${money(Math.round(-mMedia))}</b>. Prova a chiedere un minimo più basso o un orario con più pubblico.</div>`;
+  $("#cv-esito").innerHTML = `${verdetto}
+    <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Proiezione</th><th class="n">Spettatori attesi</th><th class="n">Incasso netto</th><th class="n">Margine</th></tr></thead><tbody>
+      ${righe.map((r) => { const m = margineProiezione(r.media, cTot); return `<tr><td>${esc(r.et)}<div class="hint">${esc(r.come)}</div></td><td class="n">${Math.round(r.media)} <span class="hint">(${Math.round(r.basso)}–${Math.round(r.alto)})</span></td><td class="n">${money(Math.round(m.incasso))}</td><td class="n ${m.margine < 0 ? "neg" : ""}">${money(Math.round(m.margine))}</td></tr>`; }).join("")}
+    </tbody></table></div>
+    <p class="hint">Pareggio di una singola proiezione con queste condizioni: ${pa ?? "oltre 600"} spettatori${righe.length > 1 ? `; con ${righe.length} proiezioni ${c.tipo === "forfait" ? "il forfait" : "il minimo garantito"} si divide e bastano ${paTot ?? "oltre 600"} spettatori a proiezione` : ""}. La percentuale del distributore è calcolata sull'incasso al netto dell'IVA.</p>`;
+}
+
+/* ---------- consigli di programmazione ---------- */
+// rassegna di ogni C1: il settore della prima nota in cui è registrato l'incasso di quella serata
+function settoreDiC1(c) {
+  const r = S.primaNota.find((x) => x.data === c.data && x.entrate > 0 && (x.cod_settore || 0) >= 100 && /^E01$/i.test(x.cod_cat || "")) || S.primaNota.find((x) => (x.cod_settore || 0) >= 100 && normT(x.evento || "") && normT(x.evento).includes(normT(c.titolo).slice(0, 12)));
+  return r ? r.settore : "";
+}
+function consigliProgrammazione(list) {
+  const out = [], media = mean(list.map((c) => c.spettatori)), netto = nettoPerSpettatore(list);
+  // costo medio di noleggio per proiezione di cinema (solo l'amministratore vede la prima nota)
+  const anni = new Set(list.map((c) => +c.data.slice(0, 4)));
+  const noleggi = S.primaNota.filter((r) => anni.has(r.anno) && r.uscite > 0 && (/^U01$/i.test(r.cod_cat || "") || /noleggio/i.test(r.categoria)));
+  const proiezCinema = list.filter((c) => anni.has(+c.data.slice(0, 4))).length;
+  const nolMedio = noleggi.length && proiezCinema ? sommaU(noleggi) / proiezCinema : 0;
+  const soglia = nolMedio && netto ? Math.ceil(nolMedio / netto) : 0;
+  // fasce sotto la soglia di pareggio o molto sotto la media
+  const celle = ORDINE_GIORNI.flatMap((g) => ["pomeriggio", "sera"].map((fa) => ({ g, fa, cs: list.filter((c) => giorno(c) === g && fascia(c.ora) === fa) }))).filter((x) => x.cs.length >= 3);
+  celle.forEach((x) => (x.avg = mean(x.cs.map((c) => c.spettatori))));
+  const deboli = celle.filter((x) => (soglia ? x.avg < soglia : x.avg < media * 0.6)).sort((a, b) => a.avg - b.avg);
+  const forti = celle.filter((x) => x.avg > media * 1.3).sort((a, b) => b.avg - a.avg);
+  if (soglia) out.push(`<b>Soglia di pareggio</b>: un film costa in media ${money(Math.round(nolMedio))} di noleggio a proiezione e ogni spettatore porta ${money(r2(netto))} netti, quindi servono circa <b>${soglia} spettatori</b> per coprire il noleggio.`);
+  const il = (g) => (g === 0 ? "la domenica" : `il ${GIORNI[g]}`);
+  const d2 = deboli.slice(0, 2), f2 = forti.slice(0, 2);
+  if (d2.length) out.push(`<b>Da ripensare</b>: ${d2.map((x) => `${il(x.g)} ${x.fa} (${Math.round(x.avg)} spettatori in media su ${x.cs.length} proiezioni)`).join(" e ")} ${soglia ? (d2.length > 1 ? "restano sotto la soglia di pareggio" : "resta sotto la soglia di pareggio") : d2.length > 1 ? "rendono molto meno della media" : "rende molto meno della media"}: lì meglio ridurre le proiezioni o mettere solo titoli forti.`);
+  if (f2.length) out.push(`<b>Da sfruttare</b>: ${f2.map((x) => `${il(x.g)} ${x.fa} (${Math.round(x.avg)} in media)`).join(" e ")}: è lì che conviene mettere i film su cui si punta di più.`);
+  // italiani o stranieri (dalla nazionalità del C1)
+  const ita = list.filter((c) => /ital/i.test(c.nazionalita || "")), est = list.filter((c) => c.nazionalita && !/ital/i.test(c.nazionalita));
+  if (ita.length >= 3 && est.length >= 3) { const mi = mean(ita.map((c) => c.spettatori)), me = mean(est.map((c) => c.spettatori));
+    out.push(`<b>Italiani o stranieri</b>: i film italiani portano ${Math.round(mi)} spettatori a proiezione, gli stranieri ${Math.round(me)}${Math.abs(mi - me) / Math.max(mi, me) > 0.2 ? ` (${mi > me ? "gli italiani" : "gli stranieri"} rendono di più)` : ", più o meno uguale"}.`); }
+  // omaggi
+  const sp = list.reduce((s, c) => s + c.spettatori, 0), om = list.reduce((s, c) => s + c.omaggi, 0);
+  if (sp && om / sp > 0.08) out.push(`<b>Omaggi</b>: sono il ${Math.round(om / sp * 100)}% degli ingressi; se sono tanti, valuta di limitarli alle serate con poco pubblico.`);
+  // film portati due volte: se il secondo passaggio rende meno della metà
+  return { out, soglia, nolMedio };
+}
+function renderRassegne(list) {
+  if (!S.primaNota.length) return "";
+  const per = new Map();
+  for (const c of list) { const s = settoreDiC1(c) || "Senza rassegna"; if (!per.has(s)) per.set(s, []); per.get(s).push(c); }
+  const anni = new Set(list.map((c) => +c.data.slice(0, 4)));
+  const righe = [...per.entries()].map(([s, cs]) => {
+    const mov = S.primaNota.filter((r) => r.settore === s && anni.has(r.anno));
+    const marg = mov.length ? sommaE(mov) - sommaU(mov) : null;
+    return { s, n: cs.length, media: mean(cs.map((c) => c.spettatori)), riemp: mean(cs.map(fill)), marg, margPr: marg === null ? null : marg / cs.length };
+  }).sort((a, b) => b.n - a.n);
+  if (righe.length < 2) return "";
+  return `<div class="panel" style="margin-top:14px"><h2>Le rassegne a confronto</h2><span class="hint">Dai C1 e dalla prima nota del periodo · margine = entrate meno uscite della rassegna</span>
+    <div class="tbl-wrap"><table><thead><tr><th>Rassegna</th><th class="n">Proiezioni</th><th class="n">Spettatori medi</th><th class="n">Riempimento</th><th class="n">Margine</th><th class="n">a proiezione</th></tr></thead><tbody>
+    ${righe.map((r) => `<tr><td>${esc(r.s)}</td><td class="n">${r.n}</td><td class="n">${Math.round(r.media)}</td><td class="n">${pct(r.riemp)}</td><td class="n ${r.marg < 0 ? "neg" : ""}">${r.marg === null ? "—" : money(Math.round(r.marg))}</td><td class="n ${r.margPr < 0 ? "neg" : ""}">${r.margPr === null ? "—" : money(Math.round(r.margPr))}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
+}
+
+/* ---------- preventivo dell'anno ---------- */
+function renderPreventivo() {
+  const el = $("#pv-body");
+  if (!el) return;
+  if (!S.isAdmin) { el.innerHTML = ""; return; }
+  const anno = S.pnYear, Y = String(anno), corrente = anno === new Date().getFullYear();
+  if (!S.preventivoDb) { el.innerHTML = `<div class="panel" style="margin-top:14px"><h2>Preventivo ${anno}</h2><div class="warn">Per il preventivo esegui in Supabase lo script <b>015_preventivo.sql</b> e ricarica la pagina.</div></div>`; return; }
+  const prev = (S.preventivo && S.preventivo[Y]) || {};
+  const pn = S.primaNota.filter((r) => r.anno === anno);
+  const settori = new Map();
+  [...S.primaNota].sort((a, b) => (a.cod_settore || 0) - (b.cod_settore || 0)).forEach((r) => { if (r.cod_settore != null && !settori.has(String(r.cod_settore))) settori.set(String(r.cod_settore), r.settore); });
+  Object.keys(prev).forEach((k) => { if (!settori.has(k)) settori.set(k, prev[k].nome || k); });
+  const giorni = Math.round((parse(corrente ? TODAY : `${Y}-12-31`) - parse(`${Y}-01-01`)) / 864e5) + 1, f = corrente ? 365 / giorni : 1;
+  const righe = [...settori.entries()].map(([k, nome]) => {
+    const mov = pn.filter((r) => String(r.cod_settore) === k), ce = sommaE(mov), cu = sommaU(mov), p = prev[k] || {};
+    const stE = corrente ? ce * f : ce, stU = corrente ? cu * f : cu;
+    const avvisi = [];
+    if (p.u > 0 && cu > p.u) avvisi.push(`uscite oltre il previsto di ${money(Math.round(cu - p.u))}`);
+    else if (p.u > 0 && corrente && stU > p.u * 1.05) avvisi.push(`a questo ritmo le uscite arrivano a ${money(Math.round(stU))}`);
+    if (p.e > 0 && corrente && stE < p.e * 0.85 && giorni > 90) avvisi.push(`a questo ritmo le entrate arrivano a ${money(Math.round(stE))}`);
+    return { k, nome, p, ce, cu, stE, stU, avvisi };
+  });
+  const T = (fn) => righe.reduce((s, r) => s + (fn(r) || 0), 0);
+  const prevRis = T((r) => r.p.e) - T((r) => r.p.u), consRis = T((r) => r.ce) - T((r) => r.cu);
+  const conAvvisi = righe.filter((r) => r.avvisi.length);
+  // proposta: il consuntivo dell'anno prima, se in prima nota; altrimenti la proiezione dell'anno in corso
+  // l'anno prima vale solo se in prima nota c'è davvero (non qualche riga di partite arretrate)
+  const primaTutta = S.primaNota.filter((r) => r.anno === anno - 1), prima = new Set(primaTutta.map((r) => r.data.slice(0, 7))).size >= 6 ? primaTutta : [];
+  const proposta = () => Object.fromEntries(righe.map((r) => { const mv = prima.filter((x) => String(x.cod_settore) === r.k); return [r.k, { nome: r.nome, e: Math.round(prima.length ? sommaE(mv) : r.stE), u: Math.round(prima.length ? sommaU(mv) : r.stU) }]; }));
+  const vuoto = !Object.keys(prev).length;
+  el.innerHTML = `<div class="panel" style="margin-top:14px">
+    <div class="section-head"><h2>Preventivo ${anno}</h2><span class="hint">Entrate e uscite previste per settore, confrontate con la prima nota${corrente ? ` · «a fine anno» proietta i ${giorni} giorni trascorsi` : ""}</span></div>
+    ${conAvvisi.length ? `<div class="warn" style="margin-bottom:10px">${conAvvisi.map((r) => `<b>${esc(r.nome)}</b>: ${r.avvisi.join("; ")}`).join("<br>")}</div>` : !vuoto ? `<div class="ok-note" style="margin-bottom:10px">Tutti i settori sono dentro il preventivo.</div>` : ""}
+    ${vuoto ? `<p class="hint">Il preventivo ${anno} è vuoto. Scrivi le cifre previste oppure parti da una proposta: ${prima.length ? `il consuntivo ${anno - 1}` : "la proiezione dell'anno in corso"}.</p><button class="btn sm" type="button" id="pv-proponi">Proponi le cifre</button>` : ""}
+    <form id="pv-form" novalidate><div class="tbl-wrap"><table class="pv"><thead><tr><th>Settore</th><th class="n">Entrate previste</th><th class="n">Entrate finora</th><th class="n">Uscite previste</th><th class="n">Uscite finora</th>${corrente ? `<th class="n">Saldo a fine anno</th>` : ""}</tr></thead><tbody>
+      ${righe.map((r) => `<tr class="${r.avvisi.length ? "pv-avviso" : ""}"><td>${esc(r.nome)}</td>
+        <td class="n"><input type="number" min="0" step="1" inputmode="numeric" data-k="${esc(r.k)}" data-c="e" value="${r.p.e ?? ""}" aria-label="Entrate previste ${esc(r.nome)}"></td><td class="n">${money(Math.round(r.ce))}${r.p.e ? `<div class="hint">${Math.round(r.ce / r.p.e * 100)}%</div>` : ""}</td>
+        <td class="n"><input type="number" min="0" step="1" inputmode="numeric" data-k="${esc(r.k)}" data-c="u" value="${r.p.u ?? ""}" aria-label="Uscite previste ${esc(r.nome)}"></td><td class="n ${r.p.u && r.cu > r.p.u ? "neg" : ""}">${money(Math.round(r.cu))}${r.p.u ? `<div class="hint">${Math.round(r.cu / r.p.u * 100)}%</div>` : ""}</td>
+        ${corrente ? `<td class="n ${r.stE - r.stU < 0 ? "neg" : ""}">${money(Math.round(r.stE - r.stU))}</td>` : ""}</tr>`).join("")}
+      <tr class="tot"><td><b>Totale</b></td><td class="n"><b>${money(Math.round(T((r) => r.p.e)))}</b></td><td class="n">${money(Math.round(T((r) => r.ce)))}</td><td class="n"><b>${money(Math.round(T((r) => r.p.u)))}</b></td><td class="n">${money(Math.round(T((r) => r.cu)))}</td>${corrente ? `<td class="n">${money(Math.round(T((r) => r.stE - r.stU)))}</td>` : ""}</tr>
+    </tbody></table></div>
+    <p class="hint">Risultato previsto ${money(Math.round(prevRis))} · finora ${money(Math.round(consRis))}. Le proiezioni a fine anno sono indicative: bollette e assicurazione arrivano a scadenze irregolari.</p>
+    <div class="actions"><button class="btn primary" type="submit">Salva il preventivo</button></div></form></div>`;
+  const salva = async (dati) => {
+    const tutto = { ...(S.preventivo || {}), [Y]: dati };
+    try { await run(sb.from("settings").update({ preventivo: tutto }).eq("id", 1), "Preventivo salvato"); } catch (x) { toast(errText(x)); }
+  };
+  if ($("#pv-proponi")) $("#pv-proponi").onclick = () => salva(proposta());
+  $("#pv-form").onsubmit = (e) => {
+    e.preventDefault();
+    const dati = {};
+    el.querySelectorAll("input[data-k]").forEach((i) => { const k = i.dataset.k; dati[k] = dati[k] || { nome: settori.get(k) }; if (i.value !== "") dati[k][i.dataset.c] = Number(i.value); });
+    salva(Object.fromEntries(Object.entries(dati).filter(([, v]) => v.e != null || v.u != null)));
+  };
 }
 
 function route() {
