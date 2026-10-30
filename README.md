@@ -143,6 +143,15 @@ disattivato smette di funzionare. «Avviso per il gruppo» prepara il messaggio 
 Sempre in **Turni**, per oggi e i due giorni successivi, «Promemoria per chi è di turno» prepara il messaggio
 per il gruppo con eventi, fasce orarie, nomi e posti ancora scoperti.
 
+## Richieste di film al SAS
+In **Cinema → Richieste al SAS** (esegui `supabase/016_sas.sql`): si cerca il titolo nel catalogo del SAS (gli elenchi
+che manda il SAS, da incollare nella stessa pagina: i link a MyMovies danno anche l'anno), tra i film di Cinebot o
+tra quelli già proiettati, oppure lo si scrive; si indicano date, pomeriggio o sera, per quale rassegna, biglietto o
+ingresso libero e note. «Prepara l'email» raccoglie tutti i film da chiedere in un'unica email (come chiede il SAS),
+da aprire in Gmail o copiare; la richiesta passa «in attesa di risposta». Con «Segna la risposta» si salvano
+esito, supporto, minimo garantito, percentuale, agenzia e distributore: «Conviene?» usa queste condizioni.
+Nome ed email del referente SAS si salvano nel database, non nel codice.
+
 ## Incassi C1
 Esegui `supabase/006_c1.sql` nel SQL Editor (si può rieseguire). Con `+c1` nella proprietà `MODALITA` dello script Google
 (es. `lettura+email+cinema+c1`) lo script legge i riepiloghi C1 in PDF dalla cartella Drive dei C1 e dagli allegati

@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.13";
+const VERSIONE = "2026-11-01.14";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -34,6 +34,7 @@ const VIEWS = {
   sito: { label: "Sito web", roles: ["admin", "coordinatore"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
+  sas: { label: "Richieste al SAS", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   bilancio: { label: "Bilancio", roles: ["admin"] },
@@ -52,9 +53,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -64,7 +65,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], catalogo: [], richiesteFilm: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -149,6 +150,11 @@ async function loadAll() {
     const vo = S.canWrite ? await sb.from("volontari").select("*").order("nome") : { data: null };
     S.loadErr2 = { ...(S.loadErr2 || {}), volontari: vo.error && (vo.error.message || "errore") };
     if (vo.data) S.volontari = vo.data;
+    // richieste di film al SAS e catalogo (aggiornamento 16)
+    const [rf, cf] = S.canWrite ? await Promise.all([sb.from("richieste_film").select("*").order("creato", { ascending: false }).limit(1000), sb.from("catalogo_film").select("*").order("titolo").limit(5000)]) : [{ data: null }, { data: null }];
+    S.loadErr2.sas = rf.error && (rf.error.message || "errore");
+    if (rf.data) S.richiesteFilm = rf.data;
+    if (cf.data) S.catalogo = cf.data;
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
@@ -160,6 +166,7 @@ async function loadAll() {
       S.tariffeDb = "tariffe" in st.data; // aggiornamento 13
       S.preventivoDb = "preventivo" in st.data; // aggiornamento 15
       S.preventivo = st.data.preventivo || {};
+      S.sasCfg = { nome: st.data.sas_nome || "", email: st.data.sas_email || "" };
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
@@ -188,7 +195,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -301,6 +308,7 @@ function render() {
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
   if (S.view === "serata") renderSerata();
+  if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
@@ -2850,6 +2858,14 @@ function apriConviene() {
   aggiornaConviene();
   dlgConv.showModal();
 }
+$("#cv-film").addEventListener("change", () => {
+  const f = S.films.find((x) => x.id === $("#cv-film").value), c = f && condizioniSas(f.titolo);
+  if (!c) return;
+  $("#cv-tipo").value = c.minimo && c.percentuale ? "perc" : c.percentuale ? "solo" : "forfait";
+  if (c.percentuale) $("#cv-perc").value = c.percentuale;
+  if (c.minimo) { $("#cv-minimo").value = c.minimo; $("#cv-forfait").value = c.minimo; }
+  toast("Condizioni prese dalla conferma del SAS");
+});
 function aggiornaConviene() {
   const fid = $("#cv-film").value, tipo = $("#cv-tipo").value;
   $("#cv-quando").hidden = !!fid;
@@ -2981,6 +2997,152 @@ function renderPreventivo() {
     salva(Object.fromEntries(Object.entries(dati).filter(([, v]) => v.e != null || v.u != null)));
   };
 }
+
+/* ---------- richieste di film al SAS (ACEC Triveneta) ---------- */
+const FASCE_SAS = ["sera", "pomeriggio", "pomeriggio e sera"];
+const MOTIVI_SAS = ["Cineforum", "Cinema in famiglia", "Ci vediamo al cinema", "Evento speciale", "Scuola", "Altro"];
+const STATI_SAS = { bozza: "Da inviare", inviata: "In attesa di risposta", confermata: "Confermato", non_disponibile: "Non disponibile" };
+// sentence case per i titoli scritti tutti in maiuscolo negli elenchi del SAS
+const titoloBello = (t) => { t = String(t || "").trim().replace(/\s+/g, " "); return t === t.toUpperCase() && /[A-Z]/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase().replace(/([-–:.]\s+|\(|«|")([a-zàèéìòù])/g, (m, a, b) => a + b.toUpperCase()) : t; };
+// dove cercare: catalogo del SAS, film di Cinebot, titoli già proiettati (C1)
+function fontiFilm() {
+  const out = new Map(), add = (x) => { const k = normT(x.titolo) + "|" + (x.anno || ""); const old = out.get(normT(x.titolo)); if (!old) out.set(normT(x.titolo), x); else Object.assign(old, { anno: old.anno || x.anno, regista: old.regista || x.regista, link: old.link || x.link, info: [old.info, x.info].filter(Boolean).join(" · ") }); return k; };
+  S.catalogo.forEach((c) => add({ titolo: c.titolo, anno: c.anno, regista: c.regista, link: c.link, info: `catalogo SAS${c.sezione ? " · " + c.sezione : ""}` }));
+  S.films.forEach((f) => add({ titolo: f.titolo, info: "Cinebot" }));
+  const ult = new Map(); S.c1.forEach((c) => { const k = normT(c.titolo); if (!ult.has(k) || ult.get(k).data < c.data) ult.set(k, c); });
+  ult.forEach((c) => add({ titolo: titoloBello(c.titolo), regista: c.autore || "", info: `proiettato il ${fmtShort(c.data)} (${c.spettatori} spett.)` }));
+  return [...out.values()];
+}
+function renderSas() {
+  const el = $("#sas-body");
+  if (S.loadErr2?.sas) { el.innerHTML = `<div class="warn">Per le richieste al SAS esegui in Supabase lo script <b>016_sas.sql</b> e ricarica la pagina.</div>`; return; }
+  const per = (st) => S.richiesteFilm.filter((r) => r.stato === st);
+  const bozze = per("bozza"), attesa = per("inviata"), conf = per("confermata"), nd = per("non_disponibile");
+  const dateTxt = (r) => (r.date || []).map((d) => `${fmtShort(d.data)} ${d.fasce}`).join(" · ");
+  const vicine = (r) => (r.date || []).some((d) => d.data < addDays(TODAY, GIORNI_RICHIESTA));
+  const riga = (r, extra = "") => `<div class="todo-riga"><div><b>${esc(r.titolo)}</b>${r.anno ? ` <span class="hint">(${r.anno}${r.regista ? `, ${esc(r.regista)}` : ""})</span>` : r.regista ? ` <span class="hint">(${esc(r.regista)})</span>` : ""}
+      <div class="hint">${esc(dateTxt(r))}${r.motivo ? ` · ${esc(r.motivo)}` : ""}${r.biglietto ? "" : " · ingresso libero"}</div>
+      ${r.stato === "confermata" ? `<div>${[r.minimo ? `minimo ${money(r.minimo)}` : "", r.percentuale ? `${r.percentuale}%` : "", r.supporto, r.agenzia && `agenzia ${esc(r.agenzia)}`, r.distributore && esc(r.distributore)].filter(Boolean).join(" · ")}</div>` : ""}
+      ${r.risposta ? `<div class="hint">${esc(r.risposta)}</div>` : ""}</div><div class="az">${extra}</div></div>`;
+  const cfg = S.sasCfg || { nome: "", email: "" };
+  el.innerHTML = `
+    <div class="panel promemoria"><div class="section-head"><h3>Nuova richiesta</h3><span class="hint">Cerca il titolo nel catalogo del SAS, nei film di Cinebot o in quelli già proiettati; se non c'è, scrivilo</span></div>
+      <form id="sas-form" class="form" novalidate>
+        <div class="field sas-cerca"><label for="sas-titolo">Film</label><input id="sas-titolo" autocomplete="off" placeholder="Scrivi almeno 2 lettere del titolo"><div id="sas-sugg" class="sas-sugg" hidden></div></div>
+        <div class="field t"><label for="sas-anno">Anno</label><input id="sas-anno" type="number" min="1890" max="2100" inputmode="numeric"></div>
+        <div class="field q"><label for="sas-regista">Regia</label><input id="sas-regista" placeholder="utile per i film vecchi o con titoli uguali"></div>
+        <div class="field"><label>Date</label><div id="sas-date"></div><button class="linkbtn" type="button" id="sas-data-add">+ un'altra data</button></div>
+        <div class="field h"><label for="sas-motivo">Per</label><select id="sas-motivo">${MOTIVI_SAS.map((m) => `<option>${m}</option>`).join("")}</select></div>
+        <div class="field h"><label class="check" style="margin-top:22px"><input type="checkbox" id="sas-biglietto" checked> Ingresso con biglietto</label></div>
+        <div class="field"><label for="sas-note">Note per il SAS</label><input id="sas-note" placeholder="es. «se possibile in DVD», «c'è il sequel in uscita»"></div>
+        <div class="field"><div id="sas-err"></div><button class="btn primary" type="submit">Aggiungi alla richiesta</button></div>
+      </form></div>
+    <div class="panel promemoria"><div class="section-head"><h3>Da inviare (${bozze.length})</h3><span class="hint">Più film vanno in un'unica email: il SAS chiede di raggruppare le richieste</span></div>
+      ${bozze.map((r) => riga(r, `${vicine(r) ? '<span class="pill acconto" title="Alcune agenzie rispondono anche dopo 10 giorni">data vicina</span>' : ""}<button class="btn ghost sm" type="button" data-sas-del="${esc(r.id)}">Togli</button>`)).join("") || `<p class="hint">Nessun film da chiedere. Aggiungili qui sopra.</p>`}
+      <div class="sas-dest"><span class="hint">Destinatario</span><input id="sas-nome" value="${esc(cfg.nome)}" placeholder="Nome (es. Christian)" aria-label="Nome del referente SAS"><input id="sas-email" type="email" value="${esc(cfg.email)}" placeholder="Email del SAS" aria-label="Email del SAS"><button class="btn sm" type="button" id="sas-dest-salva">Salva</button></div>
+      <div class="actions"><button class="btn primary" type="button" id="sas-email-btn"${bozze.length ? "" : " disabled"}>Prepara l'email${bozze.length > 1 ? ` (${bozze.length} film)` : ""}</button></div></div>
+    <div class="panel promemoria"><div class="section-head"><h3>In attesa di risposta (${attesa.length})</h3><span class="hint">Quando il SAS risponde, segna le condizioni: servono per «Conviene?» e per i conti</span></div>
+      ${attesa.map((r) => riga(r, `<span class="hint">inviata ${esc(ago(r.inviata_il))}</span><button class="btn sm" type="button" data-sas-ris="${esc(r.id)}">Segna la risposta</button>`)).join("") || `<p class="hint">Nessuna richiesta in attesa.</p>`}</div>
+    <details class="panel promemoria"><summary><b>Confermati (${conf.length}) e non disponibili (${nd.length})</b></summary>
+      ${conf.slice(0, 60).map((r) => riga(r, `<button class="btn ghost sm" type="button" data-sas-ris="${esc(r.id)}">Modifica</button>`)).join("")}
+      ${nd.slice(0, 30).map((r) => riga(r, `<span class="pill annullata">non disponibile</span>`)).join("")}</details>
+    <details class="panel promemoria"><summary><b>Catalogo dei film del SAS</b> <span class="hint">· ${S.catalogo.length} titoli</span></summary>
+      <p class="hint">Incolla qui l'elenco che vi manda il SAS (una riga per film; i link a MyMovies danno anche l'anno). Le righe in minuscolo senza link, come «Commedia», diventano la sezione.</p>
+      <textarea id="sas-incolla" rows="6" placeholder="TRE DI TROPPO&#10;UN MONDO A PARTE - https://www.mymovies.it/film/2024/un-mondo-a-parte/"></textarea>
+      <div class="actions"><input id="sas-fonte" placeholder="Da dove (es. «Rassegna 2026, dic. 2025»)" aria-label="Fonte dell'elenco"><button class="btn sm" type="button" id="sas-importa">Aggiungi al catalogo</button></div></details>`;
+
+  // date della nuova richiesta
+  S.sasDate = S.sasDate && S.sasDate.length ? S.sasDate : [{ data: "", fasce: "sera" }];
+  const disegnaDate = () => {
+    $("#sas-date").innerHTML = S.sasDate.map((d, i) => `<div class="sas-data"><input type="date" data-i="${i}" data-k="data" value="${esc(d.data)}" aria-label="Data"><select data-i="${i}" data-k="fasce" aria-label="Fascia">${FASCE_SAS.map((f) => `<option${d.fasce === f ? " selected" : ""}>${f}</option>`).join("")}</select>${i ? `<button class="btn ghost sm" type="button" data-di="${i}" aria-label="Togli la data">✕</button>` : ""}</div>`).join("");
+    $("#sas-date").querySelectorAll("[data-k]").forEach((x) => (x.oninput = () => (S.sasDate[+x.dataset.i][x.dataset.k] = x.value)));
+    $("#sas-date").querySelectorAll("[data-di]").forEach((x) => (x.onclick = () => { S.sasDate.splice(+x.dataset.di, 1); disegnaDate(); }));
+  };
+  disegnaDate();
+  $("#sas-data-add").onclick = () => { S.sasDate.push({ data: "", fasce: "sera" }); disegnaDate(); };
+
+  // suggerimenti mentre si scrive
+  const inp = $("#sas-titolo"), box = $("#sas-sugg");
+  let scelto = null;
+  inp.oninput = () => {
+    scelto = null;
+    const q = normT(inp.value);
+    if (q.length < 2) { box.hidden = true; return; }
+    const lista = fontiFilm().filter((x) => normT(x.titolo).includes(q)).slice(0, 8);
+    box.innerHTML = lista.map((x, i) => `<button type="button" data-s="${i}"><b>${esc(x.titolo)}</b>${x.anno ? ` (${x.anno})` : ""}<span class="hint">${esc(x.info || "")}</span></button>`).join("") + `<button type="button" data-s="nuovo"><span class="hint">Usa «${esc(inp.value.trim())}» come titolo nuovo</span></button>`;
+    box.hidden = false;
+    box.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => {
+      if (b.dataset.s !== "nuovo") { scelto = lista[+b.dataset.s]; inp.value = scelto.titolo; $("#sas-anno").value = scelto.anno || ""; $("#sas-regista").value = scelto.regista || ""; }
+      box.hidden = true;
+    }));
+  };
+  inp.onblur = () => setTimeout(() => (box.hidden = true), 200);
+
+  $("#sas-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const titolo = inp.value.trim(), date = S.sasDate.filter((d) => d.data);
+    if (!titolo) { $("#sas-err").innerHTML = `<div class="warn">Scrivi il titolo del film.</div>`; return; }
+    if (!date.length) { $("#sas-err").innerHTML = `<div class="warn">Indica almeno una data.</div>`; return; }
+    const rec = { titolo, anno: Number($("#sas-anno").value) || null, regista: $("#sas-regista").value.trim(), link: (scelto && scelto.link) || "", date, motivo: $("#sas-motivo").value, biglietto: $("#sas-biglietto").checked, note: $("#sas-note").value.trim(), stato: "bozza" };
+    try { S.sasDate = null; await run(sb.from("richieste_film").insert(rec), `«${titolo}» aggiunto: puoi aggiungerne altri prima di preparare l'email`); } catch (x) { toast(errText(x)); }
+  };
+  el.querySelectorAll("[data-sas-del]").forEach((b) => (b.onclick = async () => { try { await run(sb.from("richieste_film").delete().eq("id", b.dataset.sasDel), "Tolto dalla richiesta"); } catch (x) { toast(errText(x)); } }));
+  $("#sas-dest-salva").onclick = async () => { try { await run(sb.from("settings").update({ sas_nome: $("#sas-nome").value.trim(), sas_email: $("#sas-email").value.trim() }).eq("id", 1), "Destinatario salvato"); } catch (x) { toast(errText(x)); } };
+  $("#sas-email-btn").onclick = () => apriEmailSas(bozze);
+  el.querySelectorAll("[data-sas-ris]").forEach((b) => (b.onclick = () => apriRispostaSas(S.richiesteFilm.find((r) => r.id === b.dataset.sasRis))));
+  $("#sas-importa").onclick = async () => {
+    const righe = $("#sas-incolla").value.split(/\n/).map((r) => r.trim()).filter(Boolean), fonte = $("#sas-fonte").value.trim(), nuovi = [];
+    let sezione = "";
+    for (const r of righe) {
+      const url = (r.match(/https?:\/\/\S+/) || [""])[0].replace(/[>)]+$/, "");
+      const testo = r.replace(/<?https?:\/\/\S+>?/, "").replace(/\s*[-–]\s*$/, "").trim();
+      if (!testo && url && nuovi.length) { nuovi[nuovi.length - 1].link = url; nuovi[nuovi.length - 1].anno = nuovi[nuovi.length - 1].anno || Number((url.match(/\/film\/(\d{4})\//) || [])[1]) || null; continue; }
+      if (!testo) continue;
+      if (!url && testo !== testo.toUpperCase()) { sezione = testo; continue; }
+      nuovi.push({ titolo: titoloBello(testo), anno: Number((url.match(/\/film\/(\d{4})\//) || [])[1]) || null, link: url, sezione, fonte });
+    }
+    const gia = new Set(S.catalogo.map((c) => normT(c.titolo) + "|" + (c.anno || 0)));
+    const da = nuovi.filter((x, i, a) => !gia.has(normT(x.titolo) + "|" + (x.anno || 0)) && a.findIndex((y) => normT(y.titolo) === normT(x.titolo)) === i);
+    if (!da.length) { toast(nuovi.length ? "Questi film sono già tutti nel catalogo" : "Non ho trovato titoli nel testo incollato"); return; }
+    try { await run(sb.from("catalogo_film").insert(da), `${da.length} film aggiunti al catalogo`); } catch (x) { toast(errText(x)); }
+  };
+}
+function testoEmailSas(lista) {
+  const nome = ((S.sasCfg && S.sasCfg.nome) || "").split(" ")[0], firma = (S.me.nome || "").split(" ")[0];
+  const data = (d) => `${parse(d.data).toLocaleDateString("it-IT", { weekday: "long" })} ${parse(d.data).toLocaleDateString("it-IT")}`;
+  const tuttiBiglietto = lista.every((r) => r.biglietto), nessuno = lista.every((r) => !r.biglietto);
+  const righe = lista.map((r) => {
+    const chi = [r.anno, r.regista && `regia di ${r.regista}`].filter(Boolean).join(", ");
+    return `- «${r.titolo}»${chi ? ` (${chi})` : ""}: ${(r.date || []).map((d) => `${data(d)}, ${d.fasce}`).join("; ")}${r.motivo && r.motivo !== "Altro" ? ` — ${r.motivo}` : ""}${!tuttiBiglietto && !nessuno ? (r.biglietto ? ", con biglietto" : ", ingresso libero") : ""}${r.note ? ` (${r.note})` : ""}`;
+  });
+  return [`Ciao${nome ? " " + nome : ""},`, `${lista.length > 1 ? "ti chiedo questi film" : "ti chiedo questo film"} per la Sala San Tommaso Moro di Piombino Dese:`, ...righe, "",
+    tuttiBiglietto ? `Ingresso con biglietto.` : nessuno ? "Ingresso libero." : "", "Mi fai sapere disponibilità, condizioni e supporto (DVD o link)?", "", "Grazie", firma || ""].filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").trim();
+}
+function apriEmailSas(lista) {
+  if (!lista.length) return;
+  const cfg = S.sasCfg || {}, testo = testoEmailSas(lista), oggetto = lista.length > 1 ? `Richiesta film - Sala San Tommaso Moro` : `Richiesta film «${lista[0].titolo}» - Sala San Tommaso Moro`;
+  openCopyText(testo);
+  // pulsante per aprire direttamente la bozza in Gmail; aprire il messaggio vale come invio
+  $("#copy-status").innerHTML = `<a class="btn sm" target="_blank" rel="noopener" href="https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cfg.email || "")}&su=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Apri in Gmail</a> <a class="btn ghost sm" href="mailto:${encodeURIComponent(cfg.email || "")}?subject=${encodeURIComponent(oggetto)}&body=${encodeURIComponent(testo)}">Altra app di posta</a>`;
+  const ids = lista.map((r) => r.id);
+  sb.from("richieste_film").update({ stato: "inviata", inviata_il: new Date().toISOString(), aggiornato: new Date().toISOString() }).in("id", ids).then(({ error }) => { if (error) toast(errText(error)); else loadAll(); });
+}
+const dlgSasR = $("#dlg-sas-risposta");
+function apriRispostaSas(r) {
+  S.sasRisposta = r;
+  $("#sr-head").textContent = r.titolo;
+  $("#sr-esito").value = r.stato === "non_disponibile" ? "non_disponibile" : "confermata";
+  for (const k of ["agenzia", "distributore", "supporto", "minimo", "percentuale", "risposta"]) $("#sr-" + k).value = r[k] ?? "";
+  dlgSasR.showModal();
+}
+$("#sr-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const r = S.sasRisposta, num = (k) => ($("#sr-" + k).value === "" ? null : Number($("#sr-" + k).value));
+  const rec = { stato: $("#sr-esito").value, agenzia: $("#sr-agenzia").value.trim(), distributore: $("#sr-distributore").value.trim(), supporto: $("#sr-supporto").value, minimo: num("minimo"), percentuale: num("percentuale"), risposta: $("#sr-risposta").value.trim(), risposta_il: new Date().toISOString(), aggiornato: new Date().toISOString() };
+  try { await run(sb.from("richieste_film").update(rec).eq("id", r.id), rec.stato === "confermata" ? "Confermato: condizioni salvate" : "Segnato come non disponibile"); dlgSasR.close(); } catch (x) { toast(errText(x)); }
+});
+// condizioni confermate dal SAS per un titolo (per «Conviene?»)
+const condizioniSas = (titolo) => S.richiesteFilm.filter((r) => r.stato === "confermata" && normT(r.titolo) === normT(titolo)).sort((a, b) => (b.risposta_il || "").localeCompare(a.risposta_il || ""))[0];
 
 function route() {
   const h = location.hash.slice(1);

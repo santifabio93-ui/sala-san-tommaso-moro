@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.13">
+<link rel="stylesheet" href="style.css?v=2026-11-01.14">
 </head>
 <body>
 
@@ -146,6 +146,10 @@
     </div>
     <div id="film-todo" hidden></div>
     <div id="films"></div>
+  </main>
+
+  <main id="view-sas" hidden>
+    <div id="sas-body"></div>
   </main>
 
   <main id="view-c1" hidden>
@@ -439,6 +443,22 @@
   </form>
 </dialog>
 
+<dialog id="dlg-sas-risposta">
+  <form class="dlg" id="sr-form" novalidate>
+    <div class="dlg-head"><h2 id="sr-head">Risposta del SAS</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field h"><label for="sr-esito">Esito</label><select id="sr-esito"><option value="confermata">Confermato</option><option value="non_disponibile">Non disponibile</option></select></div>
+      <div class="field h"><label for="sr-supporto">Supporto</label><select id="sr-supporto"><option value="">—</option><option>DVD</option><option>Blu-ray</option><option>Link</option><option>DCP</option></select></div>
+      <div class="field t"><label for="sr-minimo">Minimo garantito (€)</label><input id="sr-minimo" type="number" min="0" step="1" inputmode="decimal"></div>
+      <div class="field t"><label for="sr-percentuale">Percentuale (%)</label><input id="sr-percentuale" type="number" min="0" max="100" step="1" inputmode="decimal"></div>
+      <div class="field h"><label for="sr-agenzia">Agenzia</label><input id="sr-agenzia" placeholder="es. Athena, MPLC"></div>
+      <div class="field h"><label for="sr-distributore">Distributore</label><input id="sr-distributore"></div>
+      <div class="field"><label for="sr-risposta">Note dalla risposta</label><textarea id="sr-risposta" placeholder="es. pagamento anticipato, in embargo fino al…, diritti scaduti"></textarea></div>
+    </div>
+    <div class="dlg-foot"><span></span><div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Salva</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-conviene">
   <form class="dlg" novalidate onsubmit="return false">
     <div class="dlg-head"><h2>Conviene prendere questo film?</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -573,7 +593,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.13"></script>
-<script type="module" src="app.js?v=2026-11-01.13"></script>
+<script src="config.js?v=2026-11-01.14"></script>
+<script type="module" src="app.js?v=2026-11-01.14"></script>
 </body>
 </html>

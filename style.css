@@ -478,3 +478,13 @@ table.pv tr.tot td { border-top: 2px solid var(--ink) }
 .todo-riga > div { min-width: 0 }
 .todo-riga .az select { max-width: 100%; min-width: 0 }
 @media (max-width: 560px) { .todo-riga .az { width: 100% } .todo-riga .az select { flex: 1 } }
+/* richieste al SAS */
+.sas-cerca { position: relative }
+.sas-sugg { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden }
+.sas-sugg button { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 8px 10px; cursor: pointer; color: inherit; font: inherit }
+.sas-sugg button:first-child { border-top: 0 }
+.sas-sugg button:hover { background: var(--sunk) }
+.sas-data { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap }
+.sas-dest { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 }
+.sas-dest input, #sas-fonte { border: 1px solid var(--line); background: var(--surface); color: inherit; border-radius: 8px; padding: 7px 9px; font: inherit; min-width: 0 }
+#sas-incolla { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; background: var(--surface); color: inherit }
