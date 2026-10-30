@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.28";
+const VERSIONE = "2026-11-01.29";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1047,7 +1047,7 @@ function renderCinema() {
         <div class="t">${esc(f.titolo)}</div>
         <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
         ${(() => { const cs = c1OfFilm(f); return cs.length && S.canWrite ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
-        ${S.canWrite && upcoming[0] ? (() => { const st = stimaSpettatori(upcoming[0]); return st ? `<div class="stima">Stima per ${esc(fmtShort(upcoming[0].data))}: circa <b>${st.n}</b> spettatori <span title="${esc(st.base)}">ⓘ</span></div>` : ""; })() : ""}
+        ${S.canWrite && upcoming[0] && !r.spettacolo ? (() => { const st = stimaSpettatori(upcoming[0]); return st ? `<div class="stima">Stima per ${esc(fmtShort(upcoming[0].data))}: circa <b>${st.n}</b> spettatori <span title="${esc(st.base)}">ⓘ</span></div>` : ""; })() : ""}
         <div class="meta">${r.spettacolo ? `<span>Non è un film: niente supporto né prova di proiezione</span>` : `<span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}`}</div>
       </div>
     </button>`;
@@ -1146,7 +1146,7 @@ $("#film-form").addEventListener("submit", async (e) => {
       if (add.length) { const { error } = await sb.from("proiezioni").insert(add); if (error) throw error; }
       if (del.length) { const { error } = await sb.from("proiezioni").delete().in("id", del); if (error) throw error; }
     }
-    toast(prev ? "Film aggiornato" : "Film aggiunto");
+    toast(prev ? "Salvato" : "Aggiunto");
     await loadAll();
     dlgF.close();
   } catch (x) { $("#f-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
