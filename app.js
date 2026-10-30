@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.20";
+const VERSIONE = "2026-11-01.21";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -301,6 +301,9 @@ function renderTabs() {
     const target = kids.includes(S.lastSub) ? S.lastSub : kids[0];
     return `<a href="#${target}"${cur(inside)}>${m.label}${groupBadge(kids)}</a>`;
   }).join("");
+  // sul telefono il menu scorre: la sezione aperta resta in vista
+  const tabs = $("#tabs"), attiva = tabs.querySelector("[aria-current]");
+  if (attiva && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft = attiva.offsetLeft - (tabs.clientWidth - attiva.offsetWidth) / 2;
   $("#subtabs").hidden = !sub;
   $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : k === "schede" ? badge(schedeDaVerificare()) : k === "cinema" ? badge(filmsToFix()) : ""}</a>`).join("") : "";
 }
