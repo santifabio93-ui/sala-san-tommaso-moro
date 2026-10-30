@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.9";
+const VERSIONE = "2026-10-31.1";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -24,6 +24,7 @@ const VIEWS = {
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
   comune: { label: "Comune", roles: ["admin", "coordinatore"] },
+  schede: { label: "Schede", roles: ["admin", "coordinatore"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
@@ -44,10 +45,10 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
   { k: "calendario" },
-  { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "comune"] },
+  { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
   { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -57,7 +58,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0,
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, schede: [], scFilter: "attive", editingScheda: null,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -133,13 +134,14 @@ async function loadAll() {
       sb.from("proiezioni").select("*").order("data").order("ora"),
       S.isAdmin ? sb.from("prima_nota").select("*").order("data").order("n").limit(10000) : null,
       S.isAdmin ? sb.from("donatori").select("*") : null,
+      S.canWrite ? sb.from("schede").select("*").order("creato", { ascending: false }).limit(2000) : null,
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
     ];
-    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
-    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, c1r].find((r) => r && r.error);
+    const [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r] = await Promise.all(q.map((x) => x || Promise.resolve({ data: null })));
+    const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
-    S.loadErr = { prima_nota: pn.error && pn.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message };
+    S.loadErr = { prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message };
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
@@ -156,6 +158,7 @@ async function loadAll() {
     if (fi.data) S.films = fi.data;
     if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
     if (dn.data) S.donatori = dn.data;
+    if (sch.data) S.schede = sch.data;
     if (pn.data) S.primaNota = pn.data.map((r) => ({ ...r, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
     if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
@@ -169,7 +172,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -244,7 +247,7 @@ function renderTabs() {
     if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
-    const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
+    const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
     if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}${groupBadge(kids)}</a>`;
     const inside = kids.includes(S.view);
     if (inside) { sub = kids; S.lastSub = S.view; }
@@ -252,7 +255,7 @@ function renderTabs() {
     return `<a href="#${target}"${cur(inside)}>${m.label}${groupBadge(kids)}</a>`;
   }).join("");
   $("#subtabs").hidden = !sub;
-  $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : k === "cinema" ? badge(filmsToFix()) : ""}</a>`).join("") : "";
+  $("#subtabs").innerHTML = sub ? sub.map((k) => `<a href="#${k}"${cur(S.view === k)}>${SUB_LABELS[k] || VIEWS[k].label}${k === "richieste" ? badge(nReq) : k === "schede" ? badge(schedeDaVerificare()) : k === "cinema" ? badge(filmsToFix()) : ""}</a>`).join("") : "";
 }
 
 /* ---------- render ---------- */
@@ -275,6 +278,7 @@ function render() {
   if (S.view === "bilancio") renderBilancio();
   if (S.view === "donazioni") renderDonazioni();
   if (S.view === "comune") renderComune();
+  if (S.view === "schede") renderSchede();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -355,6 +359,7 @@ function bookingCard(b, showDate) {
       <span class="pill ${b.stato}">${STATI[b.stato]}</span>
       ${ps ? `<span class="pill ${ps[0]}">${esc(ps[1])}</span>` : ""}
       ${b.comune && S.canWrite ? `<span class="pill comune">Comune</span>` : ""}
+      ${S.canWrite ? pillScheda(b) : ""}
       ${c.need && active(b) ? `<span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">Turni ${c.have}/${c.need}</span>` : ""}</div>
   </button>`;
 }
@@ -1445,6 +1450,204 @@ function diagnosiPrimaNota(dove) {
     <ol style="margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:8px">${passi.map((x) => `<li>${x}</li>`).join("")}</ol></div>`;
 }
 
+/* ---------- schede di richiesta online ---------- */
+const SCHEDA_GIORNI = 30, SCHEDA_URGENTE = 14; // da compilare 30 giorni prima; sotto i 14 è urgente
+const giorniA = (d) => Math.round((parse(d) - parse(TODAY)) / 864e5);
+const linkScheda = (s) => new URL("modulo/compila.html?t=" + s.token, location.href.split("#")[0]).href;
+const schedaDi = (b) => S.schede.filter((s) => s.booking_id === b.id).sort((a, c) => c.creato.localeCompare(a.creato))[0];
+const schedeDaVerificare = () => S.schede.filter((s) => s.stato === "compilata").length;
+// eventi per cui di solito serve la scheda: in arrivo, non ricorrenti, non del cinema della sala
+const serveScheda = (b) => active(b) && b.data >= TODAY && giorniA(b.data) <= 120 && !isRecurring(b) && !/cinema|proiezion|cineforum/i.test((b.tipo || "") + " " + b.titolo);
+const STATI_SCHEDA = { da_inviare: "Da inviare", inviata: "Inviata", aperta: "Aperta", compilata: "Da verificare", approvata: "Approvata", respinta: "Da correggere", non_serve: "Non serve" };
+function pillScheda(b) {
+  const s = schedaDi(b);
+  if (!s) return serveScheda(b) && giorniA(b.data) <= SCHEDA_GIORNI ? `<span class="pill dapagare">Scheda mancante</span>` : "";
+  if (s.stato === "non_serve") return "";
+  const cls = { approvata: "saldato", compilata: "acconto", respinta: "dapagare" }[s.stato] || "dafare";
+  return `<span class="pill ${cls}">Scheda: ${STATI_SCHEDA[s.stato].toLowerCase()}</span>`;
+}
+function righeSchede() {
+  // per ogni prenotazione conta solo la scheda più recente
+  const conScheda = S.schede.map((s) => ({ s, b: S.bookings.find((b) => b.id === s.booking_id) })).filter((r) => !r.b || schedaDi(r.b) === r.s);
+  const senza = S.bookings.filter((b) => serveScheda(b) && !schedaDi(b)).map((b) => ({ s: null, b }));
+  return [...conScheda, ...senza].map((r) => {
+    const data = (r.b && r.b.data) || (r.s && r.s.data_evento) || null;
+    const gg = data ? giorniA(data) : null;
+    const st = r.s ? r.s.stato : "nessuna";
+    const chiusa = ["compilata", "approvata", "non_serve"].includes(st);
+    return { ...r, data, gg, st, urgente: gg !== null && gg >= 0 && gg <= SCHEDA_URGENTE && !chiusa, ritardo: gg !== null && gg >= 0 && gg <= SCHEDA_GIORNI && !chiusa, passata: gg !== null && gg < 0 };
+  });
+}
+const SC_FILTRI = [
+  ["attive", "In corso", (r) => !r.passata && !["approvata", "non_serve"].includes(r.st)],
+  ["urgenti", "Urgenti", (r) => r.urgente],
+  ["daverificare", "Da verificare", (r) => r.st === "compilata"],
+  ["attesa", "In attesa di risposta", (r) => ["inviata", "aperta", "respinta"].includes(r.st)],
+  ["dainviare", "Da inviare", (r) => ["nessuna", "da_inviare"].includes(r.st) && !r.passata],
+  ["approvate", "Approvate", (r) => r.st === "approvata"],
+  ["tutte", "Tutte", (r) => r.st !== "non_serve" || true],
+];
+function renderSchede() {
+  if (S.loadErr?.schede) { $("#sc-list").innerHTML = `<div class="warn">In Supabase manca lo script <b>010_schede.sql</b>: eseguilo nel SQL Editor e ricarica la pagina. (${esc(S.loadErr.schede)})</div>`; $("#sc-kpis").innerHTML = ""; return; }
+  const righe = righeSchede();
+  const n = (f) => righe.filter(f).length;
+  $("#sc-kpis").innerHTML = `
+    <div class="kpi"><span class="eyebrow">Da inviare</span><b>${n((r) => ["nessuna", "da_inviare"].includes(r.st) && !r.passata)}</b><small>eventi senza link mandato</small></div>
+    <div class="kpi"><span class="eyebrow">In attesa</span><b>${n((r) => ["inviata", "aperta", "respinta"].includes(r.st))}</b><small>${n((r) => r.st === "aperta")} aperte ma non ancora inviate</small></div>
+    <div class="kpi"><span class="eyebrow">Da verificare</span><b>${n((r) => r.st === "compilata")}</b><small>compilate dall'organizzatore</small></div>
+    <div class="kpi"><span class="eyebrow">Urgenti</span><b class="${n((r) => r.urgente) ? "neg" : ""}">${n((r) => r.urgente)}</b><small>evento entro ${SCHEDA_URGENTE} giorni, scheda non arrivata</small></div>`;
+  $("#sc-filters").innerHTML = SC_FILTRI.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.scFilter === k}">${l}<span class="c">${n(f)}</span></button>`).join("");
+  $("#sc-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.scFilter = b.dataset.f; renderSchede(); }));
+  const lista = righe.filter(SC_FILTRI.find((x) => x[0] === S.scFilter)[2]).sort((a, c) => (a.urgente === c.urgente ? (a.data || "9").localeCompare(c.data || "9") : a.urgente ? -1 : 1));
+  if (!lista.length) { $("#sc-list").innerHTML = `<div class="empty">${S.scFilter === "attive" ? "Nessuna scheda da seguire: per gli eventi esterni in arrivo è tutto in ordine." : "Nessuna scheda in questo elenco."}</div>`; return; }
+  const dt = (t) => (t ? new Date(t).toLocaleDateString("it-IT", { day: "numeric", month: "short" }) : "");
+  $("#sc-list").innerHTML = `<div class="blist">${lista.map((r) => {
+    const s = r.s, b = r.b, titolo = (b && b.titolo) || (s && s.titolo) || "Evento da definire";
+    const chi = (b && b.referente) || (s && s.destinatario) || "";
+    const tappa = (on, testo, cls = "") => `<span class="tappa ${on ? "on" : ""} ${cls}">${testo}</span>`;
+    const tappe = !s ? `<span class="tappa ${r.ritardo ? "ko" : "warn-t"}">Scheda non ancora creata</span>`
+      : s.stato === "non_serve" ? `<span class="tappa">Segnata come non necessaria</span>`
+      : tappa(!!s.inviata_il, s.inviata_il ? `Inviata ${dt(s.inviata_il)}` : "Da inviare", s.inviata_il ? "" : "warn-t")
+        + tappa(!!s.aperta_il, s.aperta_il ? `Aperta ${dt(s.aperta_il)}` : "Non ancora aperta")
+        + tappa(!!s.compilata_il, s.compilata_il ? `Compilata ${dt(s.compilata_il)}` : "Non compilata", !s.compilata_il && r.ritardo ? "ko" : "")
+        + (s.stato === "respinta" ? tappa(false, "Correzioni richieste", "warn-t") : tappa(s.stato === "approvata", s.stato === "approvata" ? `Approvata ${dt(s.verificata_il)}` : "Da approvare", s.stato === "compilata" ? "warn-t" : ""))
+        + (s.sollecitata_il ? `<span class="tappa">Sollecitata ${dt(s.sollecitata_il)}</span>` : "");
+    const az = [];
+    if (!s || ["da_inviare"].includes(s.stato)) az.push(`<button class="btn primary sm" type="button" data-invia="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Invia il link</button>`);
+    if (s && ["inviata", "aperta", "respinta"].includes(s.stato)) az.push(`<button class="btn sm" type="button" data-sollecita="${esc(s.id)}">Sollecita</button>`, `<button class="btn ghost sm" type="button" data-link="${esc(s.id)}">Copia link</button>`);
+    if (s && ["compilata", "approvata", "respinta"].includes(s.stato)) az.push(`<button class="btn ${s.stato === "compilata" ? "primary" : ""} sm" type="button" data-vedi="${esc(s.id)}">${s.stato === "compilata" ? "Verifica" : "Vedi risposte"}</button>`);
+    if (!s || !["approvata", "non_serve", "compilata"].includes(s.stato)) az.push(`<button class="btn ghost sm" type="button" data-nonserve="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Non serve</button>`);
+    if (s && s.stato === "non_serve") az.push(`<button class="btn ghost sm" type="button" data-riattiva="${esc(s.id)}">Serve</button>`);
+    return `<article class="panel sc-row ${r.urgente ? "sc-urgente" : ""}">
+      <div class="quando">${r.data ? `<b>${esc(fmtShort(r.data))}</b><span class="tra ${r.urgente ? "urg" : ""}">${r.gg === 0 ? "oggi" : r.gg > 0 ? `tra ${r.gg} giorni` : `${-r.gg} giorni fa`}</span>` : `<span>data da definire</span>`}</div>
+      <div><div class="t">${esc(titolo)}</div><div class="m">${esc([chi, s && s.firma_nome ? `firmata da ${s.firma_nome}` : "", s && s.sicurezza ? { compatibile: "sicurezza: compatibile", condizioni: "sicurezza: con condizioni", non_compatibile: "sicurezza: non compatibile" }[s.sicurezza] : ""].filter(Boolean).join(" · "))}</div><div class="tappe">${tappe}</div></div>
+      <div class="az">${az.join("")}</div>
+    </article>`;
+  }).join("")}</div>`;
+  const L = $("#sc-list");
+  L.querySelectorAll("[data-invia]").forEach((x) => (x.onclick = () => inviaScheda(x.dataset.invia, x.dataset.sid)));
+  L.querySelectorAll("[data-sollecita]").forEach((x) => (x.onclick = () => sollecitaScheda(x.dataset.sollecita)));
+  L.querySelectorAll("[data-link]").forEach((x) => (x.onclick = () => { const s = S.schede.find((y) => y.id === x.dataset.link); openCopyText(linkScheda(s)); }));
+  L.querySelectorAll("[data-vedi]").forEach((x) => (x.onclick = () => apriScheda(x.dataset.vedi)));
+  L.querySelectorAll("[data-nonserve]").forEach((x) => (x.onclick = async () => {
+    x.disabled = true;
+    try {
+      if (x.dataset.sid) await run(sb.from("schede").update({ stato: "non_serve", aggiornato: new Date().toISOString() }).eq("id", x.dataset.sid), "Segnata: la scheda non serve");
+      else { const b = S.bookings.find((y) => y.id === x.dataset.nonserve); await run(sb.from("schede").insert({ booking_id: b.id, titolo: b.titolo, data_evento: b.data, destinatario: b.referente || "", stato: "non_serve" }), "Segnata: la scheda non serve"); }
+    } catch (e) { x.disabled = false; toast(errText(e)); }
+  }));
+  L.querySelectorAll("[data-riattiva]").forEach((x) => (x.onclick = async () => { try { await run(sb.from("schede").update({ stato: "da_inviare" }).eq("id", x.dataset.riattiva), "La scheda torna da inviare"); } catch (e) { toast(errText(e)); } }));
+}
+function messaggioScheda(s, b, sollecito) {
+  const chi = ((b && b.referente) || s.destinatario || "").split(" ")[0];
+  const titolo = (b && b.titolo) || s.titolo, data = (b && b.data) || s.data_evento;
+  const firma = (S.me.nome || "").split(" ")[0];
+  return [
+    `Buongiorno${chi ? " " + chi : ""},`,
+    sollecito
+      ? `vi ricordiamo di compilare la scheda di richiesta della Sala San Tommaso Moro${titolo ? ` per «${titolo}»` : ""}${data ? ` del ${fmtDay(data, { day: "numeric", month: "long" })}` : ""}: ci serve per preparare la sala e la sicurezza.`
+      : `per ${titolo ? `«${titolo}»` : "il vostro evento"}${data ? ` del ${fmtDay(data, { day: "numeric", month: "long" })}` : ""} alla Sala San Tommaso Moro vi chiediamo di compilare la scheda di richiesta: ci vogliono circa 5 minuti, anche dal telefono.`,
+    linkScheda(s),
+    "Grazie!" + (firma ? `\n${firma}` : ""),
+  ].join("\n");
+}
+async function inviaScheda(bookingId, sid) {
+  try {
+    let s = sid ? S.schede.find((x) => x.id === sid) : null;
+    const b = bookingId ? S.bookings.find((x) => x.id === bookingId) : s && S.bookings.find((x) => x.id === s.booking_id);
+    if (!s) {
+      const { data, error } = await sb.from("schede").insert({ booking_id: b.id, titolo: b.titolo, data_evento: b.data, destinatario: b.referente || "", contatto: b.telefono || b.email || "" }).select("*").single();
+      if (error) throw error;
+      s = data;
+    }
+    // aprire il messaggio da mandare vale come invio: la scheda passa a «inviata»
+    await sb.from("schede").update({ stato: s.stato === "da_inviare" ? "inviata" : s.stato, inviata_il: s.inviata_il || new Date().toISOString(), aggiornato: new Date().toISOString() }).eq("id", s.id);
+    openCopyText(messaggioScheda(s, b, false));
+    await loadAll();
+  } catch (e) { toast(errText(e)); }
+}
+async function sollecitaScheda(id) {
+  const s = S.schede.find((x) => x.id === id), b = S.bookings.find((x) => x.id === s.booking_id);
+  openCopyText(messaggioScheda(s, b, true));
+  try { await run(sb.from("schede").update({ sollecitata_il: new Date().toISOString() }).eq("id", id)); } catch (e) { toast(errText(e)); }
+}
+const ETICHETTE = {
+  ente: "Organizzatore", a_titolo: "Richiede come", cf: "CF / P. IVA", indirizzo: "Indirizzo", referente: "Referente", cellulare: "Cellulare", email: "Email", resp_sera: "Responsabile la sera", resp_cell: "Suo cellulare",
+  titolo: "Titolo", tipo: "Tipo", descrizione: "Descrizione", ingresso: "Ingresso", prezzo: "Prezzo €", biglietti: "Biglietti gestiti da", fascia: "Fascia di pubblico", pubblico_n: "Pubblico previsto", bambini_n: "di cui bambini", carrozzina_n: "Persone in carrozzina", palco_n: "Persone sul palco",
+  luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
+  tecnico: "Tecnico", tecnico_nome: "Nome tecnico", tecnico_cell: "Cellulare tecnico", attrezzature: "Attrezzature da collegare", attrezzature_quali: "Quali", potenza_w: "Potenza totale (W)",
+  scenografie: "Scenografie", scenografie_quali: "Cosa portano", ignifughi: "Materiali ignifughi classe 1", effetti: "Effetti", effetti_quali: "Quali effetti", durante: "Durante l'evento", pubblicabile: "Pubblicabile nel programma", locandina_entro: "Locandina entro", altro: "Altre richieste",
+  ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
+};
+const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
+  ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
+  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
+function risposteHtml(d) {
+  const val = (k, v) => (v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
+  return GRUPPI_SCHEDA.map(([g, ks]) => {
+    const righe = ks.flatMap((k) => {
+      if (k === "orari") return (d.orari || []).map((o, i) => `<dt>Giorno ${i + 1}</dt><dd>${esc(o.data ? fmtDay(o.data) : "")}${o.all_da ? ` · allestimento ${esc(o.all_da)}–${esc(o.all_a)}` : ""}${o.porte ? ` · porte ${esc(o.porte)}` : ""} · inizio ${esc(o.inizio)}${o.fine ? `, fine ${esc(o.fine)}` : ""}${o.sgombero ? ` · sgombero ${esc(o.sgombero)}` : ""}</dd>`);
+      const v = d[k];
+      if (v === undefined || v === "" || v === false || (Array.isArray(v) && !v.length)) return [];
+      return [`<dt>${esc(ETICHETTE[k] || k)}</dt><dd>${esc(val(k, v))}</dd>`];
+    });
+    return righe.length ? `<div><h4>${g}</h4><dl>${righe.join("")}</dl></div>` : "";
+  }).join("");
+}
+const dlgSK = $("#dlg-scheda");
+function apriScheda(id) {
+  const s = S.schede.find((x) => x.id === id), b = S.bookings.find((x) => x.id === s.booking_id);
+  S.editingScheda = s;
+  $("#sk-head").textContent = (b && b.titolo) || s.dati.titolo || s.titolo || "Scheda";
+  $("#sk-stato").textContent = `${STATI_SCHEDA[s.stato]} · compilata ${s.compilata_il ? new Date(s.compilata_il).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"} da ${s.firma_nome || "—"}${b ? ` · prenotazione del ${fmtShort(b.data)}` : " · non ancora in calendario"}`;
+  $("#sk-risposte").innerHTML = risposteHtml(s.dati || {});
+  dlgSK.querySelectorAll('[name="sk-sic"]').forEach((r) => (r.checked = r.value === s.sicurezza));
+  $("#sk-note").value = s.sicurezza_note || "";
+  $("#sk-error").innerHTML = "";
+  $("#sk-copia").hidden = !b;
+  dlgSK.showModal();
+}
+$("#sk-approva").onclick = async () => {
+  const s = S.editingScheda, sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value;
+  if (!sic) { $("#sk-error").innerHTML = `<div class="warn">Indica il parere del responsabile della sicurezza.</div>`; return; }
+  if (sic === "non_compatibile") { $("#sk-error").innerHTML = `<div class="warn">Con parere «non compatibile» la scheda non si approva: usa «Chiedi correzioni» o contatta l'organizzatore.</div>`; return; }
+  try { await run(sb.from("schede").update({ stato: "approvata", sicurezza: sic, sicurezza_note: $("#sk-note").value.trim(), verificata_da: S.me.id, verificata_il: new Date().toISOString() }).eq("id", s.id), "Scheda approvata"); dlgSK.close(); }
+  catch (e) { $("#sk-error").innerHTML = `<div class="warn">${esc(errText(e))}</div>`; }
+};
+$("#sk-correggi").onclick = async () => {
+  const s = S.editingScheda, b = S.bookings.find((x) => x.id === s.booking_id), note = $("#sk-note").value.trim();
+  const sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value || null;
+  try {
+    await run(sb.from("schede").update({ stato: "respinta", sicurezza: sic, sicurezza_note: note, verificata_da: S.me.id, verificata_il: new Date().toISOString() }).eq("id", s.id));
+    dlgSK.close();
+    openCopyText([`Buongiorno ${((b && b.referente) || s.firma_nome || "").split(" ")[0]},`, `abbiamo letto la scheda per la Sala San Tommaso Moro. Vi chiediamo di rivedere: ${note || "…"}.`, `Potete correggerla dallo stesso link: ${linkScheda(s)}`, "Grazie!"].join("\n"));
+  } catch (e) { $("#sk-error").innerHTML = `<div class="warn">${esc(errText(e))}</div>`; }
+};
+$("#sk-copia").onclick = async () => {
+  const s = S.editingScheda, b = S.bookings.find((x) => x.id === s.booking_id), d = s.dati || {};
+  const extra = [d.ente && `Organizzatore: ${d.ente}`, d.pubblico_n && `Pubblico previsto: ${d.pubblico_n}`, d.tecnico && `Tecnico: ${d.tecnico}${d.tecnico_nome ? " (" + d.tecnico_nome + ")" : ""}`, d.resp_sera && `Responsabile la sera: ${d.resp_sera} ${d.resp_cell || ""}`].filter(Boolean).join(" · ");
+  const rec = { referente: d.referente || b.referente, telefono: d.cellulare || b.telefono, email: d.email || b.email, note: [b.note, extra && `Dalla scheda: ${extra}`].filter(Boolean).join("\n") };
+  try { await run(sb.from("bookings").update(rec).eq("id", b.id), "Dati copiati nella prenotazione"); } catch (e) { toast(errText(e)); }
+};
+$("#sk-stampa").onclick = () => {
+  const s = S.editingScheda, w = window.open("", "_blank");
+  if (!w) { toast("Il browser ha bloccato la finestra di stampa"); return; }
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Scheda · ${esc($("#sk-head").textContent)}</title><style>body{font:13px/1.4 system-ui,sans-serif;margin:24px;color:#111}h1{font:600 20px Georgia,serif}h4{margin:14px 0 4px;text-transform:uppercase;font-size:11px;letter-spacing:.06em;color:#555}dl{display:grid;grid-template-columns:34% 1fr;gap:3px 12px;margin:0}dt{color:#555}dd{margin:0}</style>
+    <h1>Sala San Tommaso Moro · ${esc($("#sk-head").textContent)}</h1><p>${esc($("#sk-stato").textContent)}</p>${risposteHtml(s.dati || {})}
+    <h4>Responsabile della sicurezza</h4><p>${esc({ compatibile: "Compatibile", condizioni: "Compatibile con condizioni", non_compatibile: "Non compatibile" }[s.sicurezza] || "—")} ${esc(s.sicurezza_note || "")}</p><script>print()<\/script>`);
+  w.document.close();
+};
+const dlgNS = $("#dlg-nuova-scheda");
+$("#sc-nuova").onclick = () => { ["#ns-dest", "#ns-contatto", "#ns-titolo", "#ns-data"].forEach((id) => ($(id).value = "")); dlgNS.showModal(); };
+$("#ns-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const { data, error } = await sb.from("schede").insert({ destinatario: $("#ns-dest").value.trim(), contatto: $("#ns-contatto").value.trim(), titolo: $("#ns-titolo").value.trim(), data_evento: $("#ns-data").value || null, stato: "inviata", inviata_il: new Date().toISOString() }).select("*").single();
+    if (error) throw error;
+    dlgNS.close(); openCopyText(messaggioScheda(data, null, false)); await loadAll();
+  } catch (x) { toast(errText(x)); }
+});
+
 /* ---------- convenzione con il Comune ---------- */
 // anno di convenzione che contiene una data: dalla data di inizio, un anno alla volta (senza data: anno solare)
 function periodoConv(d) {
@@ -2047,7 +2250,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");

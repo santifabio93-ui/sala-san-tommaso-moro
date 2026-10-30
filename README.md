@@ -162,6 +162,16 @@ Esegui `supabase/009_comune.sql` nel SQL Editor (si può rieseguire). Ogni preno
 Lo script Google segna da solo gli eventi nuovi del calendario con «Comune» o «comunale» nel titolo. Facoltativo: una
 data di inizio della convenzione, se l'anno non parte il 1° gennaio, con il riepilogo dei 20 anni.
 
+## Scheda di richiesta (stampabile e online)
+`modulo/scheda-manifestazioni.html` (e il PDF) è la scheda da stampare, 2 facciate. Esegui `supabase/010_schede.sql`
+per la versione online: da **Affitti → Schede di richiesta** si manda all'organizzatore un link personale
+(`modulo/compila.html?t=…`) che apre la scheda già compilata con evento e orari; lui la compila dal telefono, senza
+account, e la invia. Il cruscotto mostra per ogni evento esterno in arrivo se la scheda è da inviare, inviata, aperta,
+compilata (da verificare), approvata o da correggere, segnala le urgenti (evento entro 14 giorni) e permette di
+mandare il link o un sollecito, leggere le risposte, dare il parere di sicurezza, approvare, chiedere correzioni,
+copiare i dati nella prenotazione e stampare. Il link dà accesso solo a quella scheda (funzioni `scheda_apri` e
+`scheda_invia`); dopo l'approvazione non si può più modificare.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

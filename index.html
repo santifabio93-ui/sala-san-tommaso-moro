@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-10-30.9">
+<link rel="stylesheet" href="style.css?v=2026-10-31.1">
 </head>
 <body>
 
@@ -108,6 +108,15 @@
       <span class="hint" id="req-sync"></span>
     </div>
     <div id="requests"></div>
+  </main>
+
+  <main id="view-schede" hidden>
+    <div class="toolbar">
+      <div class="seg" id="sc-filters" role="group" aria-label="Filtro schede"></div>
+      <div class="actions"><a class="btn" href="modulo/scheda-manifestazioni.html" target="_blank" rel="noopener">Versione da stampare</a><button class="btn primary" type="button" id="sc-nuova">+ Scheda senza prenotazione</button></div>
+    </div>
+    <section class="kpis" id="sc-kpis" aria-label="Riepilogo schede"></section>
+    <div id="sc-list"></div>
   </main>
 
   <main id="view-comune" hidden>
@@ -369,6 +378,40 @@
   </form>
 </dialog>
 
+<dialog id="dlg-scheda">
+  <div class="dlg">
+    <div class="dlg-head"><h2 id="sk-head">Scheda</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div id="sk-stato" class="hint"></div>
+    <div id="sk-risposte" class="sk-risposte"></div>
+    <div class="subsec"><h3>Responsabile della sicurezza</h3></div>
+    <div class="scelte-app" id="sk-sic">
+      <label class="check"><input type="radio" name="sk-sic" value="compatibile"> Compatibile con la sala</label>
+      <label class="check"><input type="radio" name="sk-sic" value="condizioni"> Compatibile con condizioni</label>
+      <label class="check"><input type="radio" name="sk-sic" value="non_compatibile"> Non compatibile</label>
+    </div>
+    <div class="field"><label for="sk-note">Condizioni o motivi</label><textarea id="sk-note" placeholder="Es. niente macchina del fumo; tecnico della sala presente dalle 18"></textarea></div>
+    <div id="sk-error"></div>
+    <div class="dlg-foot">
+      <div class="actions"><button class="btn sm" type="button" id="sk-stampa">Stampa</button><button class="btn sm" type="button" id="sk-copia">Copia i dati nella prenotazione</button></div>
+      <div class="right"><button class="btn" type="button" id="sk-correggi">Chiedi correzioni</button><button class="btn primary" type="button" id="sk-approva">Approva</button></div>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="dlg-nuova-scheda">
+  <form class="dlg" id="ns-form" novalidate>
+    <div class="dlg-head"><h2>Scheda senza prenotazione</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" style="margin:0">Per chi chiede la sala ma non è ancora in calendario: riceverà il link e compilerà tutto lui.</p>
+    <div class="form">
+      <div class="field h"><label for="ns-dest">A chi la mandate</label><input id="ns-dest" placeholder="Nome e cognome"></div>
+      <div class="field h"><label for="ns-contatto">Telefono o email</label><input id="ns-contatto"></div>
+      <div class="field q"><label for="ns-titolo">Evento (se lo sapete)</label><input id="ns-titolo"></div>
+      <div class="field t"><label for="ns-data">Data (se la sapete)</label><input id="ns-data" type="date"></div>
+    </div>
+    <div class="dlg-foot"><span></span><div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Crea e prepara il messaggio</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-donatore">
   <form class="dlg" id="donatore-form" novalidate>
     <div class="dlg-head"><h2 id="d-head">Donatore</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -481,7 +524,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-10-30.9"></script>
-<script type="module" src="app.js?v=2026-10-30.9"></script>
+<script src="config.js?v=2026-10-31.1"></script>
+<script type="module" src="app.js?v=2026-10-31.1"></script>
 </body>
 </html>

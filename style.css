@@ -52,6 +52,28 @@ button, input, select, textarea { font: inherit; color: inherit }
 .seal { width: 42px; height: 42px; flex: none; border-radius: 50%; border: 1.5px solid var(--accent); display: grid; place-items: center; font-family: var(--f-display); font-weight: 600; color: var(--accent); font-size: 1rem; letter-spacing: .02em }
 nav.tabs { display: flex; gap: 4px; background: var(--sunk); padding: 4px; border-radius: 999px }
 nav.tabs a { text-decoration: none; color: var(--muted); padding: 7px 14px; border-radius: 999px; font-weight: 600; font-size: .9rem }
+.sc-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 8px 16px; align-items: center }
+@media (max-width: 640px) { .sc-row { grid-template-columns: minmax(0, 1fr) } }
+.sc-row .quando b { font-size: 1.05rem; display: block }
+.sc-row .quando span { font-size: .8rem; color: var(--muted) }
+.sc-row .quando .tra { font-weight: 700; color: var(--ink) }
+.sc-row .quando .tra.urg { color: var(--due-fg) }
+.sc-row .t { font-weight: 700; overflow-wrap: anywhere }
+.sc-row .m { color: var(--muted); font-size: .85rem }
+.sc-row .az { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end }
+.tappe { display: flex; gap: 4px; align-items: center; margin-top: 6px; flex-wrap: wrap }
+.tappa { font-size: .72rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap }
+.tappa.on { background: var(--accent-soft); color: var(--ink) }
+.tappa.on::before { content: "✓ "; color: var(--accent) }
+.tappa.warn-t { background: var(--opz-bg); color: var(--opz-fg) }
+.tappa.ko { background: var(--due-bg); color: var(--due-fg) }
+.sc-urgente { border-left: 4px solid var(--due-fg) }
+.sk-risposte { display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow: auto; padding-right: 4px }
+.sk-risposte h4 { margin: 4px 0 2px; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted) }
+.sk-risposte dl { display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: .9rem }
+.sk-risposte dt { color: var(--muted) }
+.sk-risposte dd { margin: 0; overflow-wrap: anywhere }
+.scelte-app { display: flex; flex-wrap: wrap; gap: 6px 16px }
 .conv { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; align-items: start }
 @media (max-width: 900px) { .conv { grid-template-columns: minmax(0, 1fr) } }
 .conv-big { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 }

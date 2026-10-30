@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scheda di richiesta · Sala San Tommaso Moro</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#00897C">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../style.css?v=2026-10-31.1">
+<style>
+.wrap { max-width: 760px }
+.head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
+.sez { margin-top: 18px }
+.sez > h2 { display: flex; align-items: center; gap: 10px; margin-bottom: 4px }
+.sez > h2 .n { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--surface); font-family: var(--f-body); font-size: .85rem; display: inline-grid; place-items: center; flex: none }
+.sez > .hint { display: block; margin-bottom: 10px }
+.griglia { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px }
+.griglia .full { grid-column: 1 / -1 }
+@media (max-width: 560px) { .griglia { grid-template-columns: minmax(0, 1fr) } }
+.campo { display: flex; flex-direction: column; gap: 4px; min-width: 0 }
+.campo > label, .campo > .lbl { font-size: .82rem; font-weight: 600; color: var(--muted) }
+.campo input:not([type=radio]):not([type=checkbox]), .campo select, .campo textarea { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 10px; width: 100%; min-width: 0; font: inherit; color: inherit }
+.campo textarea { min-height: 70px; resize: vertical }
+.obbl::after { content: " *"; color: var(--due-fg) }
+.scelte { display: flex; flex-wrap: wrap; gap: 6px }
+.scelte label { flex: 0 0 auto; max-width: 100%; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; cursor: pointer; background: var(--surface); font-size: .92rem }
+.scelte label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft) }
+.scelte input { accent-color: var(--accent); margin: 0 }
+.num { width: 90px !important }
+.riga-orari { display: grid; grid-template-columns: 1.3fr repeat(6, minmax(0, 1fr)) auto; gap: 6px; align-items: end; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface) }
+.riga-orari + .riga-orari { margin-top: 8px }
+.riga-orari .campo label { font-size: .72rem }
+.riga-orari input { padding: 7px 6px }
+@media (max-width: 680px) { .riga-orari { grid-template-columns: repeat(2, minmax(0, 1fr)) } .riga-orari .campo:first-child { grid-column: 1 / -1 } }
+.voci { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px }
+.voce { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface) }
+.voce:has(input[type=checkbox]:checked) { border-color: var(--accent); background: var(--accent-soft) }
+.voce input[type=checkbox] { accent-color: var(--accent); width: 17px; height: 17px; margin: 0 }
+.voce input[type=number] { width: 60px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; margin-left: auto; background: var(--surface); color: inherit; font: inherit }
+.cond { margin-top: 8px }
+.regole { background: var(--sunk); border-radius: 10px; padding: 12px 16px; font-size: .9rem }
+.regole h3 { margin: 10px 0 4px; font-size: .95rem }
+.regole ul, .regole ol { margin: 0; padding-left: 18px }
+.regole li { margin-bottom: 3px }
+.accetta { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer }
+.accetta input { accent-color: var(--accent); width: 18px; height: 18px; margin-top: 2px; flex: none }
+.invia { position: sticky; bottom: 0; background: var(--bg); padding: 14px 0 calc(14px + env(safe-area-inset-bottom, 0px)); margin-top: 18px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
+.esito { text-align: center; padding: 30px 10px }
+.esito h2 { font-size: 1.6rem; margin-bottom: 6px }
+.errore-campo { outline: 2px solid var(--due-fg); outline-offset: 1px }
+@media print { .invia, .no-print, .head .hint { display: none !important } body { background: #fff } .sez { break-inside: avoid } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="seal" aria-hidden="true">TM</div>
+    <div><div class="eyebrow">Parrocchia di San Biagio · Piombino Dese</div><h1>Sala San Tommaso Moro</h1><span class="hint">Scheda di richiesta di utilizzo della sala</span></div>
+  </div>
+  <div id="app"><p class="muted">Caricamento della scheda…</p></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="../config.js?v=2026-10-31.1"></script>
+<script type="module" src="compila.js?v=2026-10-31.1"></script>
+</body>
+</html>
