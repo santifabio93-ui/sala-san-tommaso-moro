@@ -754,3 +754,5 @@ nav.tabs { position: relative }
 .ct-det[open] summary h3::before { content: "▾ " }
 .scorte-box { margin-top: 14px }
 .scorte-chip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px }
+.login-pw summary { cursor: pointer; font-size: .88rem; color: var(--accent); font-weight: 600 }
+.login-pw form { margin-top: 10px }

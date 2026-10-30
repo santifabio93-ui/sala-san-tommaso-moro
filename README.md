@@ -308,6 +308,17 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Segreteria e accesso senza Google
+
+Il ruolo **Segreteria** (script `025_segreteria.sql`) è per chi aiuta a tenere l'agenda: vede e modifica calendario,
+prenotazioni, richieste, schede di richiesta, sopralluoghi e serate del Comune, e segna le scorte. Non vede cassa,
+incassi dei film, prima nota, donazioni, dati dei volontari, SAS, sito e impostazioni (lo blocca il database, non
+solo l'app). Si assegna in Persone.
+
+Chi non ha un account Google entra con **email e password**: l'amministratore crea l'utente in Supabase
+(Authentication → Users → Add user → Create new user, con «Auto Confirm User») e gli dà la password; dopo il primo
+accesso la cambia con «Cambia password» in alto. Se l'email è già in Persone con un ruolo, l'accesso è immediato.
+
 ## Gruppo pulizie
 
 Un link solo per il gruppo pulizie (`modulo/pulizie.html`, senza account), da mandare ai referenti delle pulizie: nel

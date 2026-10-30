@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.33";
+const VERSIONE = "2026-11-01.34";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -17,20 +17,20 @@ const fmtDay = (s, opts) => parse(s).toLocaleDateString("it-IT", opts || { weekd
 const fmtShort = (s) => parse(s).toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
 const MESI = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1).toLocaleDateString("it-IT", { month: "short" }).replace(".", ""));
 const STATI = { opzione: "Opzione", confermata: "Confermata", annullata: "Annullata" };
-const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
+const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", segreteria: "Segreteria", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
 // tariffe 2026 a giornata (documento «Tariffe in uso 2026»); le cifre aggiornate stanno in settings.tariffe
 const DEFAULT_TARIFFE = { galleria: 400, platea: 500, tutta: 800, iva: 22, iva_supplementi: false, biglietteria: 100, tappeto: 200, commerciale: 100 };
 const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino a 338 persone)", tutta: "Platea e galleria (fino a 472 persone)" };
 const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
-  oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario"] },
-  calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
-  serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario"] },
-  prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
-  richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
-  sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
-  comune: { label: "Comune", roles: ["admin", "coordinatore"] },
-  schede: { label: "Schede", roles: ["admin", "coordinatore"] },
+  oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore", "segreteria"] },
+  richieste: { label: "Richieste", roles: ["admin", "coordinatore", "segreteria"] },
+  sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  comune: { label: "Comune", roles: ["admin", "coordinatore", "segreteria"] },
+  schede: { label: "Schede", roles: ["admin", "coordinatore", "segreteria"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   sito: { label: "Sito web", roles: ["admin", "coordinatore"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
@@ -85,6 +85,23 @@ $("#btn-login").onclick = async () => {
   const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: location.origin + location.pathname } });
   if (error) $("#login-error").textContent = "Accesso non riuscito: " + error.message;
 };
+// chi non ha un account Google entra con email e password (l'utente lo crea l'amministratore in Supabase)
+$("#login-pw").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("#login-email").value.trim(), password = $("#login-password").value;
+  if (!email || !password) { $("#login-error").textContent = "Scrivi email e password."; return; }
+  const btn = e.target.querySelector("button"); btn.disabled = true; $("#login-error").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false;
+  if (error) $("#login-error").textContent = /invalid|credentials/i.test(error.message) ? "Email o password sbagliate." : "Accesso non riuscito: " + error.message;
+});
+$("#me-pw").onclick = async () => {
+  const p = prompt("Nuova password (almeno 8 caratteri):");
+  if (p == null) return;
+  if (p.length < 8) { toast("La password deve avere almeno 8 caratteri"); return; }
+  const { error } = await sb.auth.updateUser({ password: p });
+  toast(error ? "Password non cambiata: " + error.message : "Password cambiata");
+};
 document.querySelectorAll("[data-logout]").forEach((b) => (b.onclick = async () => { await sb.auth.signOut(); location.hash = ""; }));
 $("#pending-refresh").onclick = () => start();
 
@@ -103,7 +120,7 @@ async function start() {
   const { data: me, error } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
   if (error || !me) { $("#pending-email").textContent = user.email; show("pending"); return; }
   S.me = me; S.role = me.ruolo;
-  if (!["admin", "coordinatore", "volontario"].includes(S.role)) {
+  if (!["admin", "coordinatore", "segreteria", "volontario"].includes(S.role)) {
     $("#pending-email").textContent = me.email || user.email;
     $("#pending-title").textContent = S.role === "bloccato" ? "Accesso non abilitato" : "Richiesta inviata";
     if (S.role === "bloccato") $("#pending-text").textContent = "Il tuo account non è abilitato. Contatta chi gestisce la sala.";
@@ -111,17 +128,20 @@ async function start() {
     return;
   }
   S.isAdmin = S.role === "admin";
-  S.canWrite = S.isAdmin || S.role === "coordinatore";
+  S.staff = S.isAdmin || S.role === "coordinatore";
+  // la segreteria scrive agenda, prenotazioni, richieste e schede; il resto glielo nasconde il database
+  S.canWrite = S.staff || S.role === "segreteria";
   S.canSign = true;
-  S.canCassa = S.canWrite || !!me.cassa;
+  S.canCassa = S.staff || !!me.cassa;
   $("#me-name").textContent = me.nome || me.email;
   $("#me-role").textContent = RUOLI[S.role];
   if (me.avatar) { $("#me-avatar").src = me.avatar; $("#me-avatar").hidden = false; }
+  $("#me-pw").hidden = (user.app_metadata && user.app_metadata.provider) !== "email";
   show("app");
   route();
   await loadAll();
   startRealtime();
-  if (S.canWrite) { controllaSito(); setInterval(() => { if (!document.hidden) controllaSito(); }, 30 * 60000); }
+  if (S.staff) { controllaSito(); setInterval(() => { if (!document.hidden) controllaSito(); }, 30 * 60000); }
 }
 
 /* ---------- dati ---------- */
@@ -161,7 +181,7 @@ async function loadAll() {
     const pf = S.canWrite ? await sb.from("pulizie_fatte").select("*").order("creato", { ascending: false }).limit(60) : { data: null };
     S.pulizieFatte = pf.data || [];
     // scorte che mancano (aggiornamento 24): le vedono e le segnano tutti i volontari
-    const sc = ["admin", "coordinatore", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
+    const sc = ["admin", "coordinatore", "segreteria", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
     S.loadErr2.scorte = sc.error && (sc.error.message || "errore");
     S.scorte = (sc.data || []).filter((x) => !x.preso_il).reverse();
     // richieste di film al SAS e catalogo (aggiornamento 16)
@@ -3697,7 +3717,7 @@ function coseDiOggi() {
   return out.sort((a, b) => ordine[a.liv] - ordine[b.liv] || (a.entro || "9").localeCompare(b.entro || "9"));
 }
 function renderOggi() {
-  const el = $("#oggi-body"), cose = coseDiOggi();
+  const el = $("#oggi-body"), cose = coseDiOggi().filter((c) => !c.link || canSee(c.link.slice(1)));
   const prossimi = [...S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= addDays(TODAY, 2)).map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, t: b.titolo })),
     ...S.proiezioni.filter((p) => p.data >= TODAY && p.data <= addDays(TODAY, 2)).map((p) => ({ data: p.data, ora: p.ora, t: (S.films.find((f) => f.id === p.film_id) || {}).titolo || "Film" }))].sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
   const ciao = new Date().getHours() < 13 ? "Buongiorno" : new Date().getHours() < 18 ? "Buon pomeriggio" : "Buonasera";
@@ -3741,6 +3761,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["025_segreteria.sql", "Ruolo Segreteria (agenda e prenotazioni)", undefined, "Serve solo se dai a qualcuno il ruolo Segreteria", true],
     ["024_pulizie.sql", "Gruppo pulizie: link, referenti e scorte", k.has("pulizie_referenti") && !manca(e2.scorte), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche referenti e scorte"],
     ["023_tipo_spettacolo.sql", "Teatro, danza e incontri di Cinebot distinti dai film", S.films.length ? "cinebot_info" in S.films[0] : undefined, "Dopo lo script SQL ricopia anche lo script Google (versione 2026-11-02.1)"],
     ["022_eventi_della_sala.sql", "Eventi organizzati dalla Sala", S.bookings.length ? "della_sala" in S.bookings[0] : undefined],
