@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.18";
+const VERSIONE = "2026-11-01.19";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -41,6 +41,7 @@ const VIEWS = {
   bilancio: { label: "Bilancio", roles: ["admin"] },
   donazioni: { label: "Donazioni", roles: ["admin"] },
   economia: { label: "Economia", roles: ["admin"] },
+  resoconto: { label: "Resoconto", roles: ["admin", "coordinatore"] },
   utenti: { label: "Persone", roles: ["admin"] },
   stato: { label: "Stato", roles: ["admin"] },
 };
@@ -55,9 +56,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
+  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -324,6 +325,7 @@ function render() {
   if (S.view === "serata") renderSerata();
   if (S.view === "oggi") renderOggi();
   if (S.view === "stato") renderStato();
+  if (S.view === "resoconto") renderResoconto();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
@@ -3433,6 +3435,103 @@ function renderStato() {
       $("#copy-status").textContent = `${mancanti.length} aggiornamenti in ordine: copia, incolla nel SQL Editor di Supabase e premi Run.`;
     } catch (x) { toast("Non riesco a scaricare i file: aprili uno per uno con «Apri il file»"); }
     b.disabled = false; b.textContent = "Copia tutti quelli mancanti in un unico testo";
+  };
+}
+
+/* ---------- resoconto mensile per il parroco e il direttivo ---------- */
+// tutti i numeri del mese (YYYY-MM) e un confronto con lo stesso mese dell'anno prima
+function datiResoconto(mese) {
+  const [y, m] = mese.split("-").map(Number), nel = (d) => d && d.startsWith(mese), primaAnno = `${y - 1}-${pad(m)}`;
+  const prossimo = iso(new Date(y, m, 1)).slice(0, 7);
+  const c1 = S.c1.filter((c) => nel(c.data)), c1Prima = S.c1.filter((c) => c.data.startsWith(primaAnno));
+  const eventi = S.bookings.filter((b) => active(b) && nel(b.data)).sort(byWhen);
+  const affitti = eventi.filter((b) => b.prezzo > 0 && !b.comune), comune = eventi.filter((b) => b.comune);
+  const giorni = new Set([...eventi.map((b) => b.data), ...S.proiezioni.filter((p) => nel(p.data)).map((p) => p.data), ...c1.map((c) => c.data)]);
+  // turni
+  const conTurni = eventi.filter((b) => turni(b).length), posti = conTurni.reduce((s, b) => s + coverage(b).need, 0), coperti = conTurni.reduce((s, b) => s + coverage(b).have, 0);
+  const persone = new Set(S.signups.filter((x) => conTurni.some((b) => b.id === x.bookingId)).map((x) => x.nome.toLowerCase()));
+  // film del mese
+  const perFilm = new Map();
+  c1.forEach((c) => { const k = normT(c.titolo); const f = perFilm.get(k) || { titolo: c.titolo, sp: 0, lordo: 0, n: 0 }; f.sp += c.spettatori; f.lordo += c.lordo; f.n++; perFilm.set(k, f); });
+  const film = [...perFilm.values()].sort((a, b) => b.sp - a.sp);
+  // conti dalla prima nota (solo amministratore)
+  const pn = S.isAdmin ? S.primaNota.filter((r) => nel(r.data)) : [];
+  const pnAnno = S.isAdmin ? S.primaNota.filter((r) => r.anno === y && r.data <= `${mese}-31`) : [];
+  // il mese dopo: film confermati e in programma, eventi
+  const filmProssimi = [...new Set([...S.proiezioni.filter((p) => p.data.startsWith(prossimo)).map((p) => (S.films.find((f) => f.id === p.film_id) || {}).titolo).filter(Boolean),
+    ...S.programmazione.filter((p) => p.data.startsWith(prossimo)).map((p) => p.titolo)])];
+  const eventiProssimi = S.bookings.filter((b) => active(b) && b.data.startsWith(prossimo)).sort(byWhen);
+  return {
+    mese, prossimo, giorni: giorni.size, eventi, affitti, comune, c1, film, posti, coperti, persone: persone.size,
+    spettatori: c1.reduce((s, c) => s + c.spettatori, 0), incasso: c1.reduce((s, c) => s + c.lordo, 0),
+    spettatoriPrima: c1Prima.reduce((s, c) => s + c.spettatori, 0), proiezioniPrima: c1Prima.length,
+    entrate: sommaE(pn), uscite: sommaU(pn), risultatoAnno: r2(sommaE(pnAnno) - sommaU(pnAnno)),
+    filmProssimi, eventiProssimi,
+    // il mese dopo e le cose aperte di oggi hanno senso solo nel resoconto del mese in corso o di quello appena finito
+    recente: prossimo >= TODAY.slice(0, 7),
+    problemi: (S.canWrite && prossimo >= TODAY.slice(0, 7) ? coseDiOggi() : []).filter((c) => c.liv !== "info").slice(0, 8),
+  };
+}
+const nomeMese = (mese) => parse(mese + "-01").toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+function testoResoconto(d, note) {
+  const r = [`Sala San Tommaso Moro · resoconto di ${nomeMese(d.mese)}`, "",
+    `In sintesi: ${d.giorni} giornate di apertura, ${d.c1.length} proiezioni con ${d.spettatori} spettatori (${money(r2(d.incasso))} di biglietti)${d.proiezioniPrima ? `; a ${nomeMese(d.mese).split(" ")[0]} dell'anno scorso ${d.spettatoriPrima} spettatori in ${d.proiezioniPrima} proiezioni` : ""}.`,
+    `${d.eventi.length === 1 ? "Evento" : "Eventi"}: ${d.eventi.length}${d.affitti.length ? `, di cui ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"} (${money(d.affitti.reduce((s, b) => s + b.prezzo, 0))})` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.`,
+    d.posti ? `Volontari: ${d.coperti} posti coperti su ${d.posti} nei turni, ${d.persone} persone diverse.` : "",
+    d.film.length ? `Film più visti: ${d.film.slice(0, 3).map((f) => `${f.titolo} (${f.sp})`).join(", ")}.` : "",
+    S.isAdmin && (d.entrate || d.uscite) ? `Conti del mese (prima nota): entrate ${money(d.entrate)}, uscite ${money(d.uscite)}, saldo ${money(r2(d.entrate - d.uscite))}; risultato da inizio anno ${money(d.risultatoAnno)}.` : "",
+    ...(d.recente ? ["", `A ${nomeMese(d.prossimo)}:`, d.filmProssimi.length ? `- film: ${d.filmProssimi.join(", ")}` : "- film: ancora da definire",
+      d.eventiProssimi.length ? `- eventi: ${d.eventiProssimi.slice(0, 10).map((b) => `${b.titolo} (${fmtShort(b.data)})`).join("; ")}` : ""] : []),
+    d.problemi.length ? "\nDa sistemare:\n" + d.problemi.map((p) => `- ${p.testo}`).join("\n") : "",
+    note ? `\nNote: ${note}` : ""];
+  return r.filter((x, i, a) => x !== "" || a[i - 1] !== "").join("\n").trim();
+}
+function renderResoconto() {
+  const el = $("#reso-body");
+  const mesi = [...new Set([...S.c1.map((c) => c.data.slice(0, 7)), ...S.bookings.map((b) => b.data.slice(0, 7))])].filter((m) => m <= TODAY.slice(0, 7)).sort().slice(-12);
+  // di solito si fa all'inizio del mese per quello appena finito
+  const scorso = iso(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)).slice(0, 7);
+  if (!mesi.includes(scorso)) mesi.push(scorso);
+  const mese = S.resoMese || (new Date().getDate() <= 20 ? scorso : TODAY.slice(0, 7));
+  if (!mesi.includes(mese)) mesi.push(mese);
+  mesi.sort();
+  const d = datiResoconto(mese);
+  const kpi = (et, v, sub) => `<div class="kpi"><span class="eyebrow">${et}</span><b>${v}</b><small>${sub || ""}</small></div>`;
+  const var_ = d.spettatoriPrima ? Math.round((d.spettatori - d.spettatoriPrima) / d.spettatoriPrima * 100) : null;
+  el.innerHTML = `
+    <div class="toolbar"><div class="seg" role="group" aria-label="Mese">${mesi.map((m) => `<button type="button" data-rm="${m}" aria-pressed="${m === mese}">${esc(parse(m + "-01").toLocaleDateString("it-IT", { month: "short", year: "2-digit" }))}</button>`).join("")}</div>
+      <div class="actions"><button class="btn" type="button" id="reso-copia">Copia il testo</button><button class="btn primary" type="button" id="reso-stampa">Stampa o salva PDF</button></div></div>
+    <div id="reso-foglio" class="reso">
+      <h2>Resoconto di ${esc(nomeMese(mese))}</h2>
+      <section class="kpis">${kpi("Giornate di apertura", d.giorni, `${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"} in calendario`)}${kpi("Spettatori", d.spettatori, `${d.c1.length} proiezioni${var_ !== null ? ` · ${var_ >= 0 ? "+" : ""}${var_}% sull'anno scorso` : ""}`)}${kpi("Biglietti", money(r2(d.incasso)), "incasso lordo dai C1")}${kpi("Affitti", d.affitti.length, d.affitti.length ? money(d.affitti.reduce((s, b) => s + b.prezzo, 0)) : "")}</section>
+      <div class="reso-grid">
+        <div class="panel"><h3>Film del mese</h3>${d.film.length ? `<table><tbody>${d.film.slice(0, 8).map((f) => `<tr><td>${esc(f.titolo)}</td><td class="n">${f.sp} spett.</td><td class="n">${f.n} pr.</td><td class="n">${money(r2(f.lordo))}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Nessun borderò C1 per questo mese.</p>`}</div>
+        <div class="panel"><h3>Eventi e volontari</h3>
+          <p>${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"}${d.affitti.length ? `, ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}` : ""}${d.comune.length ? `, ${d.comune.length} ${d.comune.length === 1 ? "serata" : "serate"} del Comune` : ""}.</p>
+          ${d.posti ? `<p>Turni: <b>${d.coperti}</b> posti coperti su ${d.posti} (${Math.round(d.coperti / d.posti * 100)}%), <b>${d.persone}</b> volontari diversi.</p>` : ""}
+          ${d.eventi.length ? `<ul class="reso-lista">${d.eventi.slice(0, 12).map((b) => `<li>${esc(fmtShort(b.data))} · ${esc(b.titolo)}</li>`).join("")}</ul>` : ""}</div>
+        ${S.isAdmin ? `<div class="panel"><h3>Conti del mese</h3>${d.entrate || d.uscite ? `<p>Entrate <b>${money(d.entrate)}</b> · uscite <b>${money(d.uscite)}</b> · saldo <b class="${d.entrate - d.uscite < 0 ? "neg" : ""}">${money(r2(d.entrate - d.uscite))}</b></p><p>Risultato da inizio anno: <b class="${d.risultatoAnno < 0 ? "neg" : ""}">${money(d.risultatoAnno)}</b> (prima nota, competenza ${mese.slice(0, 4)}).</p>` : `<p class="hint">Nessun movimento in prima nota per questo mese.</p>`}</div>` : ""}
+        ${d.recente ? `<div class="panel"><h3>${esc(nomeMese(d.prossimo).replace(/^./, (c) => c.toUpperCase()))}</h3>
+          <p><b>Film:</b> ${d.filmProssimi.length ? esc(d.filmProssimi.join(", ")) : "ancora da definire"}</p>
+          ${d.eventiProssimi.length ? `<ul class="reso-lista">${d.eventiProssimi.slice(0, 10).map((b) => `<li>${esc(fmtShort(b.data))} · ${esc(b.titolo)}${b.stato === "opzione" ? " (da confermare)" : ""}</li>`).join("")}</ul>` : `<p class="hint">Nessun evento in calendario.</p>`}</div>` : ""}
+        ${d.problemi.length ? `<div class="panel"><h3>Da sistemare</h3><ul class="reso-lista">${d.problemi.map((p) => `<li>${esc(p.testo)}</li>`).join("")}</ul></div>` : ""}
+      </div>
+      <div class="panel"><label for="reso-note"><h3>Note per il direttivo</h3></label><textarea id="reso-note" rows="3" placeholder="Decisioni da prendere, proposte, ringraziamenti…">${esc(S.resoNote || "")}</textarea></div>
+    </div>`;
+  el.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { S.resoMese = b.dataset.rm; renderResoconto(); }));
+  $("#reso-note").oninput = (e) => (S.resoNote = e.target.value);
+  $("#reso-copia").onclick = () => openCopyText(testoResoconto(d, S.resoNote));
+  $("#reso-stampa").onclick = () => {
+    const w = window.open("", "_blank");
+    if (!w) { toast("Il browser ha bloccato la finestra di stampa"); return; }
+    const foglio = $("#reso-foglio").cloneNode(true);
+    foglio.querySelector("textarea").outerHTML = S.resoNote ? `<p>${esc(S.resoNote).replace(/\n/g, "<br>")}</p>` : `<p class="hint">—</p>`;
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>Resoconto ${esc(nomeMese(mese))} · Sala San Tommaso Moro</title>
+      <style>body{font:12.5px/1.45 system-ui,sans-serif;margin:22px;color:#111}h2{font:600 22px Georgia,serif;margin:0 0 4px}h3{font:600 15px Georgia,serif;margin:0 0 6px}.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#666}
+      .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.kpi{border:1px solid #ccc;border-radius:8px;padding:8px}.kpi b{display:block;font-size:18px}.kpi small{color:#555}
+      .reso-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.panel{border:1px solid #ddd;border-radius:8px;padding:10px;break-inside:avoid;margin-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:3px 4px;border-top:1px solid #eee}.n{text-align:right}.hint{color:#666}.neg{color:#a8322f}ul{margin:4px 0;padding-left:18px}</style>
+      <div class="eyebrow">Sala San Tommaso Moro · Parrocchia di San Biagio · Piombino Dese</div>${foglio.innerHTML}<p class="hint">Preparato con l'app della sala il ${new Date().toLocaleDateString("it-IT")}.</p><script>print()<\/script>`);
+    w.document.close();
   };
 }
 

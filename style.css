@@ -502,3 +502,10 @@ table.pv tr.tot td { border-top: 2px solid var(--ink) }
 .oggi-cosa .az { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end }
 @media (max-width: 560px) { .oggi-cosa { grid-template-columns: 12px minmax(0, 1fr) } .oggi-cosa .az { grid-column: 2; justify-content: flex-start } }
 .sas-proposta { margin: -2px 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--sunk); font-size: .9rem; display: flex; flex-wrap: wrap; gap: 6px; align-items: center }
+/* resoconto mensile */
+.reso h2 { margin-bottom: 4px }
+.reso-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 14px }
+@media (max-width: 400px) { .reso-grid { grid-template-columns: minmax(0, 1fr) } }
+.reso-lista { margin: 6px 0 0; padding-left: 18px }
+.reso-lista li { margin-bottom: 3px }
+#reso-note { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; background: var(--surface); color: inherit; margin-top: 6px }

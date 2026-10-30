@@ -301,6 +301,15 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Resoconto mensile
+
+Economia → Resoconto (admin e coordinatori) prepara su una pagina il riassunto di un mese per il parroco e il
+direttivo: giornate di apertura, eventi e affitti, spettatori e biglietti dai C1 (con il confronto con lo stesso mese
+dell'anno prima), film più visti, turni coperti dai volontari, il mese dopo (film ed eventi in calendario) e le cose
+ancora da sistemare. Gli admin vedono anche entrate, uscite e risultato da inizio anno dalla prima nota.
+Si sceglie il mese, si aggiungono le note per il direttivo, poi «Copia il testo» (da incollare in WhatsApp o in
+un'email) oppure «Stampa o salva PDF». L'app non invia nulla da sola.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
