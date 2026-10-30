@@ -509,3 +509,9 @@ table.pv tr.tot td { border-top: 2px solid var(--ink) }
 .reso-lista { margin: 6px 0 0; padding-left: 18px }
 .reso-lista li { margin-bottom: 3px }
 #reso-note { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; background: var(--surface); color: inherit; margin-top: 6px }
+
+/* volontari */
+.vol-riga .vol-pill { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px }
+.vol-riga .vol-pill:empty { display: none }
+#volontari-body .section-head .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center }
+#volontari-body #vol-q { max-width: 220px }

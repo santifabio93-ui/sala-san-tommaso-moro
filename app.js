@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.19";
+const VERSIONE = "2026-11-01.20";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -37,6 +37,7 @@ const VIEWS = {
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
   sas: { label: "Richieste al SAS", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
+  volontari: { label: "Volontari", roles: ["admin", "coordinatore"] },
   cassa: { label: "Cassa", roles: ["admin", "coordinatore"] },
   bilancio: { label: "Bilancio", roles: ["admin"] },
   donazioni: { label: "Donazioni", roles: ["admin"] },
@@ -56,9 +57,9 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
+  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { label: "Turni", children: ["turni", "volontari"] }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese", turni: "Turni", volontari: "Volontari" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -153,6 +154,9 @@ async function loadAll() {
     const vo = S.canWrite ? await sb.from("volontari").select("*").order("nome") : { data: null };
     S.loadErr2 = { ...(S.loadErr2 || {}), volontari: vo.error && (vo.error.message || "errore") };
     if (vo.data) S.volontari = vo.data;
+    // compleanno e attestato antincendio (aggiornamento 19)
+    const vd = S.canWrite && !vo.error ? await sb.from("volontari").select("data_nascita").limit(1) : { error: null };
+    S.loadErr2.volDati = vd.error && (vd.error.message || "errore");
     // richieste di film al SAS e catalogo (aggiornamento 16)
     const [rf, cf] = S.canWrite ? await Promise.all([sb.from("richieste_film").select("*").order("creato", { ascending: false }).limit(1000), sb.from("catalogo_film").select("*").order("titolo").limit(5000)]) : [{ data: null }, { data: null }];
     S.loadErr2.sas = rf.error && (rf.error.message || "errore");
@@ -326,6 +330,7 @@ function render() {
   if (S.view === "oggi") renderOggi();
   if (S.view === "stato") renderStato();
   if (S.view === "resoconto") renderResoconto();
+  if (S.view === "volontari") renderVolontariPagina();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
@@ -871,7 +876,7 @@ function shiftEvent(b) {
     const isOpen = S.openSignup && S.openSignup.bid === b.id && S.openSignup.sid === t.id;
     const amIn = ppl.some(isMine);
     const canRm = (x) => S.canWrite || isMine(x);
-    const names = ppl.map((x) => `<span class="person${isMine(x) ? " me" : ""}${canRm(x) ? "" : " solo"}">${esc(x.nome)}${canRm(x) ? `<button type="button" data-rm="${esc(x.id)}" aria-label="Togli ${esc(x.nome)}">×</button>` : ""}</span>`).join("");
+    const names = ppl.map((x) => `<span class="person${isMine(x) ? " me" : ""}${canRm(x) ? "" : " solo"}">${esc(x.nome)}${S.canWrite && haAntincendio(volontarioDi(x)) ? ' <span title="Addetto antincendio">🧯</span>' : ""}${canRm(x) ? `<button type="button" data-rm="${esc(x.id)}" aria-label="Togli ${esc(x.nome)}">×</button>` : ""}</span>`).join("");
     let action = "";
     if (isOpen) action = `<form class="signup" novalidate><input aria-label="Nome del volontario" placeholder="Nome e cognome" maxlength="60"><button class="btn primary sm" type="submit">Conferma</button><button class="btn sm" type="button" data-cancel>Annulla</button></form>`;
     else if (b.data >= TODAY && (S.canWrite || !amIn)) {
@@ -890,6 +895,7 @@ function shiftEvent(b) {
   return `<article class="panel shift-event">
     <header><div><h3>${esc(b.titolo)}</h3><div class="when">${esc(fmtDay(b.data))} · ${orario(b)}</div></div>
       <div class="btns"><span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">${c.have >= c.need ? "Turni coperti" : `Mancano ${c.need - c.have}`}</span>
+        ${S.canWrite && b.data >= TODAY && senzaAddettoAntincendio(b) ? `<span class="pill dapagare">🧯 Nessun addetto antincendio</span>` : ""}
         <button class="btn sm" type="button" data-wa="${esc(b.id)}">Testo per WhatsApp</button>
         ${S.canWrite ? `<button class="btn sm" type="button" data-edit="${esc(b.id)}">Modifica turni</button>` : ""}</div></header>
     ${slots}
@@ -2741,6 +2747,10 @@ function testoSondaggio(giorni) {
 
 /* ---------- volontari con link personale ---------- */
 const linkTurni = (v) => new URL("modulo/turni.html?t=" + v.token, location.href.split("#")[0]).href;
+function mandaLinkTurni(v) {
+  const io = (S.me.nome || "").split(" ")[0];
+  openCopyText([`Ciao ${v.nome}!`, "Questo è il tuo link per i turni della Sala San Tommaso Moro: lo apri, vedi le fasce con chi c'è già e tocchi «Ci sono» dove puoi esserci.", linkTurni(v), "Salvalo, vale sempre (anche per i prossimi turni). Grazie!" + (io ? `\n${io}` : "")].join("\n"), v.cellulare);
+}
 function renderVolontari() {
   const el = $("#shift-volontari");
   if (!el) return;
@@ -2752,6 +2762,7 @@ function renderVolontari() {
   const riga = (v) => `<div class="todo-riga"><div><b>${esc(v.nome)}</b> <span class="hint">${esc(v.cellulare || "senza cellulare")}${v.attivo ? ` · ${conta(v)} turni in programma` : " · disattivato"}</span></div>
     <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink="${esc(v.id)}">Manda il link</button><button class="btn ghost sm" type="button" data-voff="${esc(v.id)}">Disattiva</button>` : `<button class="btn ghost sm" type="button" data-von="${esc(v.id)}">Riattiva</button>`}</div></div>`;
   el.innerHTML = `<div class="panel promemoria"><details${S.volAperto ? " open" : ""} id="vol-det"><summary><b>Volontari con link personale</b> <span class="hint">· ${att.length} attivi · ognuno si segna dal suo link e vede chi c'è già</span></summary>
+    <p class="hint" style="margin:8px 0 0">Compleanni e attestati antincendio sono nella pagina <a href="#volontari">Volontari</a>.</p>
     <form id="vol-form" class="sito-contatto" style="margin-top:10px"><input id="vol-nome" placeholder="Nome (come lo vedranno gli altri)" aria-label="Nome del volontario" maxlength="60"><input id="vol-cell" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm primary" type="submit">Aggiungi</button></form>
     ${att.map(riga).join("") || `<p class="hint">Nessun volontario ancora: aggiungili qui sopra e manda a ciascuno il suo link.</p>`}
     ${off.length ? `<p class="hint" style="margin-top:8px">Disattivati: il loro link non funziona più.</p>${off.map(riga).join("")}` : ""}
@@ -2764,10 +2775,7 @@ function renderVolontari() {
     if (S.volontari.some((v) => v.attivo && v.nome.toLowerCase() === nome.toLowerCase())) { toast(`C'è già un volontario «${nome}»: aggiungi l'iniziale del cognome`); return; }
     try { await run(sb.from("volontari").insert({ nome, cellulare }), `${nome} aggiunto: ora mandagli il link`); } catch (x) { toast(errText(x)); }
   };
-  el.querySelectorAll("[data-vlink]").forEach((b) => (b.onclick = () => {
-    const v = S.volontari.find((x) => x.id === b.dataset.vlink), io = (S.me.nome || "").split(" ")[0];
-    openCopyText([`Ciao ${v.nome}!`, "Questo è il tuo link per i turni della Sala San Tommaso Moro: lo apri, vedi le fasce con chi c'è già e tocchi «Ci sono» dove puoi esserci.", linkTurni(v), "Salvalo, vale sempre (anche per i prossimi turni). Grazie!" + (io ? `\n${io}` : "")].join("\n"), v.cellulare);
-  }));
+  el.querySelectorAll("[data-vlink]").forEach((b) => (b.onclick = () => mandaLinkTurni(S.volontari.find((x) => x.id === b.dataset.vlink))));
   el.querySelectorAll("[data-voff],[data-von]").forEach((b) => (b.onclick = async () => {
     const id = b.dataset.voff || b.dataset.von, on = !!b.dataset.von;
     try { await run(sb.from("volontari").update({ attivo: on }).eq("id", id), on ? "Volontario riattivato" : "Link disattivato"); } catch (x) { toast(errText(x)); }
@@ -2779,6 +2787,154 @@ function renderVolontari() {
     openCopyText([`📋 Turni in sala dei prossimi giorni: ci sono ancora posti!`, "", ...righe.map((x) => `• ${fmtShort(x.b.data)} · ${x.b.titolo} · ${x.t.inizio}–${x.t.fine} (${x.m === 1 ? "serve 1 persona" : `servono ${x.m} persone`})`), "", "Segnatevi dal vostro link personale. Se non lo trovate, scrivetemi e ve lo rimando. Grazie! 🙏"].join("\n"));
   };
 }
+
+/* ---------- volontari: scheda, compleanni, attestato antincendio ---------- */
+const LIV_AI = { 1: "Livello 1 (rischio basso)", 2: "Livello 2 (rischio medio)", 3: "Livello 3 (rischio alto)" };
+const ANNI_AI = 5; // l'aggiornamento del corso antincendio va fatto ogni 5 anni
+// attestato: "" se non c'è, poi "ok", "scade" (entro 60 giorni) o "scaduto"
+function antincendioStato(v) {
+  if (!v || !v.antincendio) return "";
+  if (!v.antincendio_scadenza) return "ok";
+  return v.antincendio_scadenza < TODAY ? "scaduto" : v.antincendio_scadenza <= addDays(TODAY, 60) ? "scade" : "ok";
+}
+const haAntincendio = (v) => ["ok", "scade"].includes(antincendioStato(v));
+// il volontario di un'iscrizione ai turni: dal link personale o con lo stesso nome
+const volontarioDi = (x) => S.volontari.find((v) => v.id === x.volontarioId) || S.volontari.find((v) => v.attivo && v.nome.toLowerCase() === String(x.nome || "").trim().toLowerCase());
+// eventi con pubblico (spettacoli a pagamento, galleria) senza nessun addetto antincendio nei turni;
+// si controlla solo quando almeno un volontario ha l'attestato inserito nell'app
+function senzaAddettoAntincendio(b) {
+  if (!S.volontari.some((v) => v.antincendio) || !turni(b).length || !["pagamento", "galleria"].includes(pubblicoDi(b).k)) return false;
+  return !S.signups.some((x) => x.bookingId === b.id && haAntincendio(volontarioDi(x)));
+}
+// prossimo compleanno da una data (compresa) e quanti anni compie
+function compleanno(v, da = TODAY) {
+  if (!v.data_nascita) return null;
+  const [y, m, d] = v.data_nascita.split("-").map(Number);
+  let a = +da.slice(0, 4), c = iso(new Date(a, m - 1, d));
+  if (c < da) c = iso(new Date(++a, m - 1, d));
+  return { data: c, anni: a - y };
+}
+function auguri(v) {
+  const io = (S.me.nome || "").split(" ")[0];
+  openCopyText(`Tanti auguri di buon compleanno ${v.nome.split(" ")[0]}! 🎉🎂\nGrazie per tutto il tempo che dedichi alla Sala San Tommaso Moro.${io ? `\n${io}` : ""}`, v.cellulare);
+}
+const fmtData = (s) => (s ? parse(s).toLocaleDateString("it-IT") : "");
+
+function renderVolontariPagina() {
+  const el = $("#volontari-body");
+  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel"><div class="warn">Per l'elenco dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>`; return; }
+  const nuovo = !S.loadErr2?.volDati;
+  const att = S.volontari.filter((v) => v.attivo), off = S.volontari.filter((v) => !v.attivo);
+  const q = (S.volQ || "").toLowerCase();
+  const lista = (S.volTutti ? S.volontari : att).filter((v) => !q || v.nome.toLowerCase().includes(q) || (v.cellulare || "").includes(q));
+  const conta = (v) => S.signups.filter((x) => x.volontarioId === v.id && S.bookings.some((b) => b.id === x.bookingId && b.data >= TODAY)).length;
+  const prossimi = att.map((v) => ({ v, c: compleanno(v) })).filter((x) => x.c && x.c.data <= addDays(TODAY, 30)).sort((a, b) => a.c.data.localeCompare(b.c.data));
+  const conAI = att.filter(haAntincendio), inScad = att.filter((v) => ["scade", "scaduto"].includes(antincendioStato(v)));
+  const pillAI = (v) => ({ ok: `<span class="pill saldato">🧯 ${esc(v.antincendio)}° livello · fino al ${fmtData(v.antincendio_scadenza) || "—"}</span>`, scade: `<span class="pill acconto">🧯 scade il ${fmtData(v.antincendio_scadenza)}</span>`, scaduto: `<span class="pill dapagare">🧯 scaduto il ${fmtData(v.antincendio_scadenza)}</span>` })[antincendioStato(v)] || "";
+  const riga = (v) => { const c = compleanno(v);
+    return `<div class="todo-riga vol-riga"><div><b>${esc(v.nome)}</b>${v.attivo ? "" : ' <span class="hint">· disattivato</span>'}
+      <div class="hint">${v.cellulare ? esc(v.cellulare) : "senza cellulare"}${c ? ` · 🎂 ${esc(parse(c.data).toLocaleDateString("it-IT", { day: "numeric", month: "long" }))} (${c.anni - (c.data > TODAY ? 1 : 0)} anni)` : ""}${v.attivo ? ` · ${conta(v)} turni in programma` : ""}</div>
+      <div class="vol-pill">${pillAI(v)}${v.antincendio_file ? `<a href="#" class="hint" data-vatt="${esc(v.id)}">📎 attestato</a>` : ""}</div></div>
+      <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink2="${esc(v.id)}">Link turni</button>` : ""}<button class="btn sm" type="button" data-vedit="${esc(v.id)}">Scheda</button></div></div>`; };
+  el.innerHTML = `
+    <div class="toolbar"><div><h2>Volontari</h2><span class="hint">Telefono, compleanno e attestato antincendio · li vedono solo admin e coordinatori</span></div>
+      <div class="actions"><button class="btn" type="button" id="vol-csv">Esporta elenco</button><button class="btn primary" type="button" id="vol-nuovo">+ Nuovo volontario</button></div></div>
+    ${nuovo ? "" : `<div class="panel"><div class="warn">Per salvare data di nascita e attestato antincendio esegui in Supabase lo script <b>019_volontari_dati.sql</b> e ricarica la pagina.</div></div>`}
+    <section class="kpis">
+      <div class="kpi"><span class="eyebrow">Attivi</span><b>${att.length}</b><small>${off.length ? `${off.length} disattivati` : ""}</small></div>
+      <div class="kpi"><span class="eyebrow">Addetti antincendio</span><b>${conAI.length}</b><small>con attestato valido</small></div>
+      <div class="kpi"><span class="eyebrow">Attestati da rinnovare</span><b>${inScad.length}</b><small>scaduti o entro 60 giorni</small></div>
+      <div class="kpi"><span class="eyebrow">Compleanni</span><b>${prossimi.length}</b><small>nei prossimi 30 giorni</small></div>
+    </section>
+    ${prossimi.length ? `<div class="panel"><h3>Prossimi compleanni</h3>${prossimi.map(({ v, c }) => `<div class="todo-riga"><div>${c.data === TODAY ? "<b>Oggi</b>" : c.data === addDays(TODAY, 1) ? "<b>Domani</b>" : esc(fmtShort(c.data))} · ${esc(v.nome)} <span class="hint">compie ${c.anni} anni</span></div><div class="az"><button class="btn sm${c.data === TODAY ? " primary" : ""}" type="button" data-vauguri="${esc(v.id)}">Auguri</button></div></div>`).join("")}</div>` : ""}
+    ${inScad.length ? `<div class="panel"><h3>Attestati antincendio da rinnovare</h3>${inScad.map((v) => `<div class="todo-riga"><div>${esc(v.nome)} ${pillAI(v)}</div><div class="az"><button class="btn sm" type="button" data-vedit="${esc(v.id)}">Aggiorna</button></div></div>`).join("")}</div>` : ""}
+    <div class="panel">
+      <div class="section-head"><h3>Elenco</h3><div class="actions"><input type="search" id="vol-q" placeholder="Cerca nome o telefono" aria-label="Cerca volontario" value="${esc(S.volQ || "")}"><label class="check"><input type="checkbox" id="vol-tutti"${S.volTutti ? " checked" : ""}> anche i disattivati</label></div></div>
+      ${lista.map(riga).join("") || `<p class="hint">${S.volontari.length ? "Nessun volontario corrisponde alla ricerca." : "Nessun volontario ancora: aggiungili con «+ Nuovo volontario»."}</p>`}
+    </div>`;
+  $("#vol-nuovo").onclick = () => openVolontario(null);
+  $("#vol-q").oninput = (e) => { S.volQ = e.target.value; const pos = e.target.selectionStart; renderVolontariPagina(); const i = $("#vol-q"); i.focus(); i.setSelectionRange(pos, pos); };
+  $("#vol-tutti").onchange = (e) => { S.volTutti = e.target.checked; renderVolontariPagina(); };
+  el.querySelectorAll("[data-vedit]").forEach((b) => (b.onclick = () => openVolontario(S.volontari.find((v) => v.id === b.dataset.vedit))));
+  el.querySelectorAll("[data-vauguri]").forEach((b) => (b.onclick = () => auguri(S.volontari.find((v) => v.id === b.dataset.vauguri))));
+  el.querySelectorAll("[data-vlink2]").forEach((b) => (b.onclick = () => mandaLinkTurni(S.volontari.find((v) => v.id === b.dataset.vlink2))));
+  el.querySelectorAll("[data-vatt]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); apriAttestato(S.volontari.find((v) => v.id === a.dataset.vatt)); }));
+  $("#vol-csv").onclick = () => {
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const righe = [["Nome", "Cellulare", "Data di nascita", "Antincendio", "Data attestato", "Scadenza attestato", "Attivo", "Note"].join(";"),
+      ...S.volontari.map((v) => [cell(v.nome), cell(v.cellulare), fmtData(v.data_nascita), cell(v.antincendio ? LIV_AI[v.antincendio] : ""), fmtData(v.antincendio_data), fmtData(v.antincendio_scadenza), v.attivo ? "sì" : "no", cell(v.note)].join(";"))];
+    download(`sala-stm-volontari-${TODAY}.csv`, "﻿" + righe.join("\r\n"), "text/csv");
+  };
+}
+async function apriAttestato(v) {
+  const w = window.open("", "_blank");
+  const { data, error } = await sb.storage.from("volontari").createSignedUrl(v.antincendio_file, 3600);
+  if (error || !data) { if (w) w.close(); toast("Attestato non disponibile: " + ((error && error.message) || "riprova")); return; }
+  if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
+}
+const dlgV = $("#dlg-volontario");
+function openVolontario(v) {
+  S.editingVol = v;
+  $("#v-head").textContent = v ? v.nome : "Nuovo volontario";
+  $("#v-nome").value = v ? v.nome : "";
+  $("#v-cell").value = v ? v.cellulare || "" : "";
+  $("#v-nascita").value = (v && v.data_nascita) || "";
+  $("#v-ai").value = (v && v.antincendio) || "";
+  $("#v-ai-data").value = (v && v.antincendio_data) || "";
+  $("#v-ai-scad").value = (v && v.antincendio_scadenza) || "";
+  $("#v-note").value = (v && v.note) || "";
+  $("#v-attivo").checked = !v || v.attivo;
+  $("#v-file").value = "";
+  S.volTogliFile = false;
+  mostraFileVol();
+  aggiornaCampiAI();
+  $("#v-error").innerHTML = "";
+  $("#v-auguri").hidden = !(v && v.data_nascita);
+  dlgV.showModal();
+}
+function mostraFileVol() {
+  const v = S.editingVol, c = v && v.antincendio_file && !S.volTogliFile;
+  $("#v-file-ora").innerHTML = c ? `<a href="#" id="v-file-apri">📎 Apri l'attestato caricato</a> · <button class="btn ghost sm" type="button" id="v-file-togli">Togli</button>` : "";
+  if (c) { $("#v-file-apri").onclick = (e) => { e.preventDefault(); apriAttestato(v); }; $("#v-file-togli").onclick = () => { S.volTogliFile = true; mostraFileVol(); }; }
+}
+const aggiornaCampiAI = () => { $("#v-ai-campi").hidden = !$("#v-ai").value; };
+$("#v-ai").onchange = aggiornaCampiAI;
+// la scadenza si propone da sola: 5 anni dopo il corso (si può cambiare)
+$("#v-ai-data").onchange = () => { const d = $("#v-ai-data").value; if (d) { const x = parse(d); x.setFullYear(x.getFullYear() + ANNI_AI); $("#v-ai-scad").value = iso(x); } };
+$("#v-auguri").onclick = () => { dlgV.close(); auguri(S.editingVol); };
+$("#volontario-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = S.editingVol, nome = $("#v-nome").value.trim().replace(/\s+/g, " ");
+  if (!nome) { $("#v-error").innerHTML = `<div class="warn">Scrivi il nome del volontario.</div>`; $("#v-nome").focus(); return; }
+  if (S.volontari.some((x) => x.attivo && x.id !== (v && v.id) && x.nome.toLowerCase() === nome.toLowerCase())) { $("#v-error").innerHTML = `<div class="warn">C'è già un volontario «${esc(nome)}»: aggiungi l'iniziale del cognome.</div>`; return; }
+  const ai = $("#v-ai").value, file = $("#v-file").files[0];
+  if (file && file.size > 10 * 1024 * 1024) { $("#v-error").innerHTML = `<div class="warn">Il file è troppo grande (massimo 10 MB).</div>`; return; }
+  const rec = { nome, cellulare: $("#v-cell").value.trim(), attivo: $("#v-attivo").checked };
+  if (!S.loadErr2?.volDati) Object.assign(rec, { data_nascita: $("#v-nascita").value || null, antincendio: ai, antincendio_data: ai ? $("#v-ai-data").value || null : null,
+    antincendio_scadenza: ai ? $("#v-ai-scad").value || null : null, note: $("#v-note").value.trim() });
+  else if ($("#v-nascita").value || ai) { $("#v-error").innerHTML = `<div class="warn">Per salvare compleanno e attestato esegui prima lo script <b>019_volontari_dati.sql</b>.</div>`; return; }
+  const btn = $("#volontario-form [type=submit]"); btn.disabled = true;
+  try {
+    let id = v && v.id;
+    if (id) { const { error } = await sb.from("volontari").update(rec).eq("id", id); if (error) throw error; }
+    else { const { data, error } = await sb.from("volontari").insert(rec).select("id").single(); if (error) throw error; id = data.id; }
+    const vecchio = v && v.antincendio_file;
+    if (file || S.volTogliFile || !ai) {
+      let percorso = "";
+      if (file && ai) {
+        percorso = `${id}/${Date.now()}-${file.name.normalize("NFD").replace(/[^\w.-]+/g, "_").slice(-60)}`;
+        const { error } = await sb.storage.from("volontari").upload(percorso, file, { contentType: file.type || "application/octet-stream" });
+        if (error) throw new Error("caricamento dell'attestato non riuscito (" + error.message + ")");
+      }
+      if (percorso || vecchio) { const { error } = await sb.from("volontari").update({ antincendio_file: percorso }).eq("id", id); if (error) throw error; }
+      if (vecchio && vecchio !== percorso) await sb.storage.from("volontari").remove([vecchio]);
+    }
+    dlgV.close();
+    toast(v ? "Scheda salvata" : `${nome} aggiunto: ora mandagli il link dei turni`);
+    await loadAll();
+  } catch (x) { $("#v-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+  btn.disabled = false;
+});
 
 /* ---------- la serata: tutto quello che serve a chi apre la sala, su una pagina ---------- */
 const CAPIENZA = { galleria: "fino a 134 persone (solo galleria)", platea: "fino a 338 persone (platea)", tutta: "fino a 472 persone (platea e galleria)" };
@@ -3305,6 +3461,7 @@ function coseDiOggi() {
   attesa.filter((r) => !propostaSas(r) && r.inviata_il && r.inviata_il.slice(0, 10) <= tra(-7)).forEach((r) => add("info", `Nessuna risposta dal SAS su «${r.titolo}» da più di una settimana: sollecita?`, "#sas"));
   // turni
   S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= tra(7)).sort(byWhen).forEach((b) => { const c = coverage(b); if (c.need > c.have) add(b.data <= tra(2) ? "ko" : "warn", `Mancano ${c.need - c.have} ${c.need - c.have === 1 ? "persona" : "persone"} nei turni di ${b.titolo} (${fmtShort(b.data)})`, "#turni", { entro: b.data, quando: quando(b.data) }); });
+  S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= tra(7) && senzaAddettoAntincendio(b)).sort(byWhen).forEach((b) => add(b.data <= tra(2) ? "ko" : "warn", `Nessun addetto antincendio nei turni di ${b.titolo} (${fmtShort(b.data)})`, "#turni", { entro: b.data, quando: quando(b.data) }));
   const senzaTurni = S.bookings.filter((b) => b.stato === "confermata" && b.data >= TODAY && b.data <= tra(14) && !turni(b).length);
   if (senzaTurni.length) add("warn", `${senzaTurni.length} ${senzaTurni.length === 1 ? "evento confermato senza turni" : "eventi confermati senza turni"} nei prossimi 14 giorni`, "#turni");
   // affitti: richieste di sala, schede, SIAE, incassi
@@ -3315,6 +3472,13 @@ function coseDiOggi() {
   righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
   S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
   S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  // volontari: compleanni di oggi e domani, attestati antincendio da rinnovare
+  S.volontari.filter((v) => v.attivo).forEach((v) => {
+    const c = compleanno(v);
+    if (c && c.data <= tra(1)) add("info", `${c.data === TODAY ? "Oggi" : "Domani"} ${v.nome} compie ${c.anni} anni 🎂`, "#volontari", { azione: { label: "Auguri", fn: () => auguri(v) } });
+    const ai = antincendioStato(v);
+    if (ai === "scaduto" || ai === "scade") add(ai === "scaduto" ? "warn" : "info", `Attestato antincendio di ${v.nome} ${ai === "scaduto" ? "scaduto il" : "in scadenza il"} ${fmtShort(v.antincendio_scadenza)}: serve il corso di aggiornamento`, "#volontari");
+  });
   // sopralluoghi
   S.sopralluoghi.filter((x) => x.stato === "da_fare" && (x.data === TODAY || x.data === tra(1))).forEach((x) => add("info", `Sopralluogo ${x.data === TODAY ? "oggi" : "domani"} alle ${x.ora}: ${x.nome}${x.evento ? ` per «${x.evento}»` : ""}`, "#sopralluoghi"));
   // sito e conti
@@ -3339,13 +3503,14 @@ function renderOggi() {
       <a class="btn" href="#serata">La serata</a></div>
     <div class="oggi-grid">
       <div class="panel"><div class="section-head"><h3>Da fare</h3><span class="hint">${cose.length ? `${cose.length} ${cose.length === 1 ? "cosa" : "cose"} · le più urgenti in alto` : ""}</span></div>
-        ${cose.length ? `<div class="oggi-lista">${cose.map((c, i) => `<div class="oggi-cosa liv-${c.liv}"><span class="pallino" aria-hidden="true"></span><div><div>${esc(c.testo)}</div>${c.quando ? `<span class="hint">${esc(c.quando)}</span>` : ""}</div><div class="az">${c.fatto ? `<button class="btn sm" type="button" data-fatto="${i}">Fatto</button>` : ""}<a class="btn ghost sm" href="${c.link}">Apri</a></div></div>`).join("")}</div>`
+        ${cose.length ? `<div class="oggi-lista">${cose.map((c, i) => `<div class="oggi-cosa liv-${c.liv}"><span class="pallino" aria-hidden="true"></span><div><div>${esc(c.testo)}</div>${c.quando ? `<span class="hint">${esc(c.quando)}</span>` : ""}</div><div class="az">${c.fatto ? `<button class="btn sm" type="button" data-fatto="${i}">Fatto</button>` : ""}${c.azione ? `<button class="btn sm primary" type="button" data-azione="${i}">${esc(c.azione.label)}</button>` : ""}<a class="btn ghost sm" href="${c.link}">Apri</a></div></div>`).join("")}</div>`
           : `<div class="empty">Tutto in ordine: oggi non c'è niente da sistemare. ✓</div>`}</div>
       <div class="panel"><div class="section-head"><h3>In sala</h3><span class="hint">oggi e nei prossimi due giorni</span></div>
         ${prossimi.length ? prossimi.map((x) => `<div class="sr-riga"><span>${esc(x.data === TODAY ? "oggi" : x.data === addDays(TODAY, 1) ? "domani" : fmtShort(x.data))}${x.ora ? " " + esc(x.ora) : ""}</span><div>${esc(x.t)}</div></div>`).join("") : `<p class="hint">Niente in programma.</p>`}
       </div>
     </div>`;
   el.querySelectorAll("[data-fatto]").forEach((b) => (b.onclick = () => { b.disabled = true; cose[+b.dataset.fatto].fatto(); }));
+  el.querySelectorAll("[data-azione]").forEach((b) => (b.onclick = () => cose[+b.dataset.azione].azione.fn()));
 }
 
 /* ---------- stato dell'app: aggiornamenti del database e letture dello script Google ---------- */
@@ -3372,6 +3537,7 @@ function aggiornamentiSql() {
     ["015_preventivo.sql", "Preventivo", k.has("preventivo")],
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
+    ["019_volontari_dati.sql", "Compleanni e attestati antincendio dei volontari", !manca(e2.volontari) && !manca(e2.volDati)],
     ["018_calendario_app.sql", "Secondo calendario (in standby, facoltativo)", chk.calApp, "Serve solo se attivi il calendario dell'app", true],
   ].map(([file, cosa, ok, nota, facoltativo]) => ({ file, cosa, ok: ok === undefined ? null : !!ok, nota, facoltativo }));
 }

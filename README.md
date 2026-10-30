@@ -301,6 +301,21 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Volontari
+
+Turni → Volontari (admin e coordinatori) è l'elenco dei volontari: nome, cellulare, data di nascita, attestato
+antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'attestato) e note. Serve lo script
+`019_volontari_dati.sql`. Gli attestati stanno in uno spazio file privato che vedono solo admin e coordinatori.
+
+- **Compleanni**: in Oggi compare chi compie gli anni oggi o domani, con il bottone «Auguri» che prepara il messaggio
+  e apre WhatsApp sul suo numero; nella pagina Volontari ci sono quelli dei prossimi 30 giorni.
+- **Antincendio**: la scadenza si propone da sola 5 anni dopo il corso (si può cambiare). Gli attestati scaduti o in
+  scadenza entro 60 giorni compaiono in Oggi. Nei turni chi ha l'attestato valido ha 🧯 accanto al nome, e le serate con
+  pubblico (spettacoli a pagamento e galleria) senza nessun addetto antincendio sono segnalate.
+- **Esporta elenco**: un file CSV da aprire con Excel, ad esempio per l'assicurazione o i controlli.
+
+I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.
+
 ## Resoconto mensile
 
 Economia → Resoconto (admin e coordinatori) prepara su una pagina il riassunto di un mese per il parroco e il

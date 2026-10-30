@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.19">
+<link rel="stylesheet" href="style.css?v=2026-11-01.20">
 </head>
 <body>
 
@@ -266,6 +266,7 @@
     </div>
   </main>
 
+  <main id="view-volontari" hidden><div id="volontari-body"></div></main>
   <main id="view-resoconto" hidden><div id="reso-body"></div></main>
   <main id="view-stato" hidden>
     <div id="stato-body"></div>
@@ -513,6 +514,31 @@
   </form>
 </dialog>
 
+<dialog id="dlg-volontario">
+  <form class="dlg" id="volontario-form" novalidate>
+    <div class="dlg-head"><h2 id="v-head">Volontario</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div class="form">
+      <div class="field h"><label for="v-nome">Nome (come lo vedono gli altri nei turni)</label><input id="v-nome" maxlength="60" autocomplete="off"></div>
+      <div class="field h"><label for="v-cell">Cellulare</label><input id="v-cell" type="tel" inputmode="tel" autocomplete="off"></div>
+      <div class="field h"><label for="v-nascita">Data di nascita</label><input id="v-nascita" type="date"></div>
+      <div class="field h"><label for="v-ai">Attestato antincendio</label>
+        <select id="v-ai"><option value="">Non ce l'ha</option><option value="1">Livello 1 (rischio basso)</option><option value="2">Livello 2 (rischio medio)</option><option value="3">Livello 3 (rischio alto)</option></select></div>
+      <div id="v-ai-campi" class="form" style="grid-column:1/-1">
+        <div class="field h"><label for="v-ai-data">Data del corso o dell'ultimo aggiornamento</label><input id="v-ai-data" type="date"></div>
+        <div class="field h"><label for="v-ai-scad">Scadenza (aggiornamento ogni 5 anni)</label><input id="v-ai-scad" type="date"></div>
+        <div class="field"><label for="v-file">Attestato (PDF o foto, facoltativo)</label><div id="v-file-ora" class="hint"></div><input id="v-file" type="file" accept="application/pdf,image/*"></div>
+      </div>
+      <div class="field"><label for="v-note">Note</label><textarea id="v-note" placeholder="Es. disponibilità, cosa sa fare (cassa, proiezione, bar)…"></textarea></div>
+      <div class="field"><label class="check"><input type="checkbox" id="v-attivo"> Attivo (il suo link dei turni funziona)</label></div>
+    </div>
+    <div id="v-error"></div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" id="v-auguri">Auguri</button>
+      <div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Salva</button></div>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-sop">
   <form class="dlg" id="sop-form" novalidate>
     <div class="dlg-head"><h2 id="s-head">Nuovo sopralluogo</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -602,7 +628,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.19"></script>
-<script type="module" src="app.js?v=2026-11-01.19"></script>
+<script src="config.js?v=2026-11-01.20"></script>
+<script type="module" src="app.js?v=2026-11-01.20"></script>
 </body>
 </html>
