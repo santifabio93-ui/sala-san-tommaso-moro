@@ -451,3 +451,6 @@ a.btn.primary { color: var(--accent-ink) }
 .sito-voce .az { display: flex; gap: 6px; align-items: center; flex: none }
 @media (max-width: 560px) { .sito-voce { flex-direction: column } .sito-contatto input { width: 100% } }
 .hint.neg { color: var(--due-fg) }
+.tariffa-scelte { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center }
+.tariffa-scelte select { max-width: 100% }
+.tariffa-scelte .check { margin: 0; font-weight: 500 }

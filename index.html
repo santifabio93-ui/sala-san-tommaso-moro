@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.2">
+<link rel="stylesheet" href="style.css?v=2026-11-01.3">
 </head>
 <body>
 
@@ -224,15 +224,20 @@
           <div class="tbl-wrap" id="expenses"></div>
         </div>
         <div class="panel">
-          <div class="section-head"><h2>Tariffe</h2><span class="hint">Usate per proporre il prezzo</span></div>
+          <div class="section-head"><h2>Tariffe</h2><span class="hint">A giornata, usate per proporre il prezzo delle prenotazioni</span></div>
           <form id="rates-form" class="stack" style="gap:12px">
+            <div id="r-avviso"></div>
             <div class="rates">
-              <div class="field"><label for="r-ora">All'ora (€)</label><input id="r-ora" type="number" min="0" step="1" inputmode="decimal"></div>
-              <div class="field"><label for="r-mezza">Mezza giornata (€)</label><input id="r-mezza" type="number" min="0" step="1" inputmode="decimal"></div>
-              <div class="field"><label for="r-giorno">Giornata intera (€)</label><input id="r-giorno" type="number" min="0" step="1" inputmode="decimal"></div>
-              <div class="field"><label for="r-biglietto">Biglietto (€)</label><input id="r-biglietto" type="number" min="0" step="0.5" inputmode="decimal" placeholder="es. 6"></div>
+              <div class="field"><label for="r-galleria">Galleria (€ + IVA)</label><input id="r-galleria" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-platea">Platea (€ + IVA)</label><input id="r-platea" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-tutta">Platea e galleria (€ + IVA)</label><input id="r-tutta" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-biglietteria">Biglietteria (€)</label><input id="r-biglietteria" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-tappeto">Tappeto danza (€)</label><input id="r-tappeto" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-commerciale">Attività commerciale (+ €)</label><input id="r-commerciale" type="number" min="0" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-iva">IVA (%)</label><input id="r-iva" type="number" min="0" max="100" step="1" inputmode="decimal"></div>
+              <div class="field"><label for="r-biglietto">Biglietto cinema (€)</label><input id="r-biglietto" type="number" min="0" step="0.5" inputmode="decimal" placeholder="es. 6"></div>
             </div>
-            <div class="hint">Fino a 4 ore si applica il minore tra tariffa oraria e mezza giornata; oltre, il minore tra oraria e giornata intera.</div>
+            <label class="check"><input type="checkbox" id="r-iva-supp"> Applica l'IVA anche ai supplementi (biglietteria, tappeto, attività commerciale)</label>
             <div><button class="btn" type="submit" id="r-save">Salva tariffe</button></div>
           </form>
         </div>
@@ -278,7 +283,11 @@
       <div class="field t"><label for="b-fine">Alle</label><input id="b-fine" type="time" required value="20:00"></div>
       <div class="field"><label class="check"><input type="checkbox" id="b-giornata"> Tutto il giorno</label><div id="b-avail"></div></div>
       <div class="field"><label class="check"><input type="checkbox" id="b-comune"> Serata del Comune (convenzione)</label><span class="hint" id="b-comune-hint"></span></div>
-      <div class="field t"><label for="b-prezzo">Prezzo (€)</label><input id="b-prezzo" type="number" min="0" step="1" inputmode="decimal">
+      <div class="field tariffa"><label for="b-spazio">Tariffa</label>
+        <div class="tariffa-scelte"><select id="b-spazio"><option value="">Spazio…</option><option value="galleria">Galleria (fino a 134)</option><option value="platea">Platea (fino a 338)</option><option value="tutta">Platea e galleria (fino a 472)</option></select>
+          <label class="check"><input type="checkbox" id="b-t-biglietteria"> Biglietteria</label><label class="check"><input type="checkbox" id="b-t-tappeto"> Tappeto danza</label><label class="check"><input type="checkbox" id="b-t-commerciale"> Attività commerciale</label></div>
+        <span class="hint" id="b-calc"></span></div>
+      <div class="field t"><label for="b-prezzo">Prezzo (€)</label><input id="b-prezzo" type="number" min="0" step="0.01" inputmode="decimal">
         <button class="linkbtn" type="button" id="b-suggest">Applica tariffa</button></div>
       <div class="field t"><label for="b-incassato">Incassato (€)</label><input id="b-incassato" type="number" min="0" step="1" inputmode="decimal" value="0">
         <button class="linkbtn" type="button" id="b-saldo">Segna saldato</button></div>
@@ -528,7 +537,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.2"></script>
-<script type="module" src="app.js?v=2026-11-01.2"></script>
+<script src="config.js?v=2026-11-01.3"></script>
+<script type="module" src="app.js?v=2026-11-01.3"></script>
 </body>
 </html>

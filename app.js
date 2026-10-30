@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.2";
+const VERSIONE = "2026-11-01.3";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -17,7 +17,10 @@ const fmtShort = (s) => parse(s).toLocaleDateString("it-IT", { weekday: "short",
 const MESI = Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1).toLocaleDateString("it-IT", { month: "short" }).replace(".", ""));
 const STATI = { opzione: "Opzione", confermata: "Confermata", annullata: "Annullata" };
 const RUOLI = { admin: "Amministratore", coordinatore: "Coordinatore", volontario: "Volontario", in_attesa: "In attesa", bloccato: "Bloccato" };
-const DEFAULT_RATES = { tariffaOra: 25, tariffaMezza: 80, tariffaGiorno: 150 };
+// tariffe 2026 a giornata (documento «Tariffe in uso 2026»); le cifre aggiornate stanno in settings.tariffe
+const DEFAULT_TARIFFE = { galleria: 400, platea: 500, tutta: 800, iva: 22, iva_supplementi: false, biglietteria: 100, tappeto: 200, commerciale: 100 };
+const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino a 338 persone)", tutta: "Platea e galleria (fino a 472 persone)" };
+const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
@@ -55,7 +58,7 @@ const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType
 
 const S = {
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
-  bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], rates: { ...DEFAULT_RATES }, sync: {},
+  bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], tariffe: { ...DEFAULT_TARIFFE }, tariffeDb: false, sync: {},
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
@@ -148,7 +151,8 @@ async function loadAll() {
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
-      S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
+      S.tariffeDb = "tariffe" in st.data; // aggiornamento 13
+      S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
@@ -220,11 +224,16 @@ function hours(inizio, fine) {
   const [h1, m1] = inizio.split(":").map(Number), [h2, m2] = fine.split(":").map(Number);
   return Math.max(0, (h2 * 60 + m2 - h1 * 60 - m1) / 60);
 }
-function suggestPrice(inizio, fine) {
-  const h = hours(inizio, fine), r = S.rates;
-  const hourly = h * (Number(r.tariffaOra) || 0);
-  const cap = h <= 4 ? Number(r.tariffaMezza) : Number(r.tariffaGiorno);
-  return Math.round(cap > 0 ? Math.min(hourly || cap, cap) : hourly);
+// prezzo di una giornata: spazio (+ IVA) e supplementi scelti; sc = { spazio, biglietteria, tappeto, commerciale }
+function calcolaTariffa(sc) {
+  const T = S.tariffe, r2 = (x) => Math.round(x * 100) / 100, righe = [];
+  if (!sc || !SPAZI[sc.spazio]) return null;
+  const base = Number(T[sc.spazio]) || 0, iva = (Number(T.iva) || 0) / 100;
+  let imponibileIva = base;
+  righe.push([SPAZI[sc.spazio].replace(/ \(.*\)/, ""), base]);
+  for (const k of Object.keys(SUPPLEMENTI)) if (sc[k]) { const v = Number(T[k]) || 0; righe.push([SUPPLEMENTI[k], v]); if (T.iva_supplementi) imponibileIva += v; }
+  if (iva) righe.push([`IVA ${T.iva}%${T.iva_supplementi ? "" : " sullo spazio"}`, r2(imponibileIva * iva)]);
+  return { righe, totale: r2(righe.reduce((t, x) => t + x[1], 0)) };
 }
 const turni = (b) => (Array.isArray(b.turni) ? b.turni : []);
 const signupsFor = (bid, sid) => S.signups.filter((x) => x.bookingId === bid && x.slotId === sid).sort((a, b) => (a.creato || "").localeCompare(b.creato || ""));
@@ -496,7 +505,10 @@ function renderEconomy() {
   $("#expenses").querySelectorAll("[data-e]").forEach((r) => (r.onclick = () => openExpense(S.expenses.find((e) => e.id === r.dataset.e))));
 
   const fill = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v ?? ""; };
-  fill("#r-ora", S.rates.tariffaOra); fill("#r-mezza", S.rates.tariffaMezza); fill("#r-giorno", S.rates.tariffaGiorno); fill("#r-biglietto", S.prezzoBiglietto);
+  for (const k of ["galleria", "platea", "tutta", "iva", "biglietteria", "tappeto", "commerciale"]) fill("#r-" + k, S.tariffe[k]);
+  if (document.activeElement !== $("#r-iva-supp")) $("#r-iva-supp").checked = !!S.tariffe.iva_supplementi;
+  fill("#r-biglietto", S.prezzoBiglietto);
+  $("#r-avviso").innerHTML = S.tariffeDb ? "" : `<div class="warn">Per salvare le tariffe esegui in Supabase lo script <b>013_tariffe.sql</b>. Intanto l'app usa le tariffe 2026.</div>`;
 }
 
 /* ---------- persone ---------- */
@@ -608,7 +620,14 @@ function openBooking(b, date, prefill) {
   if (!prefill) S.fromRequest = null;
   $("#b-head").textContent = b ? "Prenotazione" : "Nuova prenotazione";
   for (const k of ["titolo", "referente", "tipo", "telefono", "email", "data", "inizio", "fine", "prezzo", "incassato", "stato", "note"]) $("#b-" + k).value = v[k] ?? "";
-  if (!b) $("#b-prezzo").value = suggestPrice(v.inizio, v.fine) || "";
+  // tariffa: quella salvata, altrimenti lo spazio dedotto dal pubblico previsto nella scheda dell'organizzatore
+  const sk = b && S.schede.filter((x) => x.booking_id === b.id && x.dati && x.dati.fascia).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+  const tar = v.tariffa || (sk ? { spazio: sk.dati.fascia, dallaScheda: true } : {});
+  $("#b-spazio").value = SPAZI[tar.spazio] ? tar.spazio : "";
+  for (const k of Object.keys(SUPPLEMENTI)) $("#b-t-" + k).checked = !!tar[k];
+  S.prezzoAuto = null;
+  if (!b && !v.prezzo) applicaTariffa();
+  aggiornaTariffa(tar.dallaScheda && !v.tariffa);
   S.draftTurni = turni(v).map((t) => ({ ...t }));
   renderSlotEditor();
   $("#b-giornata").checked = !!v.giornata_intera;
@@ -689,7 +708,23 @@ function syncAllDay() {
   checkAvail();
 }
 $("#b-giornata").addEventListener("change", syncAllDay);
-$("#b-suggest").onclick = () => { $("#b-prezzo").value = suggestPrice($("#b-inizio").value, $("#b-fine").value) || ""; };
+const sceltaTariffa = () => ({ spazio: $("#b-spazio").value, ...Object.fromEntries(Object.keys(SUPPLEMENTI).map((k) => [k, $("#b-t-" + k).checked])) });
+function aggiornaTariffa(dallaScheda) {
+  const c = calcolaTariffa(sceltaTariffa());
+  $("#b-calc").innerHTML = c ? c.righe.map(([l, x]) => `${esc(l)} ${money(x)}`).join(" + ") + ` = <b>${money(c.totale)}</b>${dallaScheda ? " · spazio dal pubblico previsto nella scheda" : ""}` : "Scegli lo spazio per calcolare il prezzo.";
+  $("#b-suggest").disabled = !c;
+}
+function applicaTariffa() {
+  const c = calcolaTariffa(sceltaTariffa());
+  if (c) { $("#b-prezzo").value = c.totale; S.prezzoAuto = c.totale; }
+}
+// cambiando spazio o supplementi il prezzo si aggiorna, se non è stato scritto a mano
+["#b-spazio", ...Object.keys(SUPPLEMENTI).map((k) => "#b-t-" + k)].forEach((sel) => $(sel).addEventListener("change", () => {
+  const p = $("#b-prezzo").value;
+  if (p === "" || Number(p) === S.prezzoAuto) applicaTariffa();
+  aggiornaTariffa();
+}));
+$("#b-suggest").onclick = applicaTariffa;
 $("#b-saldo").onclick = () => { $("#b-incassato").value = $("#b-prezzo").value || 0; };
 
 $("#booking-form").addEventListener("submit", async (e) => {
@@ -700,6 +735,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
     data: g("data"), giornata_intera: $("#b-giornata").checked, comune: $("#b-comune").checked,
     inizio: $("#b-giornata").checked ? "00:00" : g("inizio"), fine: $("#b-giornata").checked ? "23:59" : g("fine"),
     prezzo: Number(g("prezzo")) || 0, incassato: Number(g("incassato")) || 0, stato: g("stato"), note: g("note"),
+    ...(S.tariffeDb ? { tariffa: $("#b-spazio").value ? sceltaTariffa() : null } : {}),
     turni: S.draftTurni.filter((t) => t.label.trim() || t.inizio).map((t) => ({ id: t.id, label: t.label.trim() || "Turno", inizio: t.inizio, fine: t.fine, posti: Math.max(1, Number(t.posti) || 1) })),
   };
   const badSlot = rec.turni.find((t) => !t.inizio || !t.fine || t.fine <= t.inizio);
@@ -2268,7 +2304,8 @@ $("#expense-form").addEventListener("submit", async (e) => {
 });
 $("#rates-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const r = { tariffa_ora: Number($("#r-ora").value) || 0, tariffa_mezza: Number($("#r-mezza").value) || 0, tariffa_giorno: Number($("#r-giorno").value) || 0, prezzo_biglietto: $("#r-biglietto").value === "" ? null : Number($("#r-biglietto").value) };
+  const r = { prezzo_biglietto: $("#r-biglietto").value === "" ? null : Number($("#r-biglietto").value) };
+  if (S.tariffeDb) r.tariffe = { ...Object.fromEntries(["galleria", "platea", "tutta", "iva", "biglietteria", "tappeto", "commerciale"].map((k) => [k, Number($("#r-" + k).value) || 0])), iva_supplementi: $("#r-iva-supp").checked };
   try { await run(sb.from("settings").update(r).eq("id", 1), "Tariffe salvate"); } catch (x) { toast(errText(x)); }
 });
 
@@ -2281,7 +2318,7 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, tariffe: S.rates, persone: S.profiles }, null, 2), "application/json");
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, tariffe: S.tariffe, persone: S.profiles }, null, 2), "application/json");
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");

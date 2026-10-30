@@ -193,6 +193,13 @@ sono annullati. «Avvisa…» prepara il messaggio per chi aggiorna il sito, da 
 Esegui `supabase/012_sito.sql` per salvare il nome e il cellulare di chi aggiorna il sito (li inserisce l'admin
 nella pagina, restano nel database e non nel codice), le segnalazioni già mandate e quelle da non mostrare più.
 
+## Tariffe
+Le tariffe sono a giornata, in base allo spazio: galleria 400 €, platea 500 €, platea e galleria 800 € (+ IVA 22%),
+più i supplementi biglietteria 100 €, tappeto danza 200 € e attività commerciale 100 €. Nella prenotazione si
+scelgono spazio e supplementi e l'app calcola il prezzo; se c'è la scheda dell'organizzatore, lo spazio è proposto in
+base al pubblico previsto. Esegui `supabase/013_tariffe.sql` per poter cambiare le cifre da Economia → Spese e
+tariffe e per ricordare in ogni prenotazione come è stato calcolato il prezzo.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
