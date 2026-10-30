@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.45";
+const VERSIONE = "2026-11-01.46";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -3031,13 +3031,13 @@ function renderVolontari() {
   const att = S.volontari.filter((v) => v.attivo), off = S.volontari.filter((v) => !v.attivo);
   const conta = (v) => S.signups.filter((x) => x.volontarioId === v.id && S.bookings.some((b) => b.id === x.bookingId && b.data >= TODAY)).length;
   const riga = (v) => `<div class="todo-riga"><div><b>${esc(v.nome)}</b> <span class="hint">${esc(v.cellulare || "senza cellulare")}${v.attivo ? ` · ${conta(v)} turni in programma` : " · disattivato"}</span></div>
-    <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink="${esc(v.id)}">Manda il link</button><button class="btn ghost sm" type="button" data-voff="${esc(v.id)}">Disattiva</button>` : `<button class="btn ghost sm" type="button" data-von="${esc(v.id)}">Riattiva</button>`}</div></div>`;
+    <div class="az">${v.attivo ? `<button class="btn sm" type="button" data-vlink="${esc(v.id)}">Manda il link</button>${v.badge ? `<button class="btn sm" type="button" data-tbadge="${esc(v.id)}">🪪 Badge</button>` : ""}<button class="btn ghost sm" type="button" data-voff="${esc(v.id)}">Disattiva</button>` : `<button class="btn ghost sm" type="button" data-von="${esc(v.id)}">Riattiva</button>`}</div></div>`;
   el.innerHTML = `<div class="panel promemoria"><details${S.volAperto ? " open" : ""} id="vol-det"><summary><b>Volontari con link personale</b> <span class="hint">· ${att.length} attivi · ognuno si segna dal suo link e vede chi c'è già</span></summary>
     <p class="hint" style="margin:8px 0 0">Compleanni e attestati antincendio sono nella pagina <a href="#volontari">Volontari</a>.</p>
     <form id="vol-form" class="sito-contatto" style="margin-top:10px"><input id="vol-nome" placeholder="Nome (come lo vedranno gli altri)" aria-label="Nome del volontario" maxlength="60"><input id="vol-cell" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm primary" type="submit">Aggiungi</button></form>
     ${att.map(riga).join("") || `<p class="hint">Nessun volontario ancora: aggiungili qui sopra e manda a ciascuno il suo link.</p>`}
     ${off.length ? `<p class="hint" style="margin-top:8px">Disattivati: il loro link non funziona più.</p>${off.map(riga).join("")}` : ""}
-    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button><button class="btn" type="button" id="vol-link-gruppo">Link per la descrizione del gruppo</button></div></details></div>
+    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button><button class="btn" type="button" id="vol-link-gruppo">Link per la descrizione del gruppo</button>${att.some((v) => v.badge) ? `<button class="btn" type="button" id="vol-badge-turni">🪪 Stampa i badge</button>` : ""}</div></details></div>
     ${pannelloPulizie()}`;
   $("#vol-det").ontoggle = (e) => (S.volAperto = e.target.open);
   collegaPulizie(el);
@@ -3049,6 +3049,8 @@ function renderVolontari() {
     try { await run(sb.from("volontari").insert({ nome, cellulare }), `${nome} aggiunto: ora mandagli il link`); } catch (x) { toast(errText(x)); }
   };
   el.querySelectorAll("[data-vlink]").forEach((b) => (b.onclick = () => mandaLinkTurni(S.volontari.find((x) => x.id === b.dataset.vlink))));
+  el.querySelectorAll("[data-tbadge]").forEach((b) => (b.onclick = () => stampaBadge([S.volontari.find((x) => x.id === b.dataset.tbadge)])));
+  const tb = el.querySelector("#vol-badge-turni"); if (tb) tb.onclick = () => stampaBadge(att.filter((v) => v.badge));
   el.querySelectorAll("[data-voff],[data-von]").forEach((b) => (b.onclick = async () => {
     const id = b.dataset.voff || b.dataset.von, on = !!b.dataset.von;
     try { await run(sb.from("volontari").update({ attivo: on }).eq("id", id), on ? "Volontario riattivato" : "Link disattivato"); } catch (x) { toast(errText(x)); }

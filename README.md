@@ -149,7 +149,7 @@ cassa restano «aperta da» e «chiusa da». Le tessere si registrano nella sche
 il codice fiscale non viene salvato, solo un'impronta cifrata con un sale segreto.
 
 **Badge della Sala** (script `030_badge.sql`): ogni volontario ha un codice casuale (es. STM7K3QX9PA, senza dati
-personali) che vale alla postazione come la tessera sanitaria. In Turni → Volontari «🪪 Stampa i badge» prepara le
+personali) che vale alla postazione come la tessera sanitaria. In Turni (riquadro «Volontari con link personale») e in Turni → Volontari «🪪 Stampa i badge» prepara le
 tesserine (85 × 54 mm, 10 per foglio A4) con ritratto, nome, QR code e codice a barre Code 39 (lo stesso tipo della
 tessera sanitaria, così lo legge qualsiasi lettore); il volontario lo trova anche nel suo link dei turni («Il mio badge
 per la cassa») da mostrare dal telefono. Se lo perde, nella sua scheda «Nuovo badge» rende inutilizzabile il vecchio.
