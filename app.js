@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.17";
+const VERSIONE = "2026-11-01.18";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -42,6 +42,7 @@ const VIEWS = {
   donazioni: { label: "Donazioni", roles: ["admin"] },
   economia: { label: "Economia", roles: ["admin"] },
   utenti: { label: "Persone", roles: ["admin"] },
+  stato: { label: "Stato", roles: ["admin"] },
 };
 
 document.getElementById("version").textContent = `Versione ${VERSIONE} · © 2026 Fabio Santi per la Sala San Tommaso Moro · Tutti i diritti riservati`;
@@ -54,7 +55,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
@@ -164,11 +165,13 @@ async function loadAll() {
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
-    S.loadErr = { prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message };
+    S.loadErr = { prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message,
+      cassa: ca.error && ca.error.message, sopralluoghi: so.error && so.error.message, films: fi.error && fi.error.message, richieste: rq.error && rq.error.message };
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
     if (st.data) {
+      S.settingsKeys = Object.keys(st.data);
       S.tariffeDb = "tariffe" in st.data; // aggiornamento 13
       S.preventivoDb = "preventivo" in st.data; // aggiornamento 15
       S.preventivo = st.data.preventivo || {};
@@ -283,7 +286,7 @@ function renderTabs() {
   const cur = (on) => (on ? ' aria-current="page"' : "");
   let sub = null;
   $("#tabs").innerHTML = MENU.map((m) => {
-    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : m.k === "sito" ? badge(sitoNuovi().length) : ""}</a>` : "";
+    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : m.k === "sito" ? badge(sitoNuovi().length) : m.k === "stato" ? badge(problemiStato()) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
     const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
@@ -320,6 +323,7 @@ function render() {
   if (S.view === "schede") renderSchede();
   if (S.view === "serata") renderSerata();
   if (S.view === "oggi") renderOggi();
+  if (S.view === "stato") renderStato();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
@@ -3318,6 +3322,8 @@ function coseDiOggi() {
     const prev = S.preventivo[String(new Date().getFullYear())];
     Object.entries(prev).forEach(([k, p]) => { const cu = sommaU(S.primaNota.filter((r) => r.anno === new Date().getFullYear() && String(r.cod_settore) === k)); if (p.u > 0 && cu > p.u) add("warn", `${p.nome || k}: uscite oltre il preventivo di ${money(Math.round(cu - p.u))}`, "#bilancio"); });
   }
+  const nAgg = problemiStato();
+  if (nAgg) add("warn", `${nAgg} ${nAgg === 1 ? "aggiornamento" : "aggiornamenti"} del database da eseguire: alcune funzioni non sono ancora attive`, "#stato");
   const ordine = { ko: 0, warn: 1, info: 2 };
   return out.sort((a, b) => ordine[a.liv] - ordine[b.liv] || (a.entro || "9").localeCompare(b.entro || "9"));
 }
@@ -3338,6 +3344,96 @@ function renderOggi() {
       </div>
     </div>`;
   el.querySelectorAll("[data-fatto]").forEach((b) => (b.onclick = () => { b.disabled = true; cose[+b.dataset.fatto].fatto(); }));
+}
+
+/* ---------- stato dell'app: aggiornamenti del database e letture dello script Google ---------- */
+const REPO_RAW = "https://raw.githubusercontent.com/santifabio93-ui/sala-san-tommaso-moro/main/supabase/";
+// ogni aggiornamento SQL e come capire se è stato eseguito (dai dati che l'app ha già caricato)
+function aggiornamentiSql() {
+  const k = new Set(S.settingsKeys || []), e = S.loadErr || {}, e2 = S.loadErr2 || {};
+  const manca = (msg) => !!msg && /does not exist|schema cache|Could not find|relation|column/i.test(msg);
+  const chk = S.statoChk || {};
+  return [
+    ["002_sincronizzazione.sql", "Calendario ed email della sala", k.has("sync_calendario") && !manca(e.richieste)],
+    ["003_cassa.sql", "Cassa", S.me && "cassa" in S.me && !manca(e.cassa), "Si esegue una volta sola: non rieseguirlo se l'hai già fatto"],
+    ["004_sopralluoghi.sql", "Sopralluoghi", !manca(e.sopralluoghi)],
+    ["005_cinema.sql", "Cinema e Cinebot", k.has("sync_cinebot") && !manca(e.films)],
+    ["006_c1.sql", "Borderò C1", k.has("sync_c1") && !manca(e.c1)],
+    ["007_prima_nota.sql", "Prima nota", k.has("sync_prima_nota") && !manca(e.prima_nota)],
+    ["008_donatori.sql", "Donazioni", !manca(e.donatori)],
+    ["009_comune.sql", "Serate del Comune", k.has("convenzione_inizio")],
+    ["010_schede.sql", "Scheda di richiesta online", !manca(e.schede)],
+    ["011_siae.sql", "Permesso SIAE allegato", chk.siae],
+    ["012_sito.sql", "Sito web: contatto e segnalazioni", k.has("sito_ignora")],
+    ["013_tariffe.sql", "Tariffe e regole dei turni", k.has("tariffe")],
+    ["014_turni_link.sql", "Link personali dei volontari", !manca(e2.volontari)],
+    ["015_preventivo.sql", "Preventivo", k.has("preventivo")],
+    ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
+    ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
+    ["018_calendario_app.sql", "Secondo calendario (in standby, facoltativo)", chk.calApp, "Serve solo se attivi il calendario dell'app", true],
+  ].map(([file, cosa, ok, nota, facoltativo]) => ({ file, cosa, ok: ok === undefined ? null : !!ok, nota, facoltativo }));
+}
+// le letture dello script Google: quando è stata l'ultima e ogni quanto dovrebbe arrivare (ore)
+function lettureScript() {
+  const s = S.sync || {};
+  return [
+    ["Calendario della sala", s.calendario, 2, "lettura"],
+    ["Email con le richieste di sala", s.email, 2, "email"],
+    ["Programmazione da Cinebot", s.cinebot, 6, "cinema"],
+    ["Borderò C1", s.c1, 24 * 10, "c1"],
+    ["Prima nota", s.primaNota, 24 * 14, "primanota"],
+    ["Email del SAS", s.sas, 6, "sas"],
+  ].map(([cosa, quando, ore, modo]) => ({ cosa, quando, modo, stato: !quando ? "mai" : (Date.now() - new Date(quando)) / 36e5 > ore ? "vecchia" : "ok" }));
+}
+// controlli che richiedono una chiamata: spazio file della SIAE e funzione del calendario dell'app
+async function controlliStato() {
+  const chk = {};
+  try { const r = await sb.storage.from("schede").list("", { limit: 1 }); chk.siae = !r.error || !/not found/i.test(r.error.message || ""); } catch (x) { chk.siae = false; }
+  try { const r = await sb.rpc("sync_calendario_app", { p_token: "-" }); chk.calApp = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.calApp = false; }
+  S.statoChk = chk;
+  if (S.view === "stato") renderStato();
+}
+const problemiStato = () => (S.isAdmin ? aggiornamentiSql().filter((a) => a.ok === false && !a.facoltativo).length : 0);
+function renderStato() {
+  const el = $("#stato-body");
+  if (!S.statoChk) { el.innerHTML = `<p class="muted">Controllo in corso…</p>`; controlliStato(); return; }
+  const agg = aggiornamentiSql(), mancanti = agg.filter((a) => a.ok === false && !a.facoltativo), letture = lettureScript();
+  const icona = (ok) => (ok === true ? `<span class="pill saldato">fatto</span>` : ok === false ? `<span class="pill dapagare">da eseguire</span>` : `<span class="pill annullata">non verificabile</span>`);
+  const quando = (t) => (t ? `${ago(t)} (${new Date(t).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })})` : "mai");
+  el.innerHTML = `
+    <div class="toolbar"><div><h2>Stato dell'app</h2><span class="hint">Versione ${esc(VERSIONE)} · cosa è attivo e cosa manca</span></div>
+      <button class="btn" type="button" id="stato-ricontrolla">Controlla di nuovo</button></div>
+    ${mancanti.length ? `<div class="warn" style="margin-bottom:12px">Mancano ${mancanti.length} ${mancanti.length === 1 ? "aggiornamento" : "aggiornamenti"} del database: le funzioni collegate non si accendono finché non li esegui.</div>` : `<div class="ok-note" style="margin-bottom:12px">Il database è aggiornato: tutte le funzioni sono attive. ✓</div>`}
+    <div class="panel promemoria"><div class="section-head"><h3>Aggiornamenti del database (Supabase)</h3><span class="hint">Si eseguono in Supabase → SQL Editor → New query → incolla → Run</span></div>
+      ${mancanti.length ? `<div class="actions" style="margin-bottom:8px"><button class="btn primary" type="button" id="stato-copia">Copia tutti quelli mancanti in un unico testo</button><span class="hint">poi incollalo una volta sola nel SQL Editor</span></div>` : ""}
+      ${agg.map((a) => `<div class="todo-riga"><div><b>${esc(a.cosa)}</b> <span class="hint">· ${esc(a.file)}</span>${a.nota ? `<div class="hint">${esc(a.nota)}</div>` : ""}</div>
+        <div class="az">${icona(a.ok)}${a.ok === false ? `<a class="btn ghost sm" href="${REPO_RAW}${a.file}" target="_blank" rel="noopener">Apri il file</a>` : ""}</div></div>`).join("")}
+    </div>
+    <div class="panel promemoria"><div class="section-head"><h3>Letture dello script Google</h3><span class="hint">Lo script gira ogni 15 minuti; ogni lettura si accende con la sua parola nella MODALITA</span></div>
+      ${letture.map((l) => `<div class="todo-riga"><div><b>${esc(l.cosa)}</b> <span class="hint">· modalità «${esc(l.modo)}»</span><div class="hint">ultima lettura: ${esc(quando(l.quando))}</div></div>
+        <div class="az">${l.stato === "ok" ? `<span class="pill saldato">regolare</span>` : l.stato === "vecchia" ? `<span class="pill acconto">ferma da un po'</span>` : `<span class="pill annullata">mai letta</span>`}</div></div>`).join("")}
+      <p class="hint">«Ferma da un po'» per i borderò e la prima nota può essere normale se non ci sono file nuovi. Per il resto: apri lo script Google, guarda le ultime esecuzioni ed eventuali errori.</p>
+    </div>
+    <div class="panel promemoria"><div class="section-head"><h3>Impostazioni da completare</h3></div>
+      ${[
+        [S.volontari.length > 0, "Volontari con link personale", "#turni", `${S.volontari.length} inseriti`],
+        [(S.sasContatti || []).length > 0, "Referenti del SAS (Christian, Arianna)", "#sas", `${(S.sasContatti || []).length} inseriti`],
+        [!!(S.sitoCfg && S.sitoCfg.cell), "Cellulare di chi aggiorna il sito", "#sito", S.sitoCfg && S.sitoCfg.nome ? S.sitoCfg.nome : ""],
+        [!!S.conv.inizio, "Inizio della convenzione con il Comune", "#comune", S.conv.inizio ? fmtShort(S.conv.inizio) : ""],
+        [!!(S.preventivo && S.preventivo[String(new Date().getFullYear())]), `Preventivo ${new Date().getFullYear()}`, "#bilancio", ""],
+        [S.catalogo.length > 0, "Catalogo dei film del SAS", "#sas", `${S.catalogo.length} titoli`],
+      ].map(([ok, cosa, link, info]) => `<div class="todo-riga"><div><b>${esc(cosa)}</b>${info ? ` <span class="hint">· ${esc(info)}</span>` : ""}</div><div class="az">${ok ? `<span class="pill saldato">fatto</span>` : `<a class="btn ghost sm" href="${link}">Completa</a>`}</div></div>`).join("")}
+    </div>`;
+  $("#stato-ricontrolla").onclick = () => { S.statoChk = null; loadAll().then(() => renderStato()); };
+  if ($("#stato-copia")) $("#stato-copia").onclick = async (ev) => {
+    const b = ev.target; b.disabled = true; b.textContent = "Preparo il testo…";
+    try {
+      const parti = await Promise.all(mancanti.map(async (a) => { const r = await fetch(REPO_RAW + a.file, { cache: "no-store" }); if (!r.ok) throw new Error(a.file + " non scaricato"); return `-- ===== ${a.file} =====\n${await r.text()}`; }));
+      openCopyText(parti.join("\n\n"));
+      $("#copy-status").textContent = `${mancanti.length} aggiornamenti in ordine: copia, incolla nel SQL Editor di Supabase e premi Run.`;
+    } catch (x) { toast("Non riesco a scaricare i file: aprili uno per uno con «Apri il file»"); }
+    b.disabled = false; b.textContent = "Copia tutti quelli mancanti in un unico testo";
+  };
 }
 
 function route() {

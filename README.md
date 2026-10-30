@@ -92,6 +92,15 @@ script installato in quell'account con `MODALITA` = `email`.
 Prima di passare a `calendario+email` (scrittura sul calendario), fai un backup:
 Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 
+## Stato dell'app
+La pagina **Stato** (solo amministratore, con il numero dei problemi accanto alla voce del menu) mostra:
+- quali aggiornamenti SQL del database sono stati eseguiti e quali mancano; «Copia tutti quelli mancanti» prepara
+  un unico testo, in ordine, da incollare una volta sola nel SQL Editor di Supabase;
+- l'ultima lettura dello script Google per ogni parte (calendario, email, Cinebot, C1, prima nota, email del SAS),
+  con l'avviso se una lettura è ferma;
+- le impostazioni ancora da completare (volontari, referenti del SAS, contatto del sito, convenzione, preventivo,
+  catalogo). Se mancano aggiornamenti, lo dice anche la pagina «Oggi».
+
 ## Oggi
 La prima pagina dell'app. Per amministratori e coordinatori raccoglie in un solo elenco, dal più urgente:
 pagamenti anticipati, DVD e link dei film confermati, supporti e prove dei film, risposte del SAS da confermare,
