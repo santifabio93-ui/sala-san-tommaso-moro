@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.36";
+const VERSIONE = "2026-11-01.37";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -3943,4 +3943,16 @@ function route() {
 addEventListener("hashchange", route);
 
 let tt;
+// versione nuova pubblicata: lo si dice, così nessuno resta con la pagina vecchia in memoria
+async function controllaVersione() {
+  try {
+    const r = await fetch(location.pathname + "?nocache=" + Date.now(), { cache: "no-store" });
+    const v = ((await r.text()).match(/app\.js\?v=([\w.-]+)/) || [])[1];
+    if (v && v !== VERSIONE) $("#nuova-versione").hidden = false;
+  } catch (e) { /* senza rete si riprova più tardi */ }
+}
+$("#nuova-versione").onclick = () => location.reload();
+setInterval(() => { if (!document.hidden) controllaVersione(); }, 10 * 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) controllaVersione(); });
+setTimeout(controllaVersione, 5000);
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 2600); }
