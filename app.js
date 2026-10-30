@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.15";
+const VERSIONE = "2026-11-01.16";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -3020,7 +3020,7 @@ function renderSas() {
   const bozze = per("bozza"), attesa = per("inviata"), conf = per("confermata"), nd = per("non_disponibile");
   const dateTxt = (r) => (r.date || []).map((d) => `${fmtShort(d.data)} ${d.fasce}`).join(" · ");
   const vicine = (r) => (r.date || []).some((d) => d.data < addDays(TODAY, GIORNI_RICHIESTA));
-  const riga = (r, extra = "") => `<div class="todo-riga"><div><b>${esc(r.titolo)}</b>${r.anno ? ` <span class="hint">(${r.anno}${r.regista ? `, ${esc(r.regista)}` : ""})</span>` : r.regista ? ` <span class="hint">(${esc(r.regista)})</span>` : ""}
+  const riga = (r, extra = "") => `<div class="todo-riga"><div><b>${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.titolo)}</a>` : esc(r.titolo)}</b>${r.anno ? ` <span class="hint">(${r.anno}${r.regista ? `, ${esc(r.regista)}` : ""})</span>` : r.regista ? ` <span class="hint">(${esc(r.regista)})</span>` : ""}
       <div class="hint">${esc(dateTxt(r))}${r.motivo ? ` · ${esc(r.motivo)}` : ""}${r.biglietto ? "" : " · ingresso libero"}</div>
       ${r.stato === "confermata" ? `<div>${[r.minimo ? `minimo ${money(r.minimo)}` : "", r.percentuale ? `${r.percentuale}%` : "", r.supporto, r.agenzia && `agenzia ${esc(r.agenzia)}`, r.distributore && esc(r.distributore)].filter(Boolean).join(" · ")}</div>` : ""}
       ${r.risposta ? `<div class="hint">${esc(r.risposta)}</div>` : ""}</div><div class="az">${extra}</div></div>`;
@@ -3030,7 +3030,7 @@ function renderSas() {
   el.innerHTML = `
     <div class="panel promemoria"><div class="section-head"><h3>Nuova richiesta</h3><span class="hint">Cerca il titolo nel catalogo del SAS, nei film di Cinebot o in quelli già proiettati; se non c'è, scrivilo</span></div>
       <form id="sas-form" class="form" novalidate>
-        <div class="field sas-cerca"><label for="sas-titolo">Film</label><input id="sas-titolo" autocomplete="off" placeholder="Scrivi almeno 2 lettere del titolo"><div id="sas-sugg" class="sas-sugg" hidden></div></div>
+        <div class="field sas-cerca"><label for="sas-titolo">Film</label><div class="sas-riga-titolo"><input id="sas-titolo" autocomplete="off" placeholder="Scrivi almeno 2 lettere del titolo, o incolla un link di MyMovies"><button class="btn sm" type="button" id="sas-mymovies" title="Apre la ricerca di MyMovies in una nuova scheda">Cerca su MyMovies</button></div><div id="sas-sugg" class="sas-sugg" hidden></div><span class="hint" id="sas-link"></span></div>
         <div class="field t"><label for="sas-anno">Anno</label><input id="sas-anno" type="number" min="1890" max="2100" inputmode="numeric"></div>
         <div class="field q"><label for="sas-regista">Regia</label><input id="sas-regista" placeholder="utile per i film vecchi o con titoli uguali"></div>
         <div class="field"><label>Date</label><div id="sas-date"></div><button class="linkbtn" type="button" id="sas-data-add">+ un'altra data</button></div>
@@ -3071,17 +3071,28 @@ function renderSas() {
   let scelto = null;
   inp.oninput = () => {
     scelto = null;
+    // link di MyMovies incollato: titolo e anno si leggono dall'indirizzo, il link resta nella richiesta
+    const mm = inp.value.match(/mymovies\.it\/film\/(\d{4})\/([a-z0-9-]+)/i);
+    if (mm) {
+      const t = mm[2].replace(/-+/g, " ").trim();
+      scelto = { titolo: t.charAt(0).toUpperCase() + t.slice(1), anno: +mm[1], link: inp.value.trim().replace(/^<|>$/g, "") };
+      inp.value = scelto.titolo; $("#sas-anno").value = scelto.anno; box.hidden = true;
+      $("#sas-link").innerHTML = `Da MyMovies: controlla il titolo (accenti e apostrofi non sono nel link) · <a href="${esc(scelto.link)}" target="_blank" rel="noopener">apri la scheda</a>`;
+      return;
+    }
+    $("#sas-link").textContent = "";
     const q = normT(inp.value);
     if (q.length < 2) { box.hidden = true; return; }
     const lista = fontiFilm().filter((x) => normT(x.titolo).includes(q)).slice(0, 8);
     box.innerHTML = lista.map((x, i) => `<button type="button" data-s="${i}"><b>${esc(x.titolo)}</b>${x.anno ? ` (${x.anno})` : ""}<span class="hint">${esc(x.info || "")}</span></button>`).join("") + `<button type="button" data-s="nuovo"><span class="hint">Usa «${esc(inp.value.trim())}» come titolo nuovo</span></button>`;
     box.hidden = false;
     box.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => {
-      if (b.dataset.s !== "nuovo") { scelto = lista[+b.dataset.s]; inp.value = scelto.titolo; $("#sas-anno").value = scelto.anno || ""; $("#sas-regista").value = scelto.regista || ""; }
+      if (b.dataset.s !== "nuovo") { scelto = lista[+b.dataset.s]; inp.value = scelto.titolo; $("#sas-anno").value = scelto.anno || ""; $("#sas-regista").value = scelto.regista || ""; $("#sas-link").innerHTML = scelto.link ? `<a href="${esc(scelto.link)}" target="_blank" rel="noopener">Scheda su MyMovies</a>` : ""; }
       box.hidden = true;
     }));
   };
   inp.onblur = () => setTimeout(() => (box.hidden = true), 200);
+  $("#sas-mymovies").onclick = () => window.open(`https://www.google.com/search?q=${encodeURIComponent(`site:mymovies.it/film ${inp.value.trim()}`)}`, "_blank", "noopener");
 
   $("#sas-form").onsubmit = async (e) => {
     e.preventDefault();

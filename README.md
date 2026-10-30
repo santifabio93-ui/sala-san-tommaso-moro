@@ -146,7 +146,8 @@ per il gruppo con eventi, fasce orarie, nomi e posti ancora scoperti.
 ## Richieste di film al SAS
 In **Cinema → Richieste al SAS** (esegui `supabase/016_sas.sql`): si cerca il titolo nel catalogo del SAS (gli elenchi
 che manda il SAS, da incollare nella stessa pagina: i link a MyMovies danno anche l'anno), tra i film di Cinebot o
-tra quelli già proiettati, oppure lo si scrive; si indicano date, pomeriggio o sera, per quale rassegna, biglietto o
+tra quelli già proiettati, oppure lo si scrive; «Cerca su MyMovies» apre la ricerca della scheda e incollando il link
+di una scheda MyMovies titolo e anno si ricavano dall'indirizzo (senza scaricare nulla dal sito); si indicano date, pomeriggio o sera, per quale rassegna, biglietto o
 ingresso libero e note. «Prepara l'email» raccoglie tutti i film da chiedere in un'unica email (come chiede il SAS),
 da aprire in Gmail o copiare; la richiesta passa «in attesa di risposta». Con «Segna la risposta» si salvano
 esito, supporto, minimo garantito, percentuale, agenzia e distributore: «Conviene?» usa queste condizioni.
