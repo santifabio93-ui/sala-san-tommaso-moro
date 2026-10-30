@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Richiesta di utilizzo · Sala San Tommaso Moro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;600;700&display=swap">
+<style>
+/* Scheda da stampare su A4, due facciate: domande davanti, regole e firme dietro */
+:root {
+  --ink: #17212A;
+  --muted: #5A6772;
+  --line: #9AA6AE;
+  --soft: #E9EEF0;
+  --accent: #00897C;
+  --f-display: "Spectral", Georgia, "Times New Roman", serif;
+  --f-body: "Figtree", "Helvetica Neue", Arial, sans-serif;
+}
+@page { size: A4; margin: 11mm 13mm 11mm 13mm }
+* { box-sizing: border-box }
+html, body { margin: 0; background: #fff; color: var(--ink) }
+body { font-family: var(--f-body); font-size: 9.6pt; line-height: 1.35 }
+.foglio { width: 184mm; margin: 0 auto }
+@media screen { body { background: #e6eaec; padding: 16px 0 } .foglio { background: #fff; padding: 11mm 13mm; width: 210mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); margin-bottom: 16px } .stampa { display: block } }
+@media print { .stampa { display: none } .foglio + .foglio { break-before: page } }
+.stampa { display: none; text-align: center; margin: 0 auto 12px; font-size: 11pt }
+.stampa button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer }
+
+header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10mm; border-bottom: 1.2pt solid var(--ink); padding-bottom: 2.5mm; margin-bottom: 3mm }
+header .ente { font-size: 7.6pt; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600 }
+header h1 { font-family: var(--f-display); font-weight: 600; font-size: 17pt; margin: 1mm 0 0; line-height: 1.1 }
+header h1 span { display: block; font-size: 10.5pt; font-weight: 500; color: var(--muted); margin-top: .5mm }
+.prot { border: .8pt solid var(--line); border-radius: 2mm; padding: 1.8mm 2.5mm; font-size: 7.6pt; color: var(--muted); min-width: 52mm; line-height: 1.9 }
+.prot b { color: var(--ink) }
+.intro { font-size: 8.4pt; color: var(--muted); margin: 0 0 2.5mm }
+
+section { margin-top: 2.6mm; break-inside: avoid }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 11pt; margin: 0 0 1.4mm; display: flex; align-items: baseline; gap: 2mm }
+h2 i { font-style: normal; font-family: var(--f-body); font-weight: 700; font-size: 8pt; color: #fff; background: var(--ink); border-radius: 50%; width: 4.6mm; height: 4.6mm; display: inline-grid; place-items: center; flex: none; transform: translateY(-.3mm) }
+h2 small { font-family: var(--f-body); font-weight: 400; font-size: 7.8pt; color: var(--muted) }
+
+.row { display: flex; gap: 4mm; align-items: flex-end; margin-top: 1.6mm }
+.f { flex: 1; display: flex; align-items: flex-end; gap: 1.5mm; min-width: 0 }
+.f label { white-space: nowrap; font-size: 8.4pt; color: var(--muted) }
+.f .w { flex: 1; border-bottom: .7pt solid var(--line); height: 4.6mm; min-width: 8mm }
+.f.s { flex: 0 0 auto }
+.f.s .w { flex: 0 0 auto }
+
+.opts { display: flex; flex-wrap: wrap; gap: 1mm 4mm; margin-top: 1.4mm; align-items: center }
+.opts .q { font-size: 8.4pt; color: var(--muted); margin-right: 1mm }
+.c { display: inline-flex; align-items: center; gap: 1.3mm; white-space: nowrap }
+.c::before { content: ""; width: 3mm; height: 3mm; border: .8pt solid var(--ink); border-radius: .5mm; flex: none }
+.opts u, .c u { text-decoration: none; display: inline-block; border-bottom: .7pt solid var(--line); min-width: 12mm; height: 3.6mm }
+
+table { width: 100%; border-collapse: collapse; margin-top: 1.4mm; font-size: 8.2pt }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 7.4pt; text-transform: uppercase; letter-spacing: .04em; padding: 0 1.5mm 1mm; border-bottom: .8pt solid var(--ink) }
+td { border-bottom: .7pt solid var(--line); height: 6.4mm; padding: 0 1.5mm }
+td:first-child, th:first-child { padding-left: 0 }
+.cap { font-size: 7.6pt; color: var(--muted); margin-top: 1mm }
+
+.due { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5mm }
+.due .c { white-space: normal }
+.box { border: .8pt solid var(--line); border-radius: 2mm; padding: 2.2mm 3mm }
+.box.ris { background: var(--soft); border-color: var(--soft) }
+.box h3 { margin: 0 0 1mm; font-size: 8.4pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted) }
+
+.regole { columns: 2; column-gap: 6mm; font-size: 8.1pt; margin-top: 1.4mm }
+.regole div { break-inside: avoid; margin-bottom: 2mm }
+.regole b { display: block; font-size: 8.4pt; margin-bottom: .6mm; color: var(--ink) }
+.regole ul { margin: 0; padding-left: 3.6mm }
+.regole li { margin-bottom: .4mm }
+.dich { font-size: 8.4pt }
+.dich ol { margin: 1mm 0 0; padding-left: 4.4mm }
+.dich li { margin-bottom: .8mm }
+.firme { display: flex; gap: 8mm; margin-top: 4mm }
+.firme .f { flex-direction: column; align-items: stretch; gap: .6mm }
+.firme .f .w { height: 8mm }
+.piccolo { font-size: 7.4pt; color: var(--muted); margin-top: 2.5mm }
+</style>
+</head>
+<body>
+<p class="stampa"><button type="button" onclick="window.print()">Stampa la scheda</button></p>
+
+<!-- ======================== FACCIATA 1: LA RICHIESTA ======================== -->
+<div class="foglio">
+  <header>
+    <div>
+      <div class="ente">Parrocchia di San Biagio V. e M. · via Roma 75 · Piombino Dese (PD)</div>
+      <h1>Sala San Tommaso Moro<span>Richiesta di utilizzo della sala</span></h1>
+    </div>
+    <div class="prot">Ricevuta il <b>____ / ____ / ________</b><br>Sopralluogo il <b>____ / ____ / ________</b><br>Pratica n. <b>__________</b></div>
+  </header>
+  <p class="intro">Compilate la scheda almeno <b>30 giorni prima</b> dell'evento e restituitela firmata. Se portate un vostro tecnico o materiale tecnico, allegate la scheda tecnica. Sul retro trovate le regole della sala e la dichiarazione da firmare.</p>
+
+  <section>
+    <h2><i>1</i>Chi organizza</h2>
+    <div class="row"><div class="f"><label>Ente, associazione o persona</label><span class="w"></span></div></div>
+    <div class="opts"><span class="q">Richiede la sala come:</span><span class="c">gruppo della Parrocchia</span><span class="c">Comune (convenzione)</span><span class="c">associazione</span><span class="c">scuola</span><span class="c">privato</span><span class="c">altro <u></u></span></div>
+    <div class="row"><div class="f"><label>Codice fiscale / P. IVA (per la ricevuta)</label><span class="w"></span></div><div class="f"><label>Indirizzo</label><span class="w"></span></div></div>
+    <div class="row"><div class="f"><label>Referente</label><span class="w"></span></div><div class="f s"><label>Cellulare</label><span class="w" style="width:34mm"></span></div><div class="f"><label>Email</label><span class="w"></span></div></div>
+    <div class="row"><div class="f"><label>Responsabile presente il giorno dell'evento (se diverso)</label><span class="w"></span></div><div class="f s"><label>Cellulare</label><span class="w" style="width:34mm"></span></div></div>
+  </section>
+
+  <section>
+    <h2><i>2</i>L'evento</h2>
+    <div class="row"><div class="f"><label>Titolo</label><span class="w"></span></div></div>
+    <div class="opts"><span class="q">Tipo:</span><span class="c">teatro</span><span class="c">concerto</span><span class="c">danza / saggio</span><span class="c">cinema / proiezione</span><span class="c">conferenza / incontro</span><span class="c">scuola</span><span class="c">altro <u></u></span></div>
+    <div class="row"><div class="f"><label>In breve, cosa succede</label><span class="w"></span></div></div>
+    <div class="opts"><span class="q">Ingresso:</span><span class="c">libero</span><span class="c">a offerta</span><span class="c">a pagamento, € <u></u></span><span class="q" style="margin-left:3mm">Biglietti gestiti da:</span><span class="c">la sala (Cinebot)</span><span class="c">l'organizzatore</span></div>
+    <div class="opts"><span class="q">Pubblico previsto:</span><span class="c">fino a 134 (solo galleria)</span><span class="c">fino a 338 (platea)</span><span class="c">oltre 338, massimo 472 (platea e galleria)</span></div>
+    <div class="row"><div class="f s"><label>Numero indicativo</label><span class="w" style="width:20mm"></span></div><div class="f s"><label>di cui bambini</label><span class="w" style="width:16mm"></span></div><div class="f s"><label>persone in carrozzina</label><span class="w" style="width:16mm"></span></div><div class="f s"><label>persone sul palco</label><span class="w" style="width:16mm"></span></div></div>
+  </section>
+
+  <section>
+    <h2><i>3</i>Date e orari <small>una riga per ogni giorno; la sala va lasciata libera entro l'orario di sgombero</small></h2>
+    <table>
+      <thead><tr><th style="width:24%">Data</th><th>Allestimento / prove</th><th>Apertura porte</th><th>Inizio</th><th>Fine</th><th>Sgombero entro</th></tr></thead>
+      <tbody><tr><td></td><td>dalle ______ alle ______</td><td></td><td></td><td></td><td></td></tr><tr><td></td><td>dalle ______ alle ______</td><td></td><td></td><td></td><td></td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><i>4</i>Palco e tecnica <small>segnate solo ciò che vi serve: impianti e attrezzature della sala si usano con il personale della sala</small></h2>
+    <div class="opts"><span class="c">luci di scena</span><span class="c">sipario e quinte</span><span class="c">impianto audio</span><span class="c">microfoni a filo n. <u></u></span><span class="c">radiomicrofoni n. <u></u> (max 2)</span></div>
+    <div class="opts"><span class="c">proiettore e schermo (collegamento HDMI)</span><span class="c">tavolo relatori, posti n. <u></u></span><span class="c">microfoni da tavolo n. <u></u> (max 3)</span><span class="c">leggio</span></div>
+    <div class="opts"><span class="q">Tecnico:</span><span class="c">serve il tecnico della sala</span><span class="c">abbiamo un nostro tecnico: <u style="min-width:40mm"></u> cell. <u style="min-width:26mm"></u></span></div>
+    <div class="opts"><span class="q">Portate attrezzature da collegare alla corrente?</span><span class="c">no</span><span class="c">sì, quali: <u style="min-width:52mm"></u> potenza totale circa <u></u> W</span></div>
+  </section>
+
+  <section>
+    <h2><i>5</i>Scenografie, effetti e altro</h2>
+    <div class="opts"><span class="q">Portate scenografie o arredi?</span><span class="c">no</span><span class="c">sì: <u style="min-width:58mm"></u></span><span class="c">tessuti e materiali di scena ignifughi (classe 1), certificato allegato</span></div>
+    <div class="opts"><span class="q">Effetti:</span><span class="c">nessuno</span><span class="c">macchina del fumo o della nebbia</span><span class="c">altro <u style="min-width:30mm"></u></span><span class="q" style="margin-left:2mm">(fiamme, candele, petardi e coriandoli non sono ammessi)</span></div>
+    <div class="opts"><span class="q">Durante l'evento:</span><span class="c">riprese video o foto</span><span class="c">diretta streaming</span><span class="c">vendita di libri, CD o altro</span><span class="c">rinfresco nell'atrio (da concordare)</span></div>
+    <div class="opts"><span class="q">Possiamo pubblicare l'evento nel programma della sala?</span><span class="c">sì</span><span class="c">no</span><span class="q" style="margin-left:2mm">Locandina inviata entro il <u style="min-width:22mm"></u></span></div>
+    <div class="row"><div class="f"><label>Altre richieste o esigenze</label><span class="w"></span></div></div>
+    <div class="row"><div class="f"><span class="w"></span></div></div>
+  </section>
+
+</div>
+
+<!-- ======================== FACCIATA 2: REGOLE E FIRME ======================== -->
+<div class="foglio">
+  <header>
+    <div>
+      <div class="ente">Sala San Tommaso Moro · Richiesta di utilizzo</div>
+      <h1 style="font-size:14pt">Regole della sala e dichiarazione</h1>
+    </div>
+    <div class="prot">Evento <b>______________________</b><br>Data <b>____ / ____ / ________</b></div>
+  </header>
+
+  <section>
+    <h2>Le regole in sintesi <small>valgono per organizzatori, artisti e pubblico: l'organizzatore si impegna a farle rispettare</small></h2>
+    <div class="regole">
+      <div><b>Sicurezza</b><ul>
+        <li>Non sono ammessi fiamme libere, candele, petardi, fuochi d'artificio, fumogeni, bombolette di gas e materiali infiammabili.</li>
+        <li>Uscite di emergenza e percorsi d'esodo sempre liberi: non si sosta, non si accatastano materiali, nemmeno all'esterno delle uscite.</li>
+        <li>Le uscite di emergenza si usano solo in caso di pericolo; l'ascensore è riservato alle persone con disabilità.</li>
+        <li>Il numero di persone non può superare la capienza indicata nella scheda (massimo 472).</li>
+        <li>Non sono ammessi oggetti atti a offendere.</li>
+      </ul></div>
+      <div><b>Impianti</b><ul>
+        <li>Impianti, regia, quadri elettrici, termostati e macchine di riscaldamento si usano solo con il personale della sala.</li>
+        <li>Le attrezzature esterne si collegano solo dove indica il tecnico della sala: niente prese multiple («ciabatte») né cavi lungo pareti e vie d'esodo.</li>
+        <li>Non si eseguono lavorazioni che producono scintille, polveri o fumi (saldatrici, smerigliatrici…).</li>
+      </ul></div>
+      <div><b>In sala</b><ul>
+        <li>Vietato fumare in tutti i locali, anche le sigarette elettroniche.</li>
+        <li>Cibo e bevande non sono ammessi in sala; un eventuale rinfresco nell'atrio va concordato.</li>
+        <li>Non sono ammessi animali, tranne i cani guida e di assistenza.</li>
+        <li>Passeggini e carrozzine si lasciano all'ingresso, tranne le carrozzine per persone con disabilità.</li>
+      </ul></div>
+      <div><b>Palco e riconsegna</b><ul>
+        <li>Si portano in sala solo i materiali dichiarati; scenografie e tessuti devono essere ignifughi (classe 1).</li>
+        <li>A fine evento il palco va liberato e la sala riconsegnata come trovata, entro l'orario di sgombero.</li>
+        <li>La sala non custodisce materiali e attrezzature dell'organizzatore.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section class="dich">
+    <h2>Dichiarazione dell'organizzatore</h2>
+    <p style="margin:0">Il/la sottoscritto/a, per l'organizzatore indicato nella scheda, ha preso visione delle regole della sala e dichiara:</p>
+    <ol>
+      <li>di sollevare la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo;</li>
+      <li>di farsi carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento;</li>
+      <li>di sollevare la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala;</li>
+      <li>di occuparsi, se previsti, degli adempimenti SIAE e delle autorizzazioni per l'evento, salvo diverso accordo scritto con la sala.</li>
+    </ol>
+    <div class="firme">
+      <div class="f"><label>Luogo e data</label><span class="w"></span></div>
+      <div class="f"><label>Nome e cognome (stampatello)</label><span class="w"></span></div>
+      <div class="f"><label>Firma dell'organizzatore</label><span class="w"></span></div>
+    </div>
+    <p class="piccolo">Privacy: i dati di questa scheda sono usati dalla Parrocchia di San Biagio solo per gestire la richiesta, l'evento e i relativi pagamenti, e conservati per il tempo necessario a questi scopi e agli obblighi di legge.</p>
+  </section>
+
+  <section class="due" style="margin-top:4mm">
+    <div class="box ris">
+      <h3>Responsabile della sicurezza della sala</h3>
+      <div class="opts" style="flex-direction:column;align-items:flex-start;gap:2mm"><span class="c">evento compatibile con la sala</span><span class="c">compatibile con queste condizioni:</span></div>
+      <div class="row"><div class="f"><span class="w"></span></div></div>
+      <div class="row"><div class="f"><span class="w"></span></div></div>
+      <div class="opts" style="margin-top:2mm"><span class="c">non compatibile, per questi motivi:</span></div>
+      <div class="row"><div class="f"><span class="w"></span></div></div>
+      <div class="row" style="margin-top:4mm"><div class="f"><label>Data</label><span class="w"></span></div><div class="f"><label>Firma</label><span class="w"></span></div></div>
+    </div>
+    <div class="box ris">
+      <h3>Gestione della sala</h3>
+      <div class="opts" style="flex-direction:column;align-items:flex-start;gap:2mm"><span class="c">richiesta confermata e messa in calendario</span><span class="c">serata del Comune (convenzione)</span><span class="c">tecnico / volontari assegnati: <u style="min-width:30mm"></u></span><span class="c">riscaldamento / raffrescamento dalle ore <u></u></span></div>
+      <div class="row" style="margin-top:3mm"><div class="f"><label>Tariffa €</label><span class="w"></span></div><div class="f"><label>Cauzione €</label><span class="w"></span></div></div>
+      <div class="row"><div class="f"><label>Pagato il</label><span class="w"></span></div></div>
+      <div class="opts"><span class="c">contanti</span><span class="c">bonifico</span><span class="c">ricevuta emessa</span></div>
+      <div class="row"><div class="f"><label>Cauzione restituita il</label><span class="w"></span></div></div>
+      <div class="row" style="margin-top:4mm"><div class="f"><label>Note sulla riconsegna</label><span class="w"></span></div></div>
+      <div class="row" style="margin-top:4mm"><div class="f"><label>Data</label><span class="w"></span></div><div class="f"><label>Firma</label><span class="w"></span></div></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>
