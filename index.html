@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.21">
+<link rel="stylesheet" href="style.css?v=2026-11-01.22">
 </head>
 <body>
 
@@ -298,6 +298,7 @@
 <dialog id="dlg-booking">
   <form class="dlg" id="booking-form" novalidate>
     <div class="dlg-head"><h2 id="b-head">Nuova prenotazione</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <div id="b-origin" class="hint"></div>
     <div class="form">
       <div class="field"><label for="b-titolo">Evento</label><input id="b-titolo" required placeholder="Es. Festa di compleanno, Assemblea condominiale"></div>
       <div class="field h"><label for="b-referente">Referente</label><input id="b-referente" placeholder="Nome e cognome"></div>
@@ -326,7 +327,6 @@
       <div class="field"><label for="b-pubblico">Pubblico in sala</label><select id="b-pubblico"></select><span class="hint">Decide quante persone servono quando premi «Proponi turni»</span></div>
       <div class="field"><div class="slot-rows" id="b-turni"></div></div>
     </div>
-    <div id="b-origin" class="hint"></div>
     <div id="b-error"></div>
     <div class="dlg-foot">
       <div id="b-delete-area"></div>
@@ -628,7 +628,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.21"></script>
-<script type="module" src="app.js?v=2026-11-01.21"></script>
+<script src="config.js?v=2026-11-01.22"></script>
+<script type="module" src="app.js?v=2026-11-01.22"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.21";
+const VERSIONE = "2026-11-01.22";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -246,6 +246,17 @@ const orario = (b) => (b.giornata_intera ? "Tutto il giorno" : `${b.inizio}–${
 const isRecurring = (b) => (b.gcal_id || "").includes("|");
 // eventi nati sul Google Calendar della sala: titolo, data, orario e stato si cambiano dal calendario
 const fromCalendar = (b) => !!b && (b.origine === "calendario" || isRecurring(b));
+// eventi del calendario cambiati nell'app (aggiornamento 20): cosa c'è ancora di diverso nel Google Calendar
+function diversoDalCalendario(b) {
+  const c = b && b.fissato_app && b.cal_dati;
+  if (!c) return [];
+  const out = [];
+  if (c.titolo !== b.titolo) out.push(`titolo «${c.titolo}»`);
+  if (c.data !== b.data) out.push(`data ${fmtShort(c.data)}`);
+  if (!!c.giornata_intera !== !!b.giornata_intera || (!b.giornata_intera && (hm(c.inizio) !== b.inizio || hm(c.fine) !== b.fine))) out.push(c.giornata_intera ? "tutto il giorno" : `orario ${hm(c.inizio)}–${hm(c.fine)}`);
+  if (c.stato !== b.stato) out.push(`stato «${(STATI[c.stato] || c.stato).toLowerCase()}»`);
+  return out;
+}
 function ago(ts) {
   if (!ts) return "";
   const m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
@@ -681,11 +692,19 @@ function openBooking(b, date, prefill) {
   hintComune();
   syncAllDay();
   $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
-    : fromCalendar(b) ? "Evento del Google Calendar della sala: titolo, data, orario e stato si cambiano dal calendario. Qui gestisci prezzo, incassi, turni e note."
+    : fromCalendar(b) ? (b.fissato_app ? "Evento del Google Calendar della sala, modificato nell'app: vale la versione dell'app." : "Evento del Google Calendar della sala: puoi cambiare tutto anche qui. Se cambi titolo, data, orario o stato vale la versione dell'app; il calendario Google non viene toccato.")
     : b.gcal_id ? "Sincronizzata con il Google Calendar della sala: le modifiche arrivano anche lì entro 15 minuti." : "";
-  const lock = fromCalendar(b);
-  for (const k of ["titolo", "data", "stato"]) $("#b-" + k).disabled = lock;
-  $("#b-giornata").disabled = lock;
+  const diff = diversoDalCalendario(b);
+  if (diff.length) {
+    $("#b-origin").insertAdjacentHTML("beforeend", `<div class="cal-diverso">Nel Google Calendar c'è ancora: ${esc(diff.join(", "))}. Aggiornalo anche lì, così chi guarda il calendario vede le cose giuste. <button class="btn sm" type="button" id="b-usa-cal">Usa quello del calendario</button></div>`);
+    $("#b-usa-cal").onclick = async () => {
+      const c = b.cal_dati;
+      try { await run(sb.from("bookings").update({ titolo: c.titolo, data: c.data, inizio: c.giornata_intera ? "00:00" : hm(c.inizio), fine: c.giornata_intera ? "23:59" : hm(c.fine), giornata_intera: !!c.giornata_intera, stato: c.stato, fissato_app: false }).eq("id", b.id), "Ripresi titolo, data, orario e stato dal calendario"); dlgB.close(); }
+      catch (x) { toast(errText(x)); }
+    };
+  }
+  for (const k of ["titolo", "data", "stato"]) $("#b-" + k).disabled = false;
+  $("#b-giornata").disabled = false;
   $("#b-error").innerHTML = "";
   renderDeleteArea("#b-delete-area", !!b && !fromCalendar(b), async () => { await run(sb.from("bookings").delete().eq("id", b.id), "Prenotazione eliminata"); dlgB.close(); });
   checkAvail();
@@ -709,7 +728,7 @@ function checkAvail() {
   const c = $("#b-stato").value === "annullata" ? [] : conflicts(d, i, f, S.editing);
   el.innerHTML = c.length
     ? `<div class="warn">Sovrapposizione con: ${c.map((b) => `${esc(b.titolo)} (${orario(b).toLowerCase()}, ${STATI[b.stato].toLowerCase()})`).join("; ")}</div>`
-    : `<div class="ok-note">Sala libera ${all ? "per tutto il giorno" : `in questo orario · ${hours(i, f).toLocaleString("it-IT")} ore`}</div>`;
+    : `<div class="ok-note">Sala libera ${all ? "per tutto il giorno" : `in questo orario · ${hours(i, f).toLocaleString("it-IT")} ${hours(i, f) === 1 ? "ora" : "ore"}`}</div>`;
 }
 function renderSlotEditor() {
   const el = $("#b-turni");
@@ -751,8 +770,7 @@ $("#b-turni-std").onclick = () => {
 ["#b-data", "#b-inizio", "#b-fine", "#b-stato"].forEach((s) => $(s).addEventListener("input", checkAvail));
 function syncAllDay() {
   const all = $("#b-giornata").checked;
-  const lock = fromCalendar(S.bookings.find((x) => x.id === S.editing));
-  $("#b-inizio").disabled = all || lock; $("#b-fine").disabled = all || lock;
+  $("#b-inizio").disabled = all; $("#b-fine").disabled = all;
   checkAvail();
 }
 $("#b-giornata").addEventListener("change", syncAllDay);
@@ -793,7 +811,14 @@ $("#booking-form").addEventListener("submit", async (e) => {
   try {
     if (S.editing) {
       const prev = S.bookings.find((x) => x.id === S.editing);
-      if (fromCalendar(prev)) for (const k of ["titolo", "data", "inizio", "fine", "giornata_intera", "stato"]) delete rec[k];
+      if (fromCalendar(prev)) {
+        // evento del calendario: se cambiano titolo, data, orario o stato, da qui in avanti vale la versione dell'app
+        const campi = ["titolo", "data", "inizio", "fine", "giornata_intera", "stato"];
+        const cambiato = campi.some((k) => (k === "giornata_intera" ? !!rec[k] !== !!prev[k] : (k === "inizio" || k === "fine") && rec.giornata_intera && prev.giornata_intera ? false : rec[k] !== prev[k]));
+        if (!cambiato) campi.forEach((k) => delete rec[k]);
+        else if (!("fissato_app" in prev)) { $("#b-error").innerHTML = `<div class="warn">Per cambiare titolo, data, orario o stato degli eventi del calendario esegui prima in Supabase lo script <b>020_modifiche_calendario.sql</b>. Le altre modifiche (prezzo, turni, note…) si salvano anche senza: rimetti com'erano titolo, data, orario e stato.</div>`; return; }
+        else rec.fissato_app = true;
+      }
       await run(sb.from("bookings").update(rec).eq("id", S.editing), "Prenotazione aggiornata");
     } else {
       const { data: created, error } = await sb.from("bookings").insert({ ...rec, origine: S.fromRequest ? "email" : "app" }).select("id").single();
@@ -3482,6 +3507,8 @@ function coseDiOggi() {
     const ai = antincendioStato(v);
     if (ai === "scaduto" || ai === "scade") add(ai === "scaduto" ? "warn" : "info", `Attestato antincendio di ${v.nome} ${ai === "scaduto" ? "scaduto il" : "in scadenza il"} ${fmtShort(v.antincendio_scadenza)}: serve il corso di aggiornamento`, "#volontari");
   });
+  // eventi del calendario cambiati nell'app: il Google Calendar è ancora diverso
+  S.bookings.filter((b) => b.data >= TODAY && diversoDalCalendario(b).length).forEach((b) => add("info", `«${b.titolo}» (${fmtShort(b.data)}) è stato cambiato nell'app: aggiorna anche il Google Calendar della sala (lì c'è ancora ${diversoDalCalendario(b).join(", ")})`, "#prenotazioni"));
   // sopralluoghi
   S.sopralluoghi.filter((x) => x.stato === "da_fare" && (x.data === TODAY || x.data === tra(1))).forEach((x) => add("info", `Sopralluogo ${x.data === TODAY ? "oggi" : "domani"} alle ${x.ora}: ${x.nome}${x.evento ? ` per «${x.evento}»` : ""}`, "#sopralluoghi"));
   // sito e conti
@@ -3540,6 +3567,7 @@ function aggiornamentiSql() {
     ["015_preventivo.sql", "Preventivo", k.has("preventivo")],
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
+    ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
     ["019_volontari_dati.sql", "Compleanni e attestati antincendio dei volontari", !manca(e2.volontari) && !manca(e2.volDati)],
     ["018_calendario_app.sql", "Secondo calendario (in standby, facoltativo)", chk.calApp, "Serve solo se attivi il calendario dell'app", true],
   ].map(([file, cosa, ok, nota, facoltativo]) => ({ file, cosa, ok: ok === undefined ? null : !!ok, nota, facoltativo }));

@@ -670,3 +670,5 @@ nav.tabs { position: relative }
   #kpis .kpi b { font-size: 1.3rem }
 }
 @media (max-width: 560px) { .oggi-cosa .az .btn.ghost { background: var(--sunk); padding: 4px 12px } }
+.cal-diverso { margin-top: 8px; padding: 9px 12px; border-radius: 10px; background: var(--opz-bg); color: var(--opz-fg); font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.cal-diverso .btn { color: var(--ink) }

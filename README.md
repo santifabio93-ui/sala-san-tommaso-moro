@@ -301,6 +301,15 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Modificare gli eventi del calendario
+
+Tutti i dettagli di una prenotazione si possono cambiare dall'app, anche per gli eventi che arrivano dal Google
+Calendar della sala: titolo, data, orario, «tutto il giorno» e stato (serve lo script `020_modifiche_calendario.sql`).
+Quando cambi uno di questi campi vale la versione dell'app e la sincronizzazione non la sovrascrive più. Il calendario
+Google invece non viene toccato: la prenotazione mostra cosa c'è ancora scritto lì, e Oggi ricorda di aggiornarlo.
+Con «Usa quello del calendario» si torna alla versione del calendario, che da quel momento torna a valere.
+Se un evento viene cancellato dal calendario, sparisce anche dall'app.
+
 ## Volontari
 
 Turni → Volontari (admin e coordinatori) è l'elenco dei volontari: nome, cellulare, data di nascita, attestato
