@@ -1,3 +1,4 @@
+// © 2026 Parrocchia di San Biagio Vescovo e Martire – Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
 // Controllo del sito della sala (WordPress): legge le pagine pubbliche e le confronta con il programma dell'app.
 // Funzioni pure, senza dipendenze, così si possono provare anche fuori dal browser.
 

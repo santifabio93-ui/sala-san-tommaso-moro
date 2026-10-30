@@ -1,3 +1,4 @@
+// © 2026 Parrocchia di San Biagio Vescovo e Martire – Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Turni dei volontari: ognuno apre il suo link personale (?t=codice), senza account, e si segna o si toglie.
