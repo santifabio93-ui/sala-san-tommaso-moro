@@ -673,3 +673,41 @@ nav.tabs { position: relative }
 .cal-diverso { margin-top: 8px; padding: 9px 12px; border-radius: 10px; background: var(--opz-bg); color: var(--opz-fg); font-weight: 600; display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .cal-diverso .btn { color: var(--ink) }
 .pill.sala { background: var(--gold-soft); color: color-mix(in oklab, var(--gold) 55%, var(--ink)) }
+
+/* --- sipario d'ingresso --- */
+#sipario { position: fixed; inset: 0; z-index: 1000; overflow: hidden; pointer-events: auto; background: #12060A; --velluto: #8E1424 }
+#sipario .s-tenda { position: absolute; top: 0; bottom: 0; width: 51%;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.35), transparent 18%, transparent 80%, rgba(0,0,0,.45)),
+    repeating-linear-gradient(90deg, #4E0811 0, #7A1020 3%, #B3233A 5.5%, #8E1424 7.5%, #5A0A14 10%);
+  box-shadow: inset 0 0 60px rgba(0,0,0,.55);
+  transition: transform 1.5s cubic-bezier(.7, 0, .25, 1), filter 1.5s ease }
+#sipario .s-sx { left: 0; transform-origin: left center }
+#sipario .s-dx { right: 0; transform-origin: right center }
+#sipario .s-mantovana { position: absolute; top: 0; left: 0; right: 0; height: 13vh; min-height: 70px; z-index: 2;
+  background:
+    radial-gradient(ellipse 60px 26px at 50% 100%, transparent 70%, rgba(0,0,0,.25) 72%, transparent 76%) 0 0 / 120px 100% repeat-x,
+    repeating-linear-gradient(90deg, #5A0A14 0, #9A1A2E 2.5%, #6B0C19 5%),
+    #7A1020;
+  box-shadow: 0 6px 18px rgba(0,0,0,.55);
+  transition: transform 1.1s cubic-bezier(.6, 0, .3, 1) .45s }
+#sipario .s-mantovana::after { content: ""; position: absolute; left: 0; right: 0; bottom: -12px; height: 14px;
+  background: repeating-linear-gradient(90deg, #E8C766 0 2px, #B8902E 2px 4px, transparent 4px 6px);
+  -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent); mask-image: linear-gradient(180deg, #000 30%, transparent) }
+#sipario .s-mantovana::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: linear-gradient(180deg, #F0D27A, #A8801F) }
+#sipario .s-sigillo { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); z-index: 3; text-align: center; color: #E9CB6E;
+  font-family: var(--f-display); transition: opacity .45s ease, transform .6s ease }
+#sipario .s-sigillo span { display: grid; place-items: center; width: 92px; height: 92px; margin: 0 auto 12px; border-radius: 50%; border: 2px solid #D9B44A;
+  font-size: 2rem; font-weight: 600; letter-spacing: .04em; background: radial-gradient(circle at 35% 30%, rgba(233,203,110,.25), rgba(40,4,10,.6) 70%);
+  box-shadow: 0 0 0 6px rgba(217,180,74,.12), 0 10px 40px rgba(0,0,0,.6) }
+#sipario .s-sigillo small { display: block; font-size: 1.05rem; letter-spacing: .12em; text-transform: uppercase; color: rgba(240,215,140,.9); text-shadow: 0 2px 10px rgba(0,0,0,.6) }
+#sipario.apri { background: transparent; pointer-events: none; transition: background-color .4s ease }
+#sipario.apri .s-sx { transform: translateX(-12%) scaleX(.06); filter: brightness(.8) }
+#sipario.apri .s-dx { transform: translateX(12%) scaleX(.06); filter: brightness(.8) }
+#sipario.apri .s-mantovana { transform: translateY(-110%) }
+#sipario.apri .s-sigillo { opacity: 0; transform: translate(-50%, -50%) scale(1.15) }
+@media (prefers-reduced-motion: reduce) {
+  #sipario .s-tenda, #sipario .s-mantovana, #sipario .s-sigillo { transition: none }
+  #sipario { transition: opacity .3s ease }
+  #sipario.apri { opacity: 0 }
+}
