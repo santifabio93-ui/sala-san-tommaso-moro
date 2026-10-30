@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.25">
+<link rel="stylesheet" href="style.css?v=2026-11-01.26">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -618,14 +618,16 @@
       </table>
     </div>
 
-    <div class="subsec"><h3>Chiusura</h3><span class="hint">Conta i contanti a fine serata</span></div>
+    <div class="subsec"><h3>Conta i contanti</h3><span class="hint">A fine serata: per ogni taglio metti solo quanti pezzi ci sono</span></div>
+    <div class="conteggio" id="c-conteggio"></div>
+
+    <div class="subsec"><h3>Chiusura</h3></div>
     <div class="close-grid">
       <div class="calc"><span>Contanti attesi in cassa</span><b id="c-attesi" class="num"></b><small>fondo iniziale + biglietti in contanti</small></div>
       <div class="field"><label for="c-contati">Contanti contati (€)</label><input id="c-contati" type="number" min="0" step="0.01" inputmode="decimal" placeholder="da contare">
-        <button class="linkbtn" type="button" id="c-conta-toggle">Conta banconote e monete</button></div>
+        <span class="hint" id="c-contati-hint"></span></div>
       <div class="calc" id="c-diff-box"><span>Quadratura</span><b id="c-diff" class="num"></b><small id="c-diff-txt"></small></div>
     </div>
-    <div class="conteggio" id="c-conteggio" hidden></div>
     <div class="close-grid">
       <div class="field"><label for="c-prelievo">Prelevato dalla cassa (€)</label><input id="c-prelievo" type="number" min="0" step="0.01" inputmode="decimal" value="0">
         <span class="hint">es. versamento in banca o busta per il parroco</span></div>
@@ -649,7 +651,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.25"></script>
-<script type="module" src="app.js?v=2026-11-01.25"></script>
+<script src="config.js?v=2026-11-01.26"></script>
+<script type="module" src="app.js?v=2026-11-01.26"></script>
 </body>
 </html>

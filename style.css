@@ -711,3 +711,39 @@ nav.tabs { position: relative }
   #sipario { transition: opacity .3s ease }
   #sipario.apri { opacity: 0 }
 }
+
+/* --- cassa: cruscotto per contare i contanti --- */
+.conteggio { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; background: transparent; padding: 0; margin-bottom: 6px }
+@media (max-width: 640px) { .conteggio { grid-template-columns: minmax(0, 1fr) } }
+.ct-gruppo { background: var(--sunk); border-radius: 12px; padding: 10px 12px; min-width: 0 }
+.ct-gruppo h4 { margin: 0 0 6px; display: flex; justify-content: space-between; font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; color: var(--muted) }
+.ct-gruppo h4 span { color: var(--ink); letter-spacing: 0; font-size: .9rem }
+.ct-riga { display: grid; grid-template-columns: 78px auto minmax(64px, 1fr); gap: 10px; align-items: center; padding: 5px 0 }
+.ct-riga + .ct-riga { border-top: 1px dashed color-mix(in oklab, var(--line) 80%, transparent) }
+.ct-taglio { display: grid; place-items: center; font-weight: 800; font-size: .82rem; font-variant-numeric: tabular-nums; color: #1B1B1B; white-space: nowrap }
+.ct-taglio.banconota { height: 34px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.12); background: linear-gradient(135deg, var(--bn), color-mix(in oklab, var(--bn) 70%, #fff)) }
+.ct-taglio.b5 { --bn: #B9B9B4 } .ct-taglio.b10 { --bn: #E59A92 } .ct-taglio.b20 { --bn: #8FB3E0 } .ct-taglio.b50 { --bn: #F2B66A }
+.ct-taglio.b100 { --bn: #8FCB9B } .ct-taglio.b200 { --bn: #E8D27A }
+.ct-taglio.moneta { width: 46px; height: 46px; margin-inline: auto; border-radius: 50%; font-size: .72rem; line-height: 1; text-align: center; box-shadow: inset 0 0 0 2px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.18) }
+.ct-taglio.oro { background: radial-gradient(circle at 35% 30%, #F7E2A0, #D4AF4C 70%) }
+.ct-taglio.rame { background: radial-gradient(circle at 35% 30%, #F0B48E, #B8693F 70%); color: #2A1406; width: 40px; height: 40px }
+.ct-taglio.bimetallica { background: radial-gradient(circle, #E6C66A 0 48%, #C9CDD2 50% 100%) }
+.ct-pezzi { display: flex; align-items: center; gap: 4px }
+.ct-pezzi button { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 1.2rem; font-weight: 700; cursor: pointer; color: var(--ink); touch-action: manipulation }
+.ct-pezzi button:active:not(:disabled) { background: var(--accent-soft) }
+.ct-pezzi input { width: 58px; height: 38px; text-align: center; font-size: 1rem; font-weight: 700; border: 1px solid var(--line); border-radius: 10px; background: var(--surface) }
+.ct-pezzi input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent) }
+.ct-sub { text-align: right; font-size: .9rem }
+.ct-tot { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, var(--curtain-2), var(--curtain-3)); color: #F4F0E6 }
+.ct-tot span { font-weight: 600 }
+.ct-tot b { font-size: 1.6rem; color: #FFFFFF }
+.ct-tot small { color: rgba(244,240,230,.75); margin-left: auto }
+#c-contati[readonly] { background: var(--sunk); color: var(--ink); font-weight: 700 }
+.ct-riga { grid-template-columns: 62px auto minmax(0, 1fr); gap: 8px }
+.ct-taglio.banconota { font-size: .78rem }
+.ct-taglio.moneta { width: 42px; height: 42px; font-size: .66rem }
+.ct-taglio.rame { width: 36px; height: 36px }
+.ct-pezzi { gap: 3px }
+.ct-pezzi button { width: 34px; height: 36px }
+.ct-pezzi input { width: 50px; height: 36px; padding: 0 }
+.ct-sub { white-space: nowrap; font-size: .85rem }

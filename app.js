@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.25";
+const VERSIONE = "2026-11-01.26";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2184,7 +2184,9 @@ $("#sop-form").addEventListener("submit", async (e) => {
 /* ---------- cassa ---------- */
 const CASSA_NUM = ["fondo_iniziale", "online_euro", "contanti_euro", "pos_euro", "contati", "prelievo", "fondo_finale"];
 const CASSA_INT = ["online_n", "contanti_n", "pos_n", "omaggi_n"];
-const TAGLI = [100, 50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05];
+const BANCONOTE = [200, 100, 50, 20, 10, 5], MONETE = [2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01];
+const TAGLI = [...BANCONOTE, ...MONETE];
+const nomeTaglio = (t) => (t >= 1 ? `${t} €` : `${Math.round(t * 100)} cent`);
 const mapCassa = (r) => {
   const c = { ...r, conteggio: r.conteggio || {} };
   for (const k of CASSA_NUM) c[k] = r[k] == null ? null : Number(r[k]);
@@ -2259,9 +2261,8 @@ function openCassa(c, date) {
   $("#c-fondo-hint").textContent = c ? "" : prev ? `Proposto dal saldo della cassa del ${fmtShort(prev.data)}` : "Prima cassa: inserisci quanto c'è nel cassetto";
   $("#c-prezzo-hint").textContent = S.prezzoBiglietto ? `Con il numero di biglietti l'importo si calcola a ${money(S.prezzoBiglietto)} l'uno; puoi correggerlo` : "";
   renderConteggio(v.conteggio || {});
-  $("#c-conteggio").hidden = !Object.values(v.conteggio || {}).some((n) => n > 0);
   const locked = c && c.stato === "chiusa" && !S.isAdmin;
-  dlgK.querySelectorAll("input,select,textarea").forEach((el) => (el.disabled = locked));
+  dlgK.querySelectorAll("input,select,textarea,.ct-pezzi button").forEach((el) => (el.disabled = locked));
   $("#c-save").hidden = locked; $("#c-close").hidden = locked || (c && c.stato === "chiusa");
   $("#c-save").textContent = c && c.stato === "chiusa" ? "Salva modifiche" : "Salva";
   $("#c-status").textContent = c && c.stato === "chiusa"
@@ -2271,24 +2272,45 @@ function openCassa(c, date) {
   calcCassa();
   dlgK.showModal();
 }
+// cruscotto per contare i contanti: per ogni taglio si mette solo il numero di pezzi, il resto lo fa l'app
 function renderConteggio(cont) {
-  $("#c-conteggio").innerHTML = TAGLI.map((t) => `<label><span>${t >= 1 ? t + " €" : Math.round(t * 100) + " cent"}</span>× <input type="number" min="0" step="1" inputmode="numeric" data-taglio="${t}" value="${cont[t] || ""}" aria-label="Pezzi da ${t} euro"></label>`).join("")
-    + `<div class="tot"><span>Totale contato: <b id="c-cont-tot" class="num"></b></span><button class="btn sm" type="button" id="c-cont-use">Usa come contanti contati</button></div>`;
-  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => i.addEventListener("input", () => { updateConteggio(true); }));
-  $("#c-cont-use").onclick = () => { updateConteggio(true); };
+  const riga = (t) => `<div class="ct-riga"><span class="ct-taglio ${t >= 5 ? "banconota b" + t : "moneta " + (t >= 1 ? "bimetallica" : t >= 0.1 ? "oro" : "rame")}">${nomeTaglio(t)}</span>
+    <div class="ct-pezzi"><button type="button" class="ct-meno" data-passo="-1" aria-label="Un pezzo da ${nomeTaglio(t)} in meno">−</button><input type="number" min="0" step="1" inputmode="numeric" data-taglio="${t}" value="${cont[t] || ""}" placeholder="0" aria-label="Pezzi da ${nomeTaglio(t)}"><button type="button" class="ct-piu" data-passo="1" aria-label="Un pezzo da ${nomeTaglio(t)} in più">+</button></div>
+    <b class="ct-sub num" data-sub="${t}"></b></div>`;
+  $("#c-conteggio").innerHTML = `
+    <div class="ct-gruppo"><h4>Banconote <span class="num" id="c-cont-banc"></span></h4>${BANCONOTE.map(riga).join("")}</div>
+    <div class="ct-gruppo"><h4>Monete <span class="num" id="c-cont-mon"></span></h4>${MONETE.map(riga).join("")}</div>
+    <div class="ct-tot"><span>Totale contato</span><b id="c-cont-tot" class="num"></b><small id="c-cont-pezzi"></small></div>`;
+  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => i.addEventListener("input", () => updateConteggio(true)));
+  $("#c-conteggio").querySelectorAll("[data-passo]").forEach((b) => (b.onclick = () => {
+    const i = b.parentNode.querySelector("input");
+    if (i.disabled) return;
+    i.value = Math.max(0, (Number(i.value) || 0) + Number(b.dataset.passo)) || "";
+    updateConteggio(true);
+  }));
   updateConteggio(false);
 }
 function readConteggio() {
   const out = {};
-  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => { const n = Number(i.value) || 0; if (n > 0) out[i.dataset.taglio] = n; });
+  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => { const n = Math.floor(Number(i.value) || 0); if (n > 0) out[i.dataset.taglio] = n; });
   return out;
 }
 function updateConteggio(apply) {
-  const tot = r2(Object.entries(readConteggio()).reduce((s, [t, n]) => s + Number(t) * n, 0));
+  const c = readConteggio(), somma = (lista) => r2(lista.reduce((s, t) => s + t * (c[t] || 0), 0));
+  const tot = somma(TAGLI), pezzi = Object.values(c).reduce((s, n) => s + n, 0);
+  $("#c-conteggio").querySelectorAll("[data-sub]").forEach((el) => { const t = Number(el.dataset.sub); el.textContent = c[t] ? money(r2(t * c[t])) : ""; });
+  $("#c-cont-banc").textContent = money(somma(BANCONOTE));
+  $("#c-cont-mon").textContent = money(somma(MONETE));
   $("#c-cont-tot").textContent = money(tot);
-  if (apply && tot > 0) { $("#c-contati").value = tot; calcCassa(); }
+  $("#c-cont-pezzi").textContent = pezzi ? `${pezzi} ${pezzi === 1 ? "pezzo" : "pezzi"}` : "metti il numero di pezzi per ogni taglio";
+  // con il conteggio fatto, i contanti contati sono il totale (non si scrivono a mano)
+  const contati = $("#c-contati");
+  contati.readOnly = pezzi > 0;
+  $("#c-contati-hint").textContent = pezzi > 0 ? "calcolati dal conteggio qui sopra" : "oppure scrivi il totale, se hai contato a mano";
+  if (pezzi > 0) { contati.value = tot; if (apply) calcCassa(); }
+  else if (apply && contati.dataset.dalConteggio) { contati.value = ""; calcCassa(); }
+  contati.dataset.dalConteggio = pezzi > 0 ? "1" : "";
 }
-$("#c-conta-toggle").onclick = () => { $("#c-conteggio").hidden = !$("#c-conteggio").hidden; };
 function readCassa() {
   const g = (k) => numVal("#c-" + k) || 0;
   const rec = {

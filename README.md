@@ -134,6 +134,11 @@ indica quanto preleva e ottiene il nuovo saldo, che diventa il fondo della cassa
 entrano in **Economia**. Fanno cassa amministratori, coordinatori e i volontari abilitati in **Persone** («Fa cassa»).
 Una cassa chiusa la può correggere solo un amministratore. Il prezzo proposto del biglietto si imposta in Economia → Tariffe.
 
+**Conta i contanti**: a fine serata c'è un cruscotto con tutti i tagli (banconote da 200 a 5 €, monete da 2 € a 1 cent).
+Per ogni taglio si mette solo il numero di pezzi, scrivendolo o con i bottoni − e +: l'app calcola i subtotali, il
+totale di banconote e monete e lo mette da sola nei «Contanti contati», con la quadratura. Senza conteggio si può
+ancora scrivere il totale a mano.
+
 ## Sopralluoghi
 Esegui una volta `supabase/004_sopralluoghi.sql` nel SQL Editor. Nella voce di menu **Sopralluoghi** si fissano le visite
 alla sala (giorno, ora, chi viene, evento e data desiderata, chi accompagna, cosa vuole vedere), con controllo che la sala
