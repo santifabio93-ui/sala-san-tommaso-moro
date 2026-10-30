@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.26";
+const VERSIONE = "2026-11-01.27";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2258,9 +2258,14 @@ function openCassa(c, date) {
   }
   $("#c-contati").value = v.contati == null ? "" : v.contati;
   $("#c-note").value = v.note || "";
-  $("#c-fondo-hint").textContent = c ? "" : prev ? `Proposto dal saldo della cassa del ${fmtShort(prev.data)}` : "Prima cassa: inserisci quanto c'è nel cassetto";
+  S.fondoProposto = { valore: prev ? prev.fondo_finale : null, data: prev && prev.data,
+    testo: c ? "oppure contalo qui sotto" : prev ? `Proposto dal saldo della cassa del ${fmtShort(prev.data)}: contalo qui sotto per controllare` : "Prima cassa: conta qui sotto quanto c'è nel cassetto" };
+  $("#c-fondo-hint").textContent = S.fondoProposto.testo; $("#c-fondo-hint").style.color = "";
   $("#c-prezzo-hint").textContent = S.prezzoBiglietto ? `Con il numero di biglietti l'importo si calcola a ${money(S.prezzoBiglietto)} l'uno; puoi correggerlo` : "";
-  renderConteggio(v.conteggio || {});
+  const { _fondo: contFondo, ...contChiusura } = v.conteggio || {};
+  renderConteggio("fondo", contFondo || {});
+  renderConteggio("chiusura", contChiusura);
+  $("#c-fondo-det").open = !c || c.stato !== "chiusa" || !!contFondo;
   const locked = c && c.stato === "chiusa" && !S.isAdmin;
   dlgK.querySelectorAll("input,select,textarea,.ct-pezzi button").forEach((el) => (el.disabled = locked));
   $("#c-save").hidden = locked; $("#c-close").hidden = locked || (c && c.stato === "chiusa");
@@ -2273,43 +2278,60 @@ function openCassa(c, date) {
   dlgK.showModal();
 }
 // cruscotto per contare i contanti: per ogni taglio si mette solo il numero di pezzi, il resto lo fa l'app
-function renderConteggio(cont) {
+// due conteggi con lo stesso cruscotto: il fondo all'apertura e i contanti alla chiusura
+const CONTEGGI = {
+  fondo: { box: "#c-conteggio-fondo", campo: "#c-fondo", hint: "#c-fondo-hint", titolo: "Fondo contato" },
+  chiusura: { box: "#c-conteggio", campo: "#c-contati", hint: "#c-contati-hint", titolo: "Totale contato" },
+};
+function renderConteggio(k, cont) {
+  const box = $(CONTEGGI[k].box);
   const riga = (t) => `<div class="ct-riga"><span class="ct-taglio ${t >= 5 ? "banconota b" + t : "moneta " + (t >= 1 ? "bimetallica" : t >= 0.1 ? "oro" : "rame")}">${nomeTaglio(t)}</span>
     <div class="ct-pezzi"><button type="button" class="ct-meno" data-passo="-1" aria-label="Un pezzo da ${nomeTaglio(t)} in meno">−</button><input type="number" min="0" step="1" inputmode="numeric" data-taglio="${t}" value="${cont[t] || ""}" placeholder="0" aria-label="Pezzi da ${nomeTaglio(t)}"><button type="button" class="ct-piu" data-passo="1" aria-label="Un pezzo da ${nomeTaglio(t)} in più">+</button></div>
     <b class="ct-sub num" data-sub="${t}"></b></div>`;
-  $("#c-conteggio").innerHTML = `
-    <div class="ct-gruppo"><h4>Banconote <span class="num" id="c-cont-banc"></span></h4>${BANCONOTE.map(riga).join("")}</div>
-    <div class="ct-gruppo"><h4>Monete <span class="num" id="c-cont-mon"></span></h4>${MONETE.map(riga).join("")}</div>
-    <div class="ct-tot"><span>Totale contato</span><b id="c-cont-tot" class="num"></b><small id="c-cont-pezzi"></small></div>`;
-  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => i.addEventListener("input", () => updateConteggio(true)));
-  $("#c-conteggio").querySelectorAll("[data-passo]").forEach((b) => (b.onclick = () => {
+  box.innerHTML = `
+    <div class="ct-gruppo"><h4>Banconote <span class="num ct-banc"></span></h4>${BANCONOTE.map(riga).join("")}</div>
+    <div class="ct-gruppo"><h4>Monete <span class="num ct-mon"></span></h4>${MONETE.map(riga).join("")}</div>
+    <div class="ct-tot"><span>${CONTEGGI[k].titolo}</span><b class="num ct-totale"></b><small class="ct-npezzi"></small></div>`;
+  box.querySelectorAll("[data-taglio]").forEach((i) => i.addEventListener("input", () => updateConteggio(k, true)));
+  box.querySelectorAll("[data-passo]").forEach((b) => (b.onclick = () => {
     const i = b.parentNode.querySelector("input");
     if (i.disabled) return;
     i.value = Math.max(0, (Number(i.value) || 0) + Number(b.dataset.passo)) || "";
-    updateConteggio(true);
+    updateConteggio(k, true);
   }));
-  updateConteggio(false);
+  updateConteggio(k, false);
 }
-function readConteggio() {
+function readConteggio(k) {
   const out = {};
-  $("#c-conteggio").querySelectorAll("[data-taglio]").forEach((i) => { const n = Math.floor(Number(i.value) || 0); if (n > 0) out[i.dataset.taglio] = n; });
+  $(CONTEGGI[k].box).querySelectorAll("[data-taglio]").forEach((i) => { const n = Math.floor(Number(i.value) || 0); if (n > 0) out[i.dataset.taglio] = n; });
   return out;
 }
-function updateConteggio(apply) {
-  const c = readConteggio(), somma = (lista) => r2(lista.reduce((s, t) => s + t * (c[t] || 0), 0));
+// nel database: i pezzi della chiusura come prima, quelli del fondo sotto «_fondo»
+function conteggioDaSalvare() {
+  const fondo = readConteggio("fondo");
+  return { ...readConteggio("chiusura"), ...(Object.keys(fondo).length ? { _fondo: fondo } : {}) };
+}
+function updateConteggio(k, apply) {
+  const cfg = CONTEGGI[k], box = $(cfg.box);
+  const c = readConteggio(k), somma = (lista) => r2(lista.reduce((s, t) => s + t * (c[t] || 0), 0));
   const tot = somma(TAGLI), pezzi = Object.values(c).reduce((s, n) => s + n, 0);
-  $("#c-conteggio").querySelectorAll("[data-sub]").forEach((el) => { const t = Number(el.dataset.sub); el.textContent = c[t] ? money(r2(t * c[t])) : ""; });
-  $("#c-cont-banc").textContent = money(somma(BANCONOTE));
-  $("#c-cont-mon").textContent = money(somma(MONETE));
-  $("#c-cont-tot").textContent = money(tot);
-  $("#c-cont-pezzi").textContent = pezzi ? `${pezzi} ${pezzi === 1 ? "pezzo" : "pezzi"}` : "metti il numero di pezzi per ogni taglio";
-  // con il conteggio fatto, i contanti contati sono il totale (non si scrivono a mano)
-  const contati = $("#c-contati");
-  contati.readOnly = pezzi > 0;
-  $("#c-contati-hint").textContent = pezzi > 0 ? "calcolati dal conteggio qui sopra" : "oppure scrivi il totale, se hai contato a mano";
-  if (pezzi > 0) { contati.value = tot; if (apply) calcCassa(); }
-  else if (apply && contati.dataset.dalConteggio) { contati.value = ""; calcCassa(); }
-  contati.dataset.dalConteggio = pezzi > 0 ? "1" : "";
+  box.querySelectorAll("[data-sub]").forEach((el) => { const t = Number(el.dataset.sub); el.textContent = c[t] ? money(r2(t * c[t])) : ""; });
+  box.querySelector(".ct-banc").textContent = money(somma(BANCONOTE));
+  box.querySelector(".ct-mon").textContent = money(somma(MONETE));
+  box.querySelector(".ct-totale").textContent = money(tot);
+  box.querySelector(".ct-npezzi").textContent = pezzi ? `${pezzi} ${pezzi === 1 ? "pezzo" : "pezzi"}` : "metti il numero di pezzi per ogni taglio";
+  // con il conteggio fatto, l'importo è il totale (non si scrive a mano)
+  const campo = $(cfg.campo);
+  campo.readOnly = pezzi > 0;
+  if (k === "chiusura") $(cfg.hint).textContent = pezzi > 0 ? "calcolati dal conteggio qui sopra" : "oppure scrivi il totale, se hai contato a mano";
+  else {
+    const p = S.fondoProposto;
+    $(cfg.hint).textContent = pezzi > 0 ? (p && p.valore != null && Math.abs(tot - p.valore) >= 0.005 ? `Contato: ${money(tot)}. Attenzione: la cassa del ${fmtShort(p.data)} si era chiusa con ${money(p.valore)}` : "calcolato dal conteggio qui sotto") : (p ? p.testo : "");
+    $(cfg.hint).style.color = pezzi > 0 && p && p.valore != null && Math.abs(tot - p.valore) >= 0.005 ? "var(--due-fg)" : "";
+  }
+  if (pezzi > 0) { campo.value = tot; if (apply) calcCassa(); }
+  else if (apply && campo.dataset.dalConteggio) { campo.value = k === "fondo" && S.fondoProposto && S.fondoProposto.valore != null ? S.fondoProposto.valore : ""; calcCassa(); }
+  campo.dataset.dalConteggio = pezzi > 0 ? "1" : "";
 }
 function readCassa() {
   const g = (k) => numVal("#c-" + k) || 0;
@@ -2318,7 +2340,7 @@ function readCassa() {
     titolo: $("#c-evento").value ? "" : $("#c-titolo").value.trim(),
     fondo_iniziale: g("fondo"), online_n: g("online_n"), online_euro: g("online_euro"), contanti_n: g("contanti_n"), contanti_euro: g("contanti_euro"),
     pos_n: g("pos_n"), pos_euro: g("pos_euro"), omaggi_n: g("omaggi_n"),
-    contati: numVal("#c-contati"), conteggio: readConteggio(), prelievo: g("prelievo"), note: $("#c-note").value.trim(),
+    contati: numVal("#c-contati"), conteggio: conteggioDaSalvare(), prelievo: g("prelievo"), note: $("#c-note").value.trim(),
   };
   const attesi = r2(rec.fondo_iniziale + rec.contanti_euro);
   rec.fondo_finale = r2((rec.contati == null ? attesi : rec.contati) - rec.prelievo);

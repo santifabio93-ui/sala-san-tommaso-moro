@@ -747,3 +747,8 @@ nav.tabs { position: relative }
 .ct-pezzi button { width: 34px; height: 36px }
 .ct-pezzi input { width: 50px; height: 36px; padding: 0 }
 .ct-sub { white-space: nowrap; font-size: .85rem }
+.ct-det { margin: 14px 0 4px; border-top: 1px solid var(--line); padding-top: 12px }
+.ct-det summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; cursor: pointer; list-style: none; margin-bottom: 10px }
+.ct-det summary::-webkit-details-marker { display: none }
+.ct-det summary h3::before { content: "▸ "; color: var(--accent) }
+.ct-det[open] summary h3::before { content: "▾ " }
