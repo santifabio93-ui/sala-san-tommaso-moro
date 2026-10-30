@@ -92,6 +92,13 @@ script installato in quell'account con `MODALITA` = `email`.
 Prima di passare a `calendario+email` (scrittura sul calendario), fai un backup:
 Google Calendar → Impostazioni → Importa ed esporta → Esporta.
 
+## La serata
+La pagina **La serata** mostra su un'unica schermata, anche dal telefono, la serata di oggi o la prossima con qualcosa
+in sala (con ‹ › per le altre): eventi e orari, capienza, chi è di turno e chi manca, i film con supporto, dove si
+trova e stato della prova, il collegamento alla cassa e i promemoria di sicurezza per l'apertura e la chiusura.
+Amministratori e coordinatori vedono anche organizzatore e responsabile in sala con il telefono, il tecnico, cosa
+c'è da sapere dalla scheda (carrozzine, effetti, attrezzature, SIAE), il parere di sicurezza e quanto resta da incassare.
+
 ## Cassa
 Esegui una volta `supabase/003_cassa.sql` nel SQL Editor. Nella sezione **Cassa** chi fa cassa registra per ogni serata
 biglietti online, botteghino in contanti e con POS, omaggi; conta i contanti (anche per taglio), vede se la cassa quadra,

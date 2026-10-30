@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.10";
+const VERSIONE = "2026-11-01.11";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -24,6 +24,7 @@ const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino
 const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario"] },
+  serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
@@ -49,7 +50,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 }
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
-  { k: "calendario" },
+  { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
   { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
@@ -297,6 +298,7 @@ function render() {
   if (S.view === "donazioni") renderDonazioni();
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
+  if (S.view === "serata") renderSerata();
   if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
@@ -2742,6 +2744,68 @@ function renderVolontari() {
     if (!righe.length) { toast("Nei prossimi 14 giorni i turni sono tutti coperti"); return; }
     openCopyText([`📋 Turni in sala dei prossimi giorni: ci sono ancora posti!`, "", ...righe.map((x) => `• ${fmtShort(x.b.data)} · ${x.b.titolo} · ${x.t.inizio}–${x.t.fine} (${x.m === 1 ? "serve 1 persona" : `servono ${x.m} persone`})`), "", "Segnatevi dal vostro link personale. Se non lo trovate, scrivetemi e ve lo rimando. Grazie! 🙏"].join("\n"));
   };
+}
+
+/* ---------- la serata: tutto quello che serve a chi apre la sala, su una pagina ---------- */
+const CAPIENZA = { galleria: "fino a 134 persone (solo galleria)", platea: "fino a 338 persone (platea)", tutta: "fino a 472 persone (platea e galleria)" };
+// giorni con qualcosa in sala: eventi non annullati e proiezioni
+const giorniConEventi = () => [...new Set([...S.bookings.filter(active).map((b) => b.data), ...S.proiezioni.map((p) => p.data)])].sort();
+function renderSerata() {
+  const el = $("#serata-body");
+  const giorni = giorniConEventi();
+  // senza una scelta, la serata di oggi o la prossima con qualcosa in sala
+  const d = S.serataData || giorni.find((x) => x >= TODAY) || TODAY, prima = [...giorni].reverse().find((x) => x < d), dopo = giorni.find((x) => x > d);
+  const eventi = S.bookings.filter((b) => active(b) && b.data === d).sort(byWhen);
+  const film = S.proiezioni.filter((p) => p.data === d).map((p) => ({ p, f: S.films.find((x) => x.id === p.film_id) })).filter((x) => x.f).sort((a, b) => a.p.ora.localeCompare(b.p.ora));
+  const quando = d === TODAY ? "Stasera" : d === addDays(TODAY, 1) ? "Domani" : d < TODAY ? "Serata passata" : "Prossima serata";
+  const tel = (n) => (n ? `<a href="tel:${esc(String(n).replace(/[^\d+]/g, ""))}">${esc(n)}</a>` : "");
+  const riga = (et, v) => (v ? `<div class="sr-riga"><span>${et}</span><div>${v}</div></div>` : "");
+  const schedaDi = (b) => S.schede.filter((x) => x.booking_id === b.id && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+
+  const blocchiEventi = eventi.map((b) => {
+    const sk = schedaDi(b), dd = (sk && sk.dati) || {}, pub = pubblicoDi(b).k;
+    const spazio = dd.fascia || (b.tariffa && b.tariffa.spazio) || (pub === "galleria" ? "galleria" : "");
+    const turniHtml = turni(b).map((t) => {
+      const ppl = signupsFor(b.id, t.id), manca = Math.max(0, (Number(t.posti) || 0) - ppl.length);
+      return `<div class="sr-turno"><b>${esc(t.label)}</b> <span class="hint">${esc(t.inizio)}–${esc(t.fine)}</span><div>${ppl.length ? ppl.map((x) => `<span class="person solo${isMine(x) ? " me" : ""}">${esc(x.nome)}</span>`).join(" ") : '<span class="hint">nessuno</span>'}${manca ? ` <span class="pill dapagare">${manca === 1 ? "manca 1 persona" : `mancano ${manca} persone`}</span>` : ""}</div></div>`;
+    }).join("");
+    const tecnico = { sala: "serve il tecnico della sala", nostro: `loro tecnico${dd.tecnico_nome ? ": " + esc(dd.tecnico_nome) : ""} ${tel(dd.tecnico_cell)}`, nessuno: "non serve" }[dd.tecnico];
+    const daIncassare = S.canWrite ? residuo(b) : 0;
+    return `<article class="panel sr-evento">
+      <div class="section-head"><h3>${esc(b.titolo)}</h3><span class="pill ${b.stato}">${STATI[b.stato]}</span></div>
+      <div class="sr-ora">${esc(orario(b))}${b.tipo ? ` · ${esc(b.tipo)}` : ""}${pub ? ` · ${esc(PUBBLICO[pub].split(" (")[0].toLowerCase())}` : ""}</div>
+      ${riga("Capienza", spazio && CAPIENZA[spazio] ? esc(CAPIENZA[spazio]) + (dd.pubblico_n ? ` · attesi circa ${esc(dd.pubblico_n)}` : "") : dd.pubblico_n ? `attesi circa ${esc(dd.pubblico_n)}` : "")}
+      ${S.canWrite ? riga("Organizzatore", [esc(dd.ente || b.referente), b.referente && dd.ente ? esc(b.referente) : "", tel(dd.cellulare || b.telefono)].filter(Boolean).join(" · ")) : ""}
+      ${S.canWrite ? riga("Responsabile in sala", dd.resp_sera ? `${esc(dd.resp_sera)} ${tel(dd.resp_cell)}` : "") : ""}
+      ${S.canWrite ? riga("Tecnico", tecnico || "") : ""}
+      ${S.canWrite ? riga("Da sapere", [dd.carrozzina_n ? `${esc(dd.carrozzina_n)} persone in carrozzina` : "", dd.bambini_n ? `${esc(dd.bambini_n)} bambini` : "", dd.effetti && dd.effetti !== "nessuno" ? `effetti: ${esc(dd.effetti === "fumo" ? "macchina del fumo" : dd.effetti_quali || "altro")}` : "", dd.attrezzature === "si" ? `attrezzature loro: ${esc(dd.attrezzature_quali || "sì")}${dd.potenza_w ? ` (${esc(dd.potenza_w)} W)` : ""}` : "", dd.scenografie === "si" ? `scenografie: ${esc(dd.scenografie_quali || "sì")}` : "", dd.siae === "si" ? (siaeStato(dd) === "allegato" ? "permesso SIAE allegato" : "permesso SIAE da ricevere") : ""].filter(Boolean).join(" · ")) : ""}
+      ${S.canWrite && sk && sk.sicurezza ? riga("Sicurezza", `${esc({ compatibile: "compatibile", condizioni: "compatibile con condizioni", non_compatibile: "non compatibile" }[sk.sicurezza])}${sk.sicurezza_note ? ": " + esc(sk.sicurezza_note) : ""}`) : ""}
+      ${S.canWrite && !sk && !b.comune && b.prezzo > 0 ? riga("Scheda", '<span class="hint">l\'organizzatore non ha compilato la scheda</span>') : ""}
+      ${daIncassare > 0 ? riga("Da incassare", `<b>${money(daIncassare)}</b> su ${money(b.prezzo)}`) : ""}
+      ${b.note && S.canWrite ? riga("Note", esc(b.note)) : ""}
+      ${turniHtml ? `<h4>Chi è di turno</h4>${turniHtml}` : `<p class="hint">Nessun turno previsto per questo evento.</p>`}
+    </article>`;
+  }).join("");
+
+  const blocchiFilm = film.length ? `<article class="panel sr-evento"><div class="section-head"><h3>Cinema</h3></div>
+    ${film.map(({ p, f }) => { const r = readiness(f);
+      return `<div class="sr-riga"><span>${esc(p.ora)}</span><div><b>${esc(f.titolo)}</b> <span class="pill ${pillCls[r.cls]}">${esc(r.text)}</span><div class="hint">${[f.supporto ? SUPPORTI[f.supporto] : "supporto da decidere", f.dove ? `si trova: ${esc(f.dove)}` : "", f.prova_esito === "problemi" && f.prova_note ? `problemi alla prova: ${esc(f.prova_note)}` : ""].filter(Boolean).join(" · ")}</div></div></div>`; }).join("")}
+    ${S.canCassa ? `<div class="actions" style="margin-top:8px"><a class="btn sm" href="#cassa">Apri la cassa</a></div>` : ""}</article>` : "";
+
+  el.innerHTML = `
+    <div class="toolbar">
+      <div><span class="eyebrow">${quando}</span><h2>${esc(fmtDay(d, { weekday: "long", day: "numeric", month: "long" }))}</h2></div>
+      <div class="seg" role="group" aria-label="Cambia giorno"><button type="button" data-g="${prima || ""}"${prima ? "" : " disabled"} aria-label="Serata precedente">‹</button><button type="button" data-g="">Prossima</button><button type="button" data-g="${dopo || ""}"${dopo ? "" : " disabled"} aria-label="Serata successiva">›</button></div>
+    </div>
+    ${!eventi.length && !film.length ? `<div class="empty">In questo giorno la sala è libera.</div>` : `<div class="sr-grid">${blocchiFilm}${blocchiEventi}</div>`}
+    <details class="panel sr-sicurezza"><summary><b>Prima di aprire e alla chiusura</b></summary><ul>
+      <li>Uscite di emergenza e percorsi liberi, anche all'esterno; luci di emergenza accese.</li>
+      <li>Non superare la capienza: 134 solo galleria, 338 platea, 472 platea e galleria.</li>
+      <li>Niente passeggini in sala; carrozzine per persone con disabilità sì. Ascensore solo per chi ne ha bisogno.</li>
+      <li>Niente fiamme, candele, cibo e bevande in sala.</li>
+      <li>Alla chiusura: luci, riscaldamento o condizionatore spenti, porte chiuse, allarme inserito.</li>
+    </ul></details>`;
+  el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.serataData = b.dataset.g || null; renderSerata(); }));
 }
 
 function route() {

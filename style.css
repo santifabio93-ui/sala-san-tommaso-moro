@@ -458,3 +458,14 @@ a.btn.primary { color: var(--accent-ink) }
 .promemoria, .film-todo { margin-bottom: 14px }
 .todo-riga { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); flex-wrap: wrap }
 .todo-riga .az { display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+/* la serata */
+.sr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start }
+@media (max-width: 400px) { .sr-grid { grid-template-columns: minmax(0, 1fr) } }
+.sr-ora { font-weight: 600; margin: -4px 0 8px }
+.sr-riga { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: .92rem }
+.sr-riga > span { color: var(--muted); font-size: .8rem; font-weight: 600 }
+.sr-evento h4 { margin: 12px 0 6px; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted) }
+.sr-turno { padding: 6px 0; border-top: 1px solid var(--line) }
+.sr-turno > div { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center }
+.sr-sicurezza { margin-top: 14px }
+.sr-sicurezza ul { margin: 8px 0 0; padding-left: 18px }
