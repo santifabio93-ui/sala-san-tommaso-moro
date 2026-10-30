@@ -124,40 +124,92 @@ async function mostraBadge() {
   } catch (e) { toast("Non riesco a mostrare il badge: controlla la connessione"); }
 }
 
+// colore e iniziali di una persona, sempre uguali per lo stesso nome
+const iniziali = (n) => String(n).trim().split(/\s+/).slice(0, 2).map((p) => p[0] || "").join("").toUpperCase();
+const tinta = (n) => { let h = 0; for (const c of String(n)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const tra = (d) => { const g = Math.round((new Date(d + "T12:00:00") - new Date(new Date().toDateString() + " 12:00")) / 864e5); return g <= 0 ? "oggi" : g === 1 ? "domani" : `tra ${g} giorni`; };
+const giornoBreve = (d) => new Date(d + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short", day: "numeric", month: "short" });
+let filtro = "", conferma = null;
+
 function disegna() {
-  const io = dati.nome, fasce = dati.fasce || [];
-  const mie = fasce.filter((f) => f.mio).length;
+  const io = dati.nome, fasce = dati.fasce || [], mie = fasce.filter((f) => f.mio);
+  const manca = (f) => Math.max(0, f.posti - f.presi);
+  const urgente = (f) => manca(f) > 0 && !f.mio && (new Date(f.data + "T12:00:00") - new Date()) / 864e5 < 3;
+  const servono = fasce.filter((f) => manca(f) > 0 && !f.mio);
+  if (!filtro) filtro = servono.length ? "servo" : "tutti";
+  const visibili = filtro === "servo" ? fasce.filter((f) => manca(f) > 0 || f.mio) : fasce;
+  // giorni → eventi → fasce
   const giorni = [];
-  for (const f of fasce) { const g = giorni[giorni.length - 1]; if (g && g.data === f.data) g.fasce.push(f); else giorni.push({ data: f.data, fasce: [f] }); }
-  mostra(`<h2>Ciao ${esc(io)} 👋</h2>
-    <p class="hint">Tocca «Ci sono» nelle fasce in cui puoi esserci. ${mie ? `Sei segnato in <b>${mie}</b> ${mie === 1 ? "fascia" : "fasce"}.` : ""}</p>
-    ${stasera.length ? `<a class="btn primary conta-btn" href="conta.html?t=${esc(token)}">🚪 Contapersone di stasera <small>${esc(stasera.map((e) => (e.ora ? e.ora + " " : "") + e.titolo).join(" · "))}</small></a>` : ""}
+  for (const f of visibili) {
+    let g = giorni.find((x) => x.data === f.data); if (!g) giorni.push((g = { data: f.data, eventi: [] }));
+    let ev = g.eventi.find((x) => x.id === f.booking_id); if (!ev) g.eventi.push((ev = { id: f.booking_id, titolo: f.titolo, ora: f.giornata_intera ? "" : f.inizio_evento, fasce: [] }));
+    ev.fasce.push(f);
+  }
+  const prossimo = mie[0];
+  const posti = (f) => Array.from({ length: Math.max(f.posti, f.nomi.length) }, (_, i) => f.nomi[i]
+    ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}" style="--h:${tinta(f.nomi[i])}" title="${esc(f.nomi[i])}">${esc(iniziali(f.nomi[i]))}</span>`
+    : `<span class="av vuoto" title="posto libero"></span>`).join("");
+  const azione = (f) => {
+    const k = fasce.indexOf(f);
+    if (f.mio) return conferma === k ? `<button class="tb togli" type="button" data-k="${k}" data-si="0">Toglimi</button>` : `<button class="tb ci-sei" type="button" data-chiedi="${k}">✓ Ci sei</button>`;
+    return manca(f) ? `<button class="tb ci-sono" type="button" data-k="${k}" data-si="1">Ci sono</button>` : `<span class="tb pieno">Completo</span>`;
+  };
+  mostra(`
+    <section class="ciao">
+      <div class="ciao-t"><small>Turni della Sala</small><h2>Ciao ${esc(io.split(" ")[0])} 👋</h2>
+        <p>${mie.length ? `Sei in <b>${mie.length}</b> ${mie.length === 1 ? "turno" : "turni"}${prossimo ? ` · il prossimo è <b>${esc(tra(prossimo.data))}</b>, ${esc(giornoBreve(prossimo.data))} alle ${esc(prossimo.inizio)}` : ""}.` : servono.length ? `Ci sono <b>${servono.length}</b> ${servono.length === 1 ? "fascia che aspetta" : "fasce che aspettano"} qualcuno: tocca «Ci sono» dove puoi.` : "Per ora i turni sono tutti coperti. Grazie!"}</p></div>
+      <div class="ciao-az">
+        ${stasera.length ? `<a class="pill-az" href="conta.html?t=${esc(token)}">🚪 Contapersone</a>` : ""}
+        ${badge ? `<button class="pill-az" type="button" id="mio-badge">🪪 Badge</button>` : ""}
+        ${mie.length ? `<button class="pill-az" type="button" id="cal-tutti">📅 Calendario</button>` : ""}
+      </div>
+    </section>
     ${salvaLink()}
-    ${badge ? `<button class="btn sm badge-btn" type="button" id="mio-badge">🪪 Il mio badge per la cassa</button>` : ""}
-    ${mie ? `<div class="cal-tutti"><button class="btn sm" type="button" id="cal-tutti">📅 Tutti i miei turni nel calendario</button><span class="hint">${IOS ? "si aprono nel Calendario dell'iPhone, con l'avviso un'ora prima" : "file da aprire con il calendario del telefono o di Outlook"}</span></div>` : ""}
-    ${giorni.length ? giorni.map((g) => `<section class="giorno"><span class="eyebrow">${esc(giorno(g.data))}</span>
-      ${g.fasce.map((f, i) => { const manca = Math.max(0, f.posti - f.presi), k = fasce.indexOf(f);
-        return `<div class="fascia${f.mio ? " mia" : ""}"><div>
-          <div class="t">${esc(f.titolo)}</div>
-          <div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}</div>
-          ${f.nomi.length ? `<div class="nomi">${f.nomi.map((n) => `<span class="${f.mio && n === io ? "io" : ""}">${esc(n)}</span>`).join("")}</div>` : ""}
-          <div class="stato ${manca ? "manca" : "pieno"}">${manca ? (manca === 1 ? "serve ancora 1 persona" : `servono ancora ${manca} persone`) : "al completo ✓"}</div>
-          ${f.mio ? (IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Mettilo nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Mettilo nel calendario</a>`) : ""}</div>
-          ${f.mio ? `<button class="btn" type="button" data-k="${k}" data-si="0">Non ci sono più</button>` : manca ? `<button class="btn primary" type="button" data-k="${k}" data-si="1">Ci sono</button>` : ""}
-        </div>`; }).join("")}</section>`).join("")
-      : `<div class="empty" style="margin-top:16px">Al momento non ci sono turni aperti nei prossimi 30 giorni. Grazie!</div>`}`);
+    ${mie.length ? `<section class="miei"><h3>I tuoi turni</h3>${mie.map((f) => { const k = fasce.indexOf(f), altri = f.nomi.filter((n) => n !== io);
+      return `<div class="mio"><div class="mio-q"><b>${esc(giornoBreve(f.data))}</b><span>${esc(tra(f.data))}</span></div>
+        <div class="mio-c"><div class="t">${esc(f.titolo)}</div><div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}${altri.length ? ` · con ${esc(altri.join(", "))}` : ""}</div>
+          ${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}</div></div>`; }).join("")}</section>` : ""}
+    <div class="filtri"><button type="button" data-filtro="servo" class="${filtro === "servo" ? "on" : ""}">Dove servo <span>${servono.length}</span></button><button type="button" data-filtro="tutti" class="${filtro === "tutti" ? "on" : ""}">Tutti <span>${fasce.length}</span></button></div>
+    ${giorni.length > 1 ? `<nav class="giorni-strip" aria-label="Giorni">${giorni.map((g) => { const tutte = g.eventi.flatMap((e) => e.fasce);
+      return `<a href="#g-${g.data}" class="${tutte.some((f) => f.mio) ? "c-me" : ""}"><small>${esc(new Date(g.data + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short" }))}</small><b>${+g.data.slice(8)}</b>${tutte.some((f) => manca(f) && !f.mio) ? `<i class="punto"></i>` : ""}</a>`; }).join("")}</nav>` : ""}
+    ${giorni.length ? giorni.map((g) => `<section class="giorno" id="g-${g.data}"><span class="eyebrow">${esc(giorno(g.data))}</span>
+      ${g.eventi.map((ev) => `<article class="evento${ev.fasce.some((f) => f.mio) ? " con-me" : ""}">
+        <header><div><div class="t">${esc(ev.titolo)}</div>${ev.ora ? `<div class="hint">inizio ${esc(ev.ora)}</div>` : ""}</div>${ev.fasce.some(urgente) ? `<span class="urgente">Urgente</span>` : ""}</header>
+        ${ev.fasce.map((f) => `<div class="fascia2${f.mio ? " mia" : ""}">
+          <div class="f-ora"><b>${esc(f.inizio)}</b><span>${esc(f.fine)}</span></div>
+          <div class="f-c"><div class="f-n">${esc(f.fascia)}</div><div class="avs">${posti(f)}</div>
+            <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : "al completo ✓"}</div></div>
+          <div class="f-a">${azione(f)}</div></div>`).join("")}
+      </article>`).join("")}</section>`).join("")
+      : `<div class="vuoto-t">${filtro === "servo" ? "In questo momento non servono persone: grazie! Tocca «Tutti» per vedere tutti i turni." : "Al momento non ci sono turni nei prossimi 30 giorni."}</div>`}`);
   const ok = $("#salva-ok"); if (ok) ok.onclick = () => { try { localStorage.setItem(CHIAVE + "-home", "1"); } catch (e) {} benvenuto = false; $("#salva").remove(); };
   const cp = $("#copia-link"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(conCodice(token)); toast("Link copiato: incollalo dove vuoi tenerlo"); } catch (e) { prompt("Copia il tuo link:", conCodice(token)); } };
   const mb = $("#mio-badge"); if (mb) mb.onclick = mostraBadge;
-  const ct = $("#cal-tutti"); if (ct) ct.onclick = () => nelCalendario(fasce.filter((f) => f.mio));
+  const ct = $("#cal-tutti"); if (ct) ct.onclick = () => nelCalendario(mie);
   document.querySelectorAll("[data-cal]").forEach((b) => (b.onclick = () => nelCalendario([fasce[+b.dataset.cal]])));
-  document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {
-    const f = fasce[+b.dataset.k], si = b.dataset.si === "1";
-    b.disabled = true;
-    const { error } = await sb.rpc("turni_segna", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id, p_si: si });
-    if (error) toast(error.message); else toast(si ? "Grazie, sei in turno! Toccando 📅 lo metti nel calendario" : "Ti sei tolto dal turno: se l'avevi nel calendario, cancellalo anche lì");
-    await carica();
-  }));
+  document.querySelectorAll("[data-filtro]").forEach((b) => (b.onclick = () => { filtro = b.dataset.filtro; conferma = null; disegna(); }));
+  document.querySelectorAll("[data-chiedi]").forEach((b) => (b.onclick = () => { conferma = +b.dataset.chiedi; disegna(); clearTimeout(disegna.t); disegna.t = setTimeout(() => { conferma = null; if (dati) disegna(); }, 4000); }));
+  document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => segna(fasce[+b.dataset.k], b.dataset.si === "1")));
+}
+
+// ci sono / non ci sono più: la pagina cambia subito, il database dopo; se va male si torna indietro
+async function segna(f, si, annulla) {
+  const io = dati.nome;
+  const prima = { mio: f.mio, presi: f.presi, nomi: [...f.nomi] };
+  f.mio = si; f.presi += si ? 1 : -1; f.nomi = si ? [...f.nomi, io] : f.nomi.filter((n, i) => !(n === io && i === f.nomi.lastIndexOf(io)));
+  conferma = null; disegna();
+  if (navigator.vibrate) navigator.vibrate(si ? 25 : [12, 40, 12]);
+  const { error } = await sb.rpc("turni_segna", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id, p_si: si });
+  if (error) { Object.assign(f, prima); disegna(); toast(error.message); return; }
+  if (!annulla) toastAnnulla(si ? "Grazie, sei in turno! 🎉" : "Ti sei tolto dal turno", () => segna(f, !si, true));
+  setTimeout(carica, 600);
+}
+function toastAnnulla(msg, fn) {
+  const t = $("#toast");
+  t.innerHTML = `${esc(msg)} <button type="button" class="annulla">Annulla</button>`;
+  t.hidden = false;
+  t.querySelector("button").onclick = () => { t.hidden = true; fn(); };
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 5000);
 }
 
 carica();

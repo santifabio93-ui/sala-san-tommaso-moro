@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.46">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.47">
 <style>
 .wrap { max-width: 640px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -37,6 +37,52 @@
 .conta-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 12px; padding: 14px 16px; border-radius: var(--r); text-decoration: none; font-size: 1.05rem }
 .conta-btn small { font-weight: 500; opacity: .85; font-size: .82rem }
 .salva { margin-top: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--gold-soft, #F6EDD0); border: 1px solid color-mix(in oklab, var(--gold, #C9A227) 35%, transparent); font-size: .9rem }
+
+/* --- pagina dei turni, versione «smart» --- */
+.ciao { margin-top: 4px; border-radius: 20px; padding: 18px 18px 16px; color: #F4F0E6; background: radial-gradient(500px 160px at 10% -30%, rgba(217,180,74,.25), transparent 60%), linear-gradient(135deg, var(--curtain-1, #0E2629), var(--curtain-2, #163A39) 55%, var(--curtain-3, #1E4A46)); box-shadow: 0 10px 30px rgba(14,38,41,.25) }
+.ciao small { letter-spacing: .1em; text-transform: uppercase; color: rgba(244,240,230,.65); font-weight: 700; font-size: .72rem }
+.ciao h2 { color: #fff; margin: 2px 0 6px; font-size: 1.6rem }
+.ciao p { margin: 0; color: rgba(244,240,230,.9) } .ciao p b { color: #E9CF7E }
+.ciao-az { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px }
+.pill-az { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: #fff; font: inherit; font-weight: 700; font-size: .9rem; text-decoration: none; cursor: pointer }
+.miei { margin-top: 16px } .miei h3 { margin: 0 0 8px }
+.mio { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; align-items: center; padding: 12px; border-radius: 16px; background: var(--accent-soft); border: 1px solid color-mix(in oklab, var(--accent) 30%, transparent) }
+.mio + .mio { margin-top: 8px }
+.mio-q { text-align: center; background: var(--surface); border-radius: 12px; padding: 8px 4px } .mio-q b { display: block; font-size: .92rem } .mio-q span { font-size: .75rem; color: var(--accent); font-weight: 700 }
+.mio-c .t { font-weight: 800 }
+.filtri { display: flex; gap: 6px; margin: 18px 0 6px; background: var(--sunk); padding: 4px; border-radius: 999px; width: fit-content }
+.filtri button { border: 0; background: none; padding: 8px 16px; border-radius: 999px; font: inherit; font-weight: 700; color: var(--muted); cursor: pointer }
+.filtri button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.08) }
+.filtri span { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--line); font-size: .75rem }
+.filtri button.on span { background: var(--accent); color: #fff }
+.giorni-strip { display: flex; gap: 8px; overflow-x: auto; padding: 6px 2px 10px; scrollbar-width: none; scroll-snap-type: x proximity } .giorni-strip::-webkit-scrollbar { display: none }
+.giorni-strip a { position: relative; flex: 0 0 auto; min-width: 54px; text-align: center; padding: 8px 6px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); text-decoration: none; color: var(--ink); scroll-snap-align: start }
+.giorni-strip a small { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700 } .giorni-strip a b { font-size: 1.2rem }
+.giorni-strip a.c-me { border-color: var(--accent); background: var(--accent-soft) }
+.giorni-strip .punto { position: absolute; top: 6px; right: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--due-fg) }
+.giorno { margin-top: 14px; scroll-margin-top: 12px }
+.evento { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; box-shadow: var(--shadow-sm, none) }
+.evento + .evento { margin-top: 10px } .evento.con-me { border-color: color-mix(in oklab, var(--accent) 45%, var(--line)) }
+.evento header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 12px 14px 8px } .evento header .t { font-weight: 800; font-size: 1.05rem }
+.urgente { background: var(--due-bg); color: var(--due-fg); font-weight: 800; font-size: .72rem; letter-spacing: .05em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; white-space: nowrap }
+.fascia2 { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line) }
+.fascia2.mia { background: color-mix(in oklab, var(--accent-soft) 70%, transparent) }
+.f-ora { text-align: center; font-variant-numeric: tabular-nums } .f-ora b { display: block } .f-ora span { font-size: .78rem; color: var(--muted) }
+.f-n { font-weight: 700; font-size: .92rem }
+.avs { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 3px }
+.av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 800; color: #fff; background: hsl(var(--h) 45% 42%) }
+.av.io { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent) }
+.av.vuoto { background: transparent; border: 2px dashed color-mix(in oklab, var(--muted) 55%, transparent) }
+.f-s { font-size: .78rem; font-weight: 700 } .f-s.manca { color: var(--opz-fg) } .f-s.ok { color: var(--ok-fg) }
+.tb { border: 0; border-radius: 14px; padding: 12px 14px; font: inherit; font-weight: 800; cursor: pointer; white-space: nowrap; touch-action: manipulation }
+.tb.ci-sono { background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 85%, #fff), var(--accent)); color: #fff; box-shadow: 0 4px 12px color-mix(in oklab, var(--accent) 30%, transparent) }
+.tb.ci-sei { background: var(--surface); color: var(--accent); border: 2px solid var(--accent) }
+.tb.togli { background: var(--due-bg); color: var(--due-fg); border: 2px solid var(--due-fg) }
+.tb.pieno { background: var(--sunk); color: var(--muted); font-weight: 700; font-size: .85rem; cursor: default }
+.tb:active { transform: scale(.97) }
+.vuoto-t { text-align: center; padding: 26px 12px; color: var(--muted) }
+.toast .annulla { margin-left: 10px; border: 0; background: none; color: #E9CF7E; font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline }
+@media (max-width: 380px) { .fascia2 { grid-template-columns: 46px minmax(0, 1fr) } .f-a { grid-column: 2 } }
 </style>
 </head>
 <body>
@@ -48,7 +94,7 @@
   <div id="app"><p class="muted">Caricamento dei turni…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.46"></script>
-<script type="module" src="turni.js?v=2026-11-01.46"></script>
+<script src="../config.js?v=2026-11-01.47"></script>
+<script type="module" src="turni.js?v=2026-11-01.47"></script>
 </body>
 </html>
