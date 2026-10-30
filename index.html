@@ -11,14 +11,14 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.34">
+<link rel="stylesheet" href="style.css?v=2026-11-01.35">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
 <div id="sipario" aria-hidden="true">
   <div class="s-tenda s-sx"></div><div class="s-tenda s-dx"></div>
   <div class="s-mantovana"></div>
-  <div class="s-sigillo"><span>TM</span><small>Sala San Tommaso Moro</small></div>
+  <div class="s-sigillo"><span class="ritratto"><img src="moro.svg" alt=""></span><small>Sala San Tommaso Moro</small></div>
 </div>
 <script>
 (function () {
@@ -40,7 +40,7 @@
 <div class="gate" id="screen-login" hidden>
   <div class="gate-card">
     <div class="brand">
-      <div class="seal" aria-hidden="true">TM</div>
+      <div class="seal ritratto" aria-hidden="true"><img src="moro.svg" alt=""></div>
       <div><div class="eyebrow">Registro della sala</div><h1>Sala San Tommaso Moro</h1></div>
     </div>
     <p>Accedi con il tuo account Google per vedere il calendario e segnarti ai turni.</p>
@@ -61,7 +61,7 @@
 <div class="gate" id="screen-pending" hidden>
   <div class="gate-card">
     <div class="brand">
-      <div class="seal" aria-hidden="true">TM</div>
+      <div class="seal ritratto" aria-hidden="true"><img src="moro.svg" alt=""></div>
       <div><div class="eyebrow">Registro della sala</div><h1>Sala San Tommaso Moro</h1></div>
     </div>
     <h2 id="pending-title">Richiesta inviata</h2>
@@ -80,7 +80,7 @@
 <div class="wrap" id="app" hidden>
   <header class="top">
     <div class="brand">
-      <div class="seal" aria-hidden="true">TM</div>
+      <div class="seal ritratto" aria-hidden="true"><img src="moro.svg" alt=""></div>
       <div>
         <div class="eyebrow">Registro della sala</div>
         <h1>Sala San Tommaso Moro</h1>
@@ -665,7 +665,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.34"></script>
-<script type="module" src="app.js?v=2026-11-01.34"></script>
+<script src="config.js?v=2026-11-01.35"></script>
+<script type="module" src="app.js?v=2026-11-01.35"></script>
 </body>
 </html>
