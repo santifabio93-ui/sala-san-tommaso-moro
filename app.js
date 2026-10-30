@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.41";
+const VERSIONE = "2026-11-01.42";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -61,7 +61,7 @@ const MENU = [
   { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { label: "Turni", children: ["turni", "volontari"] }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese", turni: "Turni", volontari: "Volontari" };
-const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
+const canSee = (k) => (S.postazione ? k === "cassa" : k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
 const S = {
@@ -136,9 +136,11 @@ async function start() {
   S.canCassa = S.staff || !!me.cassa;
   // il parroco vede in sola lettura, con i soli totali dei conti (aggiornamento 27)
   S.isParroco = S.role === "parroco";
+  // computer della biglietteria: vede solo la cassa, chi fa cassa si riconosce con la tessera sanitaria (aggiornamento 28)
+  S.postazione = !!me.solo_cassa && S.canCassa;
   S.vedeConti = S.isAdmin || S.isParroco;
   $("#me-name").textContent = me.nome || me.email;
-  $("#me-role").textContent = RUOLI[S.role];
+  $("#me-role").textContent = me.solo_cassa && me.cassa ? "Postazione cassa" : RUOLI[S.role];
   if (me.avatar) { $("#me-avatar").src = me.avatar; $("#me-avatar").hidden = false; }
   $("#me-pw").hidden = (user.app_metadata && user.app_metadata.provider) !== "email";
   show("app");
@@ -245,6 +247,7 @@ async function loadAll() {
     if (rq.data) S.requests = rq.data;
     if (inv.data) S.invites = inv.data;
     if (ca.data) S.cassa = ca.data.map(mapCassa);
+    if (S.canCassa) { const cn = await sb.from("cassa").select("aperta_da_nome").limit(1); S.cassaNomi = !cn.error; }
     if (fi.data) S.films = fi.data;
     if (pj.data) S.proiezioni = pj.data.map((r) => ({ ...r, ora: hm(r.ora) }));
     if (dn.data) S.donatori = dn.data;
@@ -406,8 +409,8 @@ function render() {
 
 function renderKpis() {
   // il parroco ha già i suoi numeri nella pagina «In breve»
-  $("#kpis").hidden = !!S.isParroco;
-  if (S.isParroco) return;
+  $("#kpis").hidden = !!(S.isParroco || S.postazione);
+  if (S.isParroco || S.postazione) return;
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
   const next = upcoming[0];
   const scoperti = upcoming.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
@@ -633,16 +636,21 @@ function renderEconomy() {
 function renderUsers() {
   const list = [...S.profiles].sort((a, b) => (a.ruolo === "in_attesa" ? -1 : 0) - (b.ruolo === "in_attesa" ? -1 : 0));
   $("#users").innerHTML = list.length
-    ? `<table><thead><tr><th>Nome</th><th>Email</th><th>Ruolo</th><th>Fa cassa</th></tr></thead><tbody>${list.map((p) => `<tr>
+    ? `<table><thead><tr><th>Nome</th><th>Email</th><th>Ruolo</th><th>Fa cassa</th>${S.profiles.some((p) => "solo_cassa" in p) ? "<th>Postazione cassa</th>" : ""}</tr></thead><tbody>${list.map((p) => `<tr>
         <td>${esc(p.nome)}${p.id === S.me.id ? ' <span class="hint">(tu)</span>' : ""}</td>
         <td>${esc(p.email)}</td>
         <td><select data-u="${esc(p.id)}" aria-label="Ruolo di ${esc(p.nome)}"${p.id === S.me.id ? " disabled" : ""}>${Object.entries(RUOLI).map(([k, l]) => `<option value="${k}"${p.ruolo === k ? " selected" : ""}>${l}</option>`).join("")}</select>
           ${p.ruolo === "in_attesa" ? ' <span class="pill acconto">Da approvare</span>' : ""}</td>
-        <td>${["admin", "coordinatore"].includes(p.ruolo) ? '<span class="hint">sempre</span>' : p.ruolo === "volontario" ? `<label class="check"><input type="checkbox" data-cassa="${esc(p.id)}"${p.cassa ? " checked" : ""}> abilitato</label>` : ""}</td></tr>`).join("")}</tbody></table>`
+        <td>${["admin", "coordinatore"].includes(p.ruolo) ? '<span class="hint">sempre</span>' : p.ruolo === "volontario" ? `<label class="check"><input type="checkbox" data-cassa="${esc(p.id)}"${p.cassa ? " checked" : ""}> abilitato</label>` : ""}</td>${"solo_cassa" in p ? `<td>${p.ruolo === "volontario" && p.cassa ? `<label class="check" title="Account del computer della biglietteria: vede solo la cassa"><input type="checkbox" data-postazione="${esc(p.id)}"${p.solo_cassa ? " checked" : ""}> solo cassa</label>` : ""}</td>` : ""}</tr>`).join("")}</tbody></table>`
     : `<div class="empty">Nessuna persona registrata.</div>`;
   $("#users").querySelectorAll("[data-cassa]").forEach((cb) => (cb.onchange = async () => {
     cb.disabled = true;
     try { await run(sb.from("profiles").update({ cassa: cb.checked }).eq("id", cb.dataset.cassa), cb.checked ? "Abilitato alla cassa" : "Non fa più cassa"); }
+    catch (e) { toast(errText(e)); render(); }
+  }));
+  $("#users").querySelectorAll("[data-postazione]").forEach((cb) => (cb.onchange = async () => {
+    cb.disabled = true;
+    try { await run(sb.from("profiles").update({ solo_cassa: cb.checked }).eq("id", cb.dataset.postazione), cb.checked ? "Questo account ora vede solo la cassa" : "Account di nuovo normale"); }
     catch (e) { toast(errText(e)); render(); }
   }));
   $("#users").querySelectorAll("[data-u]").forEach((sel) => (sel.onchange = async () => {
@@ -2306,7 +2314,68 @@ function quadratura(c) {
   return r2(c.contati - ((c.fondo_iniziale || 0) + (c.contanti_euro || 0)));
 }
 
+/* ---------- postazione cassa: chi fa cassa passa la tessera sanitaria ---------- */
+// il lettore di codici a barre «scrive» il codice fiscale e preme Invio, come una tastiera
+async function chiFaCassa(cf) {
+  const { data, error } = await sb.rpc("cassa_tessera", { p_cf: cf });
+  if (error) { toast(/Could not find|schema cache/i.test(error.message) ? "Manca l'aggiornamento 028_cassa_tessera.sql" : error.message); return null; }
+  if (!data) { toast("Tessera non registrata: chiedi a chi organizza di registrarla nella scheda del volontario"); return null; }
+  return data;
+}
+function renderTessera() {
+  const box = $("#cassa-tessera");
+  box.hidden = !S.postazione;
+  if (!S.postazione) return;
+  box.innerHTML = S.cassiere
+    ? `<div class="tessera-ok"><span class="eyebrow">Alla cassa stasera</span><b>${esc(S.cassiere.nome)}</b>
+        <div class="actions"><button class="btn primary" type="button" id="tess-apri">Apri la cassa di stasera</button><button class="btn ghost" type="button" id="tess-cambia">Non sono io</button></div></div>`
+    : `<div class="tessera"><div class="tessera-ico" aria-hidden="true">🪪</div><h2>Passa la tessera sanitaria</h2><p class="hint">Avvicina il codice a barre della tessera al lettore. Puoi anche scrivere il codice fiscale e premere Invio.</p>
+        <form id="tess-form" novalidate><input id="tess-cf" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Codice fiscale" placeholder="In attesa della tessera…"></form></div>`;
+  if (S.cassiere) {
+    $("#tess-apri").onclick = () => openCassaFor(TODAY);
+    $("#tess-cambia").onclick = () => { S.cassiere = null; renderTessera(); };
+    return;
+  }
+  const i = $("#tess-cf");
+  setTimeout(() => i.focus(), 50);
+  $("#tess-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const cf = i.value.trim(); i.value = "";
+    if (!cf) return;
+    const v = await chiFaCassa(cf);
+    if (!v) { i.focus(); return; }
+    S.cassiere = { ...v, dalle: Date.now() };
+    toast(`Ciao ${v.nome.split(" ")[0]}!`);
+    renderTessera();
+    openCassaFor(TODAY);
+  };
+}
+// alla postazione il lettore «scrive» anche se il cursore è altrove: lo riporto nel riquadro della tessera
+document.addEventListener("keydown", (e) => {
+  if (!S.postazione || S.cassiere || S.view !== "cassa" || document.querySelector("dialog[open]")) return;
+  const a = document.activeElement;
+  if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+  const i = $("#tess-cf");
+  if (i && /^[a-z0-9]$/i.test(e.key)) i.focus();
+});
+// alla chiusura, chi chiude ripassa la tessera (può essere un altro volontario)
+function chiediTessera(titolo) {
+  return new Promise((ok) => {
+    const d = $("#dlg-tessera");
+    $("#dt-titolo").textContent = titolo;
+    $("#dt-cf").value = ""; $("#dt-err").textContent = "";
+    $("#dt-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const v = await chiFaCassa($("#dt-cf").value.trim());
+      if (!v) { $("#dt-cf").value = ""; $("#dt-err").textContent = "Tessera non riconosciuta: riprova"; return; }
+      d.close(); ok(v);
+    };
+    d.querySelector("[data-close]").onclick = () => { d.close(); ok(null); };
+    d.showModal(); setTimeout(() => $("#dt-cf").focus(), 50);
+  });
+}
 function renderCassa() {
+  renderTessera();
   const last = latestClosed();
   const open = S.cassa.filter((c) => c.stato === "aperta");
   $("#fondo-attuale").textContent = money(last ? last.fondo_finale : 0);
@@ -2345,6 +2414,7 @@ function openCassaFor(date) {
 }
 function openCassa(c, date) {
   if (!S.canCassa) return;
+  if (S.postazione && !S.cassiere) { toast("Prima passa la tessera sanitaria"); renderTessera(); return; }
   S.editingCassa = c ? c.id : null;
   const prev = latestClosed(c && c.id);
   const v = c || { data: date || TODAY, booking_id: null, titolo: "", fondo_iniziale: prev ? prev.fondo_finale : 0, online_n: 0, online_euro: 0, contanti_n: 0, contanti_euro: 0, pos_n: 0, pos_euro: 0, omaggi_n: 0, contati: null, conteggio: {}, prelievo: 0, note: "", stato: "aperta" };
@@ -2371,8 +2441,8 @@ function openCassa(c, date) {
   dlgK.querySelectorAll("input,select,textarea,.ct-pezzi button").forEach((el) => (el.disabled = locked));
   $("#c-save").hidden = locked; $("#c-close").hidden = locked || (c && c.stato === "chiusa");
   $("#c-save").textContent = c && c.stato === "chiusa" ? "Salva modifiche" : "Salva";
-  $("#c-status").textContent = c && c.stato === "chiusa"
-    ? `Chiusa il ${new Date(c.chiuso_il || c.aggiornato).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${S.isAdmin ? " · da amministratore puoi ancora correggerla" : ""}` : "";
+  $("#c-status").textContent = (c && (c.aperta_da_nome || c.chiusa_da_nome) ? `${c.aperta_da_nome ? `Aperta da ${c.aperta_da_nome}` : ""}${c.aperta_da_nome && c.chiusa_da_nome ? " · " : ""}${c.chiusa_da_nome ? `chiusa da ${c.chiusa_da_nome}` : ""}. ` : !c && S.cassiere ? `Alla cassa: ${S.cassiere.nome}. ` : "") + (c && c.stato === "chiusa"
+    ? `Chiusa il ${new Date(c.chiuso_il || c.aggiornato).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${S.isAdmin ? " · da amministratore puoi ancora correggerla" : ""}` : "");
   $("#c-error").innerHTML = "";
   renderDeleteArea("#c-delete-area", !!c && S.isAdmin, async () => { await run(sb.from("cassa").delete().eq("id", c.id), "Cassa eliminata"); dlgK.close(); });
   calcCassa();
@@ -2482,18 +2552,25 @@ async function saveCassa(close) {
   if (!rec.data) { $("#c-error").innerHTML = `<div class="warn">Scegli la data.</div>`; return; }
   if (!rec.booking_id && !rec.titolo) { $("#c-error").innerHTML = `<div class="warn">Scegli l'evento o scrivi un titolo.</div>`; return; }
   if (close && rec.contati == null) { $("#c-error").innerHTML = `<div class="warn">Per chiudere la cassa inserisci i contanti contati.</div>`; $("#c-contati").focus(); return; }
-  if (close) Object.assign(rec, { stato: "chiusa", chiuso_da: S.me.id, chiuso_il: new Date().toISOString() });
+  if (close && S.postazione) {
+    const v = await chiediTessera("Per chiudere la cassa, passa la tessera di chi chiude");
+    if (!v) return;
+    S.cassiere = { ...v, dalle: Date.now() };
+  }
+  const chi = (S.cassiere && S.cassiere.nome) || S.me.nome || "";
+  if (close) Object.assign(rec, { stato: "chiusa", chiuso_da: S.me.id, chiuso_il: new Date().toISOString(), ...(S.cassaNomi ? { chiusa_da_nome: chi } : {}) });
   rec.aggiornato = new Date().toISOString();
   const btns = [$("#c-save"), $("#c-close")]; btns.forEach((b) => (b.disabled = true));
   try {
     if (prevRec) await run(sb.from("cassa").update(rec).eq("id", prevRec.id), close ? "Cassa chiusa" : "Cassa salvata");
     else {
-      const { data, error } = await sb.from("cassa").insert({ ...rec, creato_da: S.me.id }).select("id").single();
+      const { data, error } = await sb.from("cassa").insert({ ...rec, creato_da: S.me.id, ...(S.cassaNomi ? { aperta_da_nome: chi } : {}) }).select("id").single();
       if (error) throw error;
       S.editingCassa = data.id;
       toast(close ? "Cassa chiusa" : "Cassa aperta e salvata");
       await loadAll();
     }
+    if (close && S.postazione) { S.cassiere = null; renderTessera(); }
     if (close) { dlgK.close(); openCopyText(riepilogoCassa(S.cassa.find((c) => c.id === S.editingCassa) || { ...rec, id: S.editingCassa })); }
     else dlgK.close();
   } catch (x) { $("#c-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
@@ -3087,6 +3164,7 @@ function openVolontario(v) {
   aggiornaCampiAI();
   $("#v-error").innerHTML = "";
   $("#v-auguri").hidden = !(v && v.data_nascita);
+  statoTessera(v);
   dlgV.showModal();
 }
 function mostraFileVol() {
@@ -3094,6 +3172,33 @@ function mostraFileVol() {
   $("#v-file-ora").innerHTML = c ? `<a href="#" id="v-file-apri">📎 Apri l'attestato caricato</a> · <button class="btn ghost sm" type="button" id="v-file-togli">Togli</button>` : "";
   if (c) { $("#v-file-apri").onclick = (e) => { e.preventDefault(); apriAttestato(v); }; $("#v-file-togli").onclick = () => { S.volTogliFile = true; mostraFileVol(); }; }
 }
+// tessera sanitaria del volontario, per la postazione cassa (aggiornamento 28)
+function statoTessera(v) {
+  const ok = S.volontari.length && "cf_impronta" in S.volontari[0];
+  $("#v-tess-campo").hidden = !ok || !v;
+  if (!ok || !v) return;
+  $("#v-tess-stato").innerHTML = v.cf_impronta ? `<span class="pill saldato">Registrata ✓</span>` : `<span class="pill esempio">Non registrata</span>`;
+  $("#v-tess-togli").hidden = !v.cf_impronta;
+  $("#v-cf").value = "";
+}
+$("#v-cf").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const v = S.editingVol, cf = $("#v-cf").value.trim();
+  if (!v || !cf) return;
+  $("#v-cf").value = "";
+  const { error } = await sb.rpc("volontario_tessera", { p_volontario: v.id, p_cf: cf });
+  if (error) { toast(error.message); return; }
+  v.cf_impronta = "registrata"; statoTessera(v); toast(`Tessera di ${v.nome} registrata`);
+  loadAll();
+});
+$("#v-tess-togli").onclick = async () => {
+  const v = S.editingVol;
+  if (!v || !confirm(`Togliere la tessera di ${v.nome}? Non potrà più entrare in cassa con la tessera.`)) return;
+  const { error } = await sb.rpc("volontario_tessera", { p_volontario: v.id, p_cf: "" });
+  if (error) { toast(error.message); return; }
+  v.cf_impronta = null; statoTessera(v); toast("Tessera tolta"); loadAll();
+};
 const aggiornaCampiAI = () => { $("#v-ai-campi").hidden = !$("#v-ai").value; };
 $("#v-ai").onchange = aggiornaCampiAI;
 // la scadenza si propone da sola: 5 anni dopo il corso (si può cambiare)
@@ -3813,6 +3918,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["028_cassa_tessera.sql", "Cassa con la tessera sanitaria", S.cassaNomi, "Serve solo se usi il lettore di tessere in biglietteria", true],
     ["027_parroco.sql", "Ruolo Parroco (sola lettura, conti solo totali)", undefined, "Serve solo se dai a qualcuno il ruolo Parroco", true],
     ["026_contapersone.sql", "Contapersone alla porta", chk.conta],
     ["025_segreteria.sql", "Ruolo Segreteria (agenda e prenotazioni)", undefined, "Serve solo se dai a qualcuno il ruolo Segreteria", true],
@@ -4023,7 +4129,7 @@ function renderBreve() {
 
 function route() {
   const h = location.hash.slice(1);
-  S.view = VIEWS[h] && canSee(h) ? h : canSee("oggi") ? "oggi" : canSee("breve") ? "breve" : "calendario";
+  S.view = VIEWS[h] && canSee(h) ? h : S.postazione ? "cassa" : canSee("oggi") ? "oggi" : canSee("breve") ? "breve" : "calendario";
   render();
 }
 addEventListener("hashchange", route);

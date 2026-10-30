@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.41">
+<link rel="stylesheet" href="style.css?v=2026-11-01.42">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -211,6 +211,7 @@
   </main>
 
   <main id="view-cassa" hidden>
+    <div id="cassa-tessera" class="panel" hidden></div>
     <div class="toolbar">
       <div class="fondo"><span class="eyebrow">Fondo cassa attuale</span><b id="fondo-attuale" class="num"></b><span class="hint" id="fondo-hint"></span></div>
       <button class="btn primary" id="btn-cassa" type="button">+ Apri cassa</button>
@@ -547,6 +548,15 @@
   </form>
 </dialog>
 
+<dialog id="dlg-tessera">
+  <form class="dlg" id="dt-form" novalidate>
+    <div class="dlg-head"><h2>🪪 Tessera sanitaria</h2><button class="btn ghost sm" type="button" data-close>Annulla</button></div>
+    <p id="dt-titolo"></p>
+    <input id="dt-cf" class="tess-input" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Codice fiscale" placeholder="In attesa della tessera…">
+    <p class="hint" id="dt-err" style="color:var(--due-fg)"></p>
+  </form>
+</dialog>
+
 <dialog id="dlg-volontario">
   <form class="dlg" id="volontario-form" novalidate>
     <div class="dlg-head"><h2 id="v-head">Volontario</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -561,6 +571,9 @@
         <div class="field h"><label for="v-ai-scad">Scadenza (aggiornamento ogni 5 anni)</label><input id="v-ai-scad" type="date"></div>
         <div class="field"><label for="v-file">Attestato (PDF o foto, facoltativo)</label><div id="v-file-ora" class="hint"></div><input id="v-file" type="file" accept="application/pdf,image/*"></div>
       </div>
+      <div class="field" id="v-tess-campo"><label for="v-cf">Tessera sanitaria (per entrare in cassa)</label>
+        <div class="tess-riga"><span id="v-tess-stato" class="hint"></span><input id="v-cf" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Passa la tessera o scrivi il codice fiscale e premi Invio"><button class="btn ghost sm" type="button" id="v-tess-togli">Togli</button></div>
+        <span class="hint">Il codice fiscale non viene salvato: l'app tiene solo un'impronta cifrata per riconoscere la tessera.</span></div>
       <div class="field"><label for="v-note">Note</label><textarea id="v-note" placeholder="Es. disponibilità, cosa sa fare (cassa, proiezione, bar)…"></textarea></div>
       <div class="field"><label class="check"><input type="checkbox" id="v-attivo"> Attivo (il suo link dei turni funziona)</label></div>
     </div>
@@ -667,7 +680,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.41"></script>
-<script type="module" src="app.js?v=2026-11-01.41"></script>
+<script src="config.js?v=2026-11-01.42"></script>
+<script type="module" src="app.js?v=2026-11-01.42"></script>
 </body>
 </html>

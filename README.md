@@ -141,6 +141,13 @@ Per ogni taglio si mette solo il numero di pezzi, scrivendolo o con i bottoni �
 totale di banconote e monete e lo mette da sola nei «Contanti contati», con la quadratura. Senza conteggio si può
 ancora scrivere il totale a mano.
 
+**Postazione con la tessera sanitaria** (script `028_cassa_tessera.sql`): il computer della biglietteria entra con un
+account apposta (in Persone: ruolo Volontario, «Fa cassa» e «Postazione cassa») che vede solo la cassa. Il volontario
+passa la tessera sanitaria con il lettore di codici a barre (o scrive il codice fiscale e preme Invio): l'app lo
+riconosce, apre la cassa della serata a suo nome e, alla chiusura, chiede di ripassare la tessera di chi chiude. Nella
+cassa restano «aperta da» e «chiusa da». Le tessere si registrano nella scheda del volontario (Turni → Volontari):
+il codice fiscale non viene salvato, solo un'impronta cifrata con un sale segreto.
+
 ## Sopralluoghi
 Esegui una volta `supabase/004_sopralluoghi.sql` nel SQL Editor. Nella voce di menu **Sopralluoghi** si fissano le visite
 alla sala (giorno, ora, chi viene, evento e data desiderata, chi accompagna, cosa vuole vedere), con controllo che la sala

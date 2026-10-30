@@ -767,3 +767,15 @@ nav.tabs { position: relative }
   padding: 12px 18px; border-radius: 999px; font: inherit; font-weight: 700; color: #1E1704; background: linear-gradient(180deg, #E2BE55, var(--gold)); box-shadow: 0 8px 26px rgba(0,0,0,.28); max-width: calc(100vw - 32px) }
 .breve-giorno + .breve-giorno { margin-top: 10px }
 .breve-giorno > .eyebrow { display: block; margin: 6px 0 2px; color: var(--accent) }
+
+/* --- postazione cassa con la tessera sanitaria --- */
+#cassa-tessera { margin-top: 16px }
+.tessera { text-align: center; padding: 18px 8px }
+.tessera-ico { font-size: 3.2rem; line-height: 1 }
+.tessera h2 { margin: 8px 0 4px; font-size: 1.6rem }
+.tessera input, .tess-input { display: block; width: 100%; max-width: 420px; margin: 14px auto 0; padding: 14px 16px; font-size: 1.2rem; letter-spacing: .12em; text-align: center; text-transform: uppercase; border: 2px dashed var(--accent); border-radius: 14px; background: var(--accent-soft) }
+.tessera input:focus, .tess-input:focus { outline: none; border-style: solid; box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent) }
+.tessera-ok { display: flex; flex-direction: column; gap: 6px; align-items: flex-start }
+.tessera-ok b { font-size: 1.6rem; font-family: var(--f-display) }
+.tess-riga { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.tess-riga input { flex: 1 1 220px; text-transform: uppercase }
