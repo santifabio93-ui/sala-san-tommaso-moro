@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-31.2";
+const VERSIONE = "2026-11-01.2";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -26,6 +26,7 @@ const VIEWS = {
   comune: { label: "Comune", roles: ["admin", "coordinatore"] },
   schede: { label: "Schede", roles: ["admin", "coordinatore"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
+  sito: { label: "Sito web", roles: ["admin", "coordinatore"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
   turni: { label: "Turni", roles: ["admin", "coordinatore", "volontario"] },
@@ -46,7 +47,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "calendario" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
+  { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "sito" }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
@@ -58,7 +59,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, schede: [], scFilter: "attive", editingScheda: null,
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -110,6 +111,7 @@ async function start() {
   route();
   await loadAll();
   startRealtime();
+  if (S.canWrite) { controllaSito(); setInterval(() => { if (!document.hidden) controllaSito(); }, 30 * 60000); }
 }
 
 /* ---------- dati ---------- */
@@ -150,6 +152,8 @@ async function loadAll() {
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
+      // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
+      S.sitoCfg = "sito_ignora" in st.data ? { nome: st.data.sito_nome || "", cell: st.data.sito_cellulare || "", avvisati: st.data.sito_avvisati || [], avvisatoIl: st.data.sito_avvisato_il, ignora: st.data.sito_ignora || [] } : null;
     }
     if (p.data) S.profiles = p.data;
     if (rq.data) S.requests = rq.data;
@@ -244,7 +248,7 @@ function renderTabs() {
   const cur = (on) => (on ? ' aria-current="page"' : "");
   let sub = null;
   $("#tabs").innerHTML = MENU.map((m) => {
-    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : ""}</a>` : "";
+    if (!m.children) return canSee(m.k) ? `<a href="#${m.k}"${cur(S.view === m.k)}>${VIEWS[m.k].label}${m.k === "cinema" ? badge(filmsToFix()) : m.k === "sito" ? badge(sitoNuovi().length) : ""}</a>` : "";
     const kids = m.children.filter(canSee);
     if (!kids.length) return "";
     const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") ? badge(filmsToFix()) : "");
@@ -279,6 +283,7 @@ function render() {
   if (S.view === "donazioni") renderDonazioni();
   if (S.view === "comune") renderComune();
   if (S.view === "schede") renderSchede();
+  if (S.view === "sito") renderSito();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -821,13 +826,16 @@ function waText(b) {
   return lines.join("\n");
 }
 function openCopy(b) { openCopyText(waText(b)); }
-function openCopyText(text) {
+// tel: se c'è, «Apri WhatsApp» apre direttamente la chat con quel numero
+function openCopyText(text, tel = "") {
+  S.waTel = String(tel).replace(/\D/g, "").replace(/^00/, "");
+  if (/^3\d{8,9}$/.test(S.waTel)) S.waTel = "39" + S.waTel;
   $("#copy-text").value = text;
   $("#copy-status").textContent = "";
   updateWaLink();
   dlgC.showModal();
 }
-const updateWaLink = () => { $("#wa-open").href = "https://wa.me/?text=" + encodeURIComponent($("#copy-text").value); };
+const updateWaLink = () => { $("#wa-open").href = `https://wa.me/${S.waTel || ""}?text=` + encodeURIComponent($("#copy-text").value); };
 $("#copy-text").addEventListener("input", updateWaLink);
 $("#copy-btn").onclick = () => {
   const ta = $("#copy-text");
@@ -2288,6 +2296,97 @@ $("#cal-next").onclick = () => { S.month = new Date(S.month.getFullYear(), S.mon
 $("#cal-today").onclick = () => { S.month = new Date(new Date().getFullYear(), new Date().getMonth(), 1); S.selected = TODAY; renderCalendar(); renderDay(); };
 $("#q").addEventListener("input", (e) => { S.q = e.target.value; renderList(); });
 $("#toggle-table").onclick = () => { S.showTable = !S.showTable; renderEconomy(); };
+/* ---------- sito web: confronto tra www.salasantommasomoro.it e il programma ---------- */
+const TIPI_SITO = { manca: "Da aggiungere", orario: "Orario da correggere", giorno: "Date scritte male", annullato: "Annullati ancora online", home: "Home da aggiornare", verifica: "Sul sito ma non in calendario" };
+let sitoMod = null, sitoPagine = null;
+async function controllaSito() {
+  S.sito.stato = "carico";
+  if (S.view === "sito") renderSito();
+  try {
+    sitoMod = sitoMod || (await import(`./sito.js?v=${VERSIONE}`));
+    const r = await fetch(sitoMod.SITO_API, { cache: "no-store" });
+    if (!r.ok) throw new Error("il sito risponde " + r.status);
+    sitoPagine = await r.json();
+    S.sito = { ...S.sito, stato: "ok", err: "", letto: new Date().toISOString(), pagine: sitoPagine.length };
+  } catch (e) {
+    S.sito = { ...S.sito, stato: "errore", err: e.message || String(e) };
+  }
+  confrontaSito();
+  render();
+}
+// rifà il confronto con i dati attuali dell'app (senza rileggere il sito)
+function confrontaSito() {
+  if (!sitoMod || !sitoPagine) return;
+  const app = [
+    ...S.proiezioni.map((p) => { const f = S.films.find((x) => x.id === p.film_id); return f && { data: p.data, ora: p.ora, titolo: f.titolo, tipo: "cinema" }; }).filter(Boolean),
+    ...S.bookings.map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, titolo: b.titolo, tipo: "evento", annullato: b.stato === "annullata" })),
+  ];
+  S.sito.voci = sitoMod.confronta(sitoMod.appuntamentiDelSito(sitoPagine, TODAY), app, TODAY);
+}
+const sitoIgnorate = () => new Set((S.sitoCfg && S.sitoCfg.ignora) || []);
+const sitoAvvisate = () => new Set((S.sitoCfg && S.sitoCfg.avvisati) || []);
+// segnalazioni da mostrare: senza quelle ignorate; «nuove» = non ancora mandate a chi aggiorna il sito
+const sitoVisibili = () => S.sito.voci.filter((v) => !sitoIgnorate().has(v.chiave));
+const sitoNuovi = () => (S.canWrite ? sitoVisibili().filter((v) => v.tipo !== "verifica" && !sitoAvvisate().has(v.chiave)) : []);
+
+function renderSito() {
+  if (sitoPagine) confrontaSito();
+  const el = $("#sito-body"), cfg = S.sitoCfg, chi = (cfg && cfg.nome) || "chi aggiorna il sito";
+  const avvisate = sitoAvvisate(), ignorate = sitoIgnorate();
+  const voci = sitoVisibili(), nascoste = S.sito.voci.filter((v) => ignorate.has(v.chiave));
+  // selezione predefinita: le nuove (le «da verificare» riguardano il calendario della sala, non il sito)
+  for (const v of voci) if (!(v.chiave in S.sitoSel)) S.sitoSel[v.chiave] = v.tipo !== "verifica" && !avvisate.has(v.chiave);
+  const dt = (t) => new Date(t).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const stato = S.sito.stato === "carico" ? "Controllo in corso…" : S.sito.stato === "errore" ? `Non riesco a leggere il sito: ${S.sito.err}` : S.sito.letto ? `Controllato ${ago(S.sito.letto)} · ${S.sito.pagine} pagine lette` : "";
+  const gruppi = Object.keys(TIPI_SITO).map((t) => [t, voci.filter((v) => v.tipo === t)]).filter(([, l]) => l.length);
+  const nSel = voci.filter((v) => S.sitoSel[v.chiave]).length;
+  el.innerHTML = `
+    <div class="toolbar">
+      <div><h2>Sito della sala</h2><span class="hint ${S.sito.stato === "errore" ? "neg" : ""}">${esc(stato)}</span></div>
+      <div class="actions"><a class="btn" href="https://www.salasantommasomoro.it/" target="_blank" rel="noopener">Apri il sito</a><button class="btn" type="button" id="sito-ricontrolla"${S.sito.stato === "carico" ? " disabled" : ""}>Controlla adesso</button></div>
+    </div>
+    ${!cfg ? `<div class="warn" style="margin-bottom:12px">Per salvare il contatto di chi aggiorna il sito e le segnalazioni già mandate esegui in Supabase lo script <b>012_sito.sql</b>. Il controllo funziona anche senza.</div>` : ""}
+    <div class="panel sito-chi">
+      <div><span class="eyebrow">Chi aggiorna il sito</span>
+        ${cfg && S.isAdmin ? `<form id="sito-contatto" class="sito-contatto"><input id="sito-nome" value="${esc(cfg.nome)}" placeholder="Nome" aria-label="Nome di chi aggiorna il sito"><input id="sito-cell" value="${esc(cfg.cell)}" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm" type="submit">Salva</button></form>`
+          : `<div><b>${esc(chi)}</b>${cfg && cfg.cell ? ` · ${esc(cfg.cell)}` : ""}</div>`}
+        ${cfg && cfg.avvisatoIl ? `<span class="hint">Ultimo avviso mandato ${esc(dt(cfg.avvisatoIl))}</span>` : ""}</div>
+      <div class="sito-avvisa"><button class="btn primary" type="button" id="sito-avvisa"${nSel ? "" : " disabled"}>Avvisa ${esc(cfg && cfg.nome ? cfg.nome : "per l'aggiornamento")}${nSel ? ` (${nSel})` : ""}</button>
+        <span class="hint">Prepara il messaggio con le voci spuntate, da mandare su WhatsApp o copiare.</span></div>
+    </div>
+    ${S.sito.stato === "carico" && !sitoPagine ? `<div class="empty">Sto leggendo il sito…</div>`
+      : !sitoPagine ? `<div class="empty">Il sito non è stato ancora letto. Premi «Controlla adesso».</div>`
+      : !gruppi.length ? `<div class="empty">Il sito è in ordine: film, orari ed eventi dei prossimi 45 giorni corrispondono al programma. ✓</div>`
+      : gruppi.map(([t, lista]) => `<section class="panel sito-gruppo"><div class="section-head"><h3>${TIPI_SITO[t]}</h3><span class="hint">${t === "verifica" ? "Controlla nel calendario: se l'evento è confermato, aggiungilo all'app; se è annullato, va tolto dal sito." : t === "manca" ? "In programma su Cinebot o con un'altra data, ma non sul sito." : ""}</span></div>
+          ${lista.map((v) => `<div class="sito-voce"><label class="check"><input type="checkbox" data-sel="${esc(v.chiave)}"${S.sitoSel[v.chiave] ? " checked" : ""}> <span>${esc(v.testo)}</span></label>
+            <div class="az">${avvisate.has(v.chiave) ? `<span class="pill acconto">già segnalato</span>` : ""}${cfg ? `<button class="btn ghost sm" type="button" data-ignora="${esc(v.chiave)}" title="Non mostrarla più">Non serve</button>` : ""}</div></div>`).join("")}
+        </section>`).join("")}
+    ${nascoste.length ? `<p class="hint" style="margin-top:12px">${nascoste.length} ${nascoste.length === 1 ? "segnalazione nascosta" : "segnalazioni nascoste"} con «Non serve». <button class="btn ghost sm" type="button" id="sito-ripristina">Mostrale di nuovo</button></p>` : ""}
+    <p class="hint" style="margin-top:12px">Come funziona: l'app legge le pagine del sito e le confronta con le proiezioni di Cinebot e con gli eventi del calendario dei prossimi 45 giorni. Gli eventi del calendario (anche gli affitti privati) si segnalano solo se sul sito compaiono con un'altra data o sono annullati.</p>`;
+  $("#sito-ricontrolla").onclick = () => controllaSito();
+  el.querySelectorAll("[data-sel]").forEach((c) => (c.onchange = () => { S.sitoSel[c.dataset.sel] = c.checked; renderSito(); }));
+  el.querySelectorAll("[data-ignora]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await run(sb.rpc("sito_segna", { p_ignora: [...new Set([...ignorate, b.dataset.ignora])] }), "Segnalazione nascosta"); } catch (e) { toast(errText(e)); b.disabled = false; }
+  }));
+  if ($("#sito-ripristina")) $("#sito-ripristina").onclick = async () => { try { await run(sb.rpc("sito_segna", { p_ignora: [] }), "Segnalazioni di nuovo visibili"); } catch (e) { toast(errText(e)); } };
+  if ($("#sito-contatto")) $("#sito-contatto").onsubmit = async (e) => {
+    e.preventDefault();
+    try { await run(sb.from("settings").update({ sito_nome: $("#sito-nome").value.trim(), sito_cellulare: $("#sito-cell").value.trim() }).eq("id", 1), "Contatto salvato"); } catch (x) { toast(errText(x)); }
+  };
+  $("#sito-avvisa").onclick = async () => {
+    const scelte = voci.filter((v) => S.sitoSel[v.chiave]);
+    const nome = ((cfg && cfg.nome) || "").split(" ")[0], firma = (S.me.nome || "").split(" ")[0];
+    openCopyText([`Ciao${nome ? " " + nome : ""},`, `sul sito della sala (salasantommasomoro.it) ci sono da aggiornare queste cose:`, ...scelte.map((v) => `• ${v.testo}`), "Grazie!" + (firma ? `\n${firma}` : "")].join("\n"), cfg && cfg.cell);
+    if (cfg) {
+      // ricordo cosa è stato segnalato, tenendo solo le segnalazioni ancora attuali
+      const attuali = new Set(S.sito.voci.map((v) => v.chiave));
+      scelte.forEach((v) => (S.sitoSel[v.chiave] = false));
+      try { await run(sb.rpc("sito_segna", { p_avvisati: [...new Set([...[...avvisate].filter((k) => attuali.has(k)), ...scelte.map((v) => v.chiave)])] })); } catch (e) { toast(errText(e)); }
+    }
+  };
+}
+
 function route() {
   const h = location.hash.slice(1);
   S.view = VIEWS[h] && canSee(h) ? h : "calendario";

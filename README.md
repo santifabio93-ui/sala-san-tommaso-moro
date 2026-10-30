@@ -179,6 +179,20 @@ l'organizzatore può solo caricare nella cartella della sua scheda (finché non 
 coordinatori possono aprire i file. Il cruscotto mostra «SIAE allegata / da ricevere / non serve» e avvisa prima di
 approvare una scheda senza permesso.
 
+## Sito web
+La pagina **Sito web** (admin e coordinatori) legge le pagine pubbliche di www.salasantommasomoro.it
+(WordPress, dal browser: il sito lo permette) e le confronta con il programma dei prossimi 45 giorni. Il confronto è
+in `sito.js` e segnala:
+- film in vendita su Cinebot che mancano sul sito, o con un orario diverso;
+- date scritte con il giorno della settimana sbagliato;
+- eventi annullati ancora online, appuntamenti già passati ancora in Home;
+- appuntamenti del sito che nel calendario della sala non risultano (da verificare).
+
+Gli eventi del calendario (anche gli affitti privati) si segnalano solo se sul sito compaiono con un'altra data o
+sono annullati. «Avvisa…» prepara il messaggio per chi aggiorna il sito, da mandare su WhatsApp o copiare.
+Esegui `supabase/012_sito.sql` per salvare il nome e il cellulare di chi aggiorna il sito (li inserisce l'admin
+nella pagina, restano nel database e non nel codice), le segnalazioni già mandate e quelle da non mostrare più.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.
