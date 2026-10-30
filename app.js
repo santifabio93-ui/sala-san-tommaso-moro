@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-30.8";
+const VERSIONE = "2026-10-30.9";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -23,6 +23,7 @@ const VIEWS = {
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore"] },
   sopralluoghi: { label: "Sopralluoghi", roles: ["admin", "coordinatore", "volontario"] },
+  comune: { label: "Comune", roles: ["admin", "coordinatore"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
@@ -43,10 +44,10 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 // menu principale: le voci con "children" raggruppano più sezioni in un sottomenu
 const MENU = [
   { k: "calendario" },
-  { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi"] },
+  { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "comune"] },
   { label: "Cinema", children: ["cinema", "c1", "stats"] }, { k: "turni" }, { k: "cassa" }, { label: "Economia", children: ["bilancio", "donazioni", "economia"] }, { k: "utenti" },
 ];
-const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
+const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", cinema: "Programmazione", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe" };
 const canSee = (k) => (k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
@@ -56,7 +57,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null,
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0,
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -145,6 +146,7 @@ async function loadAll() {
     if (st.data) {
       S.rates = { tariffaOra: Number(st.data.tariffa_ora), tariffaMezza: Number(st.data.tariffa_mezza), tariffaGiorno: Number(st.data.tariffa_giorno) };
       S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file };
+      S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
     }
     if (p.data) S.profiles = p.data;
@@ -272,6 +274,7 @@ function render() {
   if (S.view === "stats") renderStats();
   if (S.view === "bilancio") renderBilancio();
   if (S.view === "donazioni") renderDonazioni();
+  if (S.view === "comune") renderComune();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -330,7 +333,9 @@ function renderCalendar() {
   }
   const g = $("#cal-grid");
   g.innerHTML = html;
-  $("#cal-sync").textContent = S.canWrite && S.sync.calendario ? `Google Calendar della sala sincronizzato ${ago(S.sync.calendario)}` : "";
+  const pc = S.canWrite ? periodoConv(iso(m)) : null, cc = pc && contaComune(pc);
+  $("#cal-sync").innerHTML = S.canWrite ? [S.sync.calendario ? `Google Calendar della sala sincronizzato ${ago(S.sync.calendario)}` : "",
+    cc ? `<a href="#comune">Serate del Comune: <b>${cc.usate}</b> usate, ${cc.programmate} in calendario, <b>${Math.max(0, S.conv.serate - cc.totale)}</b> rimaste su ${S.conv.serate}${pc.n ? ` (anno ${pc.n} di ${S.conv.anni})` : ""}</a>` : ""].filter(Boolean).join(" · ") : "";
   g.querySelectorAll("[data-day]").forEach((b) => (b.onclick = () => {
     S.selected = b.dataset.day;
     const d = parse(S.selected);
@@ -349,6 +354,7 @@ function bookingCard(b, showDate) {
     <div class="r"><span class="when">${showDate ? esc(fmtShort(b.data)) + " · " : ""}${orario(b)}</span>
       <span class="pill ${b.stato}">${STATI[b.stato]}</span>
       ${ps ? `<span class="pill ${ps[0]}">${esc(ps[1])}</span>` : ""}
+      ${b.comune && S.canWrite ? `<span class="pill comune">Comune</span>` : ""}
       ${c.need && active(b) ? `<span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">Turni ${c.have}/${c.need}</span>` : ""}</div>
   </button>`;
 }
@@ -596,6 +602,8 @@ function openBooking(b, date, prefill) {
   S.draftTurni = turni(v).map((t) => ({ ...t }));
   renderSlotEditor();
   $("#b-giornata").checked = !!v.giornata_intera;
+  $("#b-comune").checked = !!v.comune;
+  hintComune();
   syncAllDay();
   $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
     : fromCalendar(b) ? "Evento del Google Calendar della sala: titolo, data, orario e stato si cambiano dal calendario. Qui gestisci prezzo, incassi, turni e note."
@@ -679,7 +687,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
   const g = (k) => $("#b-" + k).value.trim();
   const rec = {
     titolo: g("titolo"), referente: g("referente"), tipo: g("tipo"), telefono: g("telefono"), email: g("email"),
-    data: g("data"), giornata_intera: $("#b-giornata").checked,
+    data: g("data"), giornata_intera: $("#b-giornata").checked, comune: $("#b-comune").checked,
     inizio: $("#b-giornata").checked ? "00:00" : g("inizio"), fine: $("#b-giornata").checked ? "23:59" : g("fine"),
     prezzo: Number(g("prezzo")) || 0, incassato: Number(g("incassato")) || 0, stato: g("stato"), note: g("note"),
     turni: S.draftTurni.filter((t) => t.label.trim() || t.inizio).map((t) => ({ id: t.id, label: t.label.trim() || "Turno", inizio: t.inizio, fine: t.fine, posti: Math.max(1, Number(t.posti) || 1) })),
@@ -1435,6 +1443,91 @@ function diagnosiPrimaNota(dove) {
   return `<div class="panel"><h2>${dove === "donazioni" ? "Le donazioni non sono ancora disponibili" : "Il bilancio non è ancora disponibile"}</h2>
     <span class="hint">Le ${dove === "donazioni" ? "donazioni" : "cifre"} arrivano dalla prima nota (file Excel nella cartella «PRIMA NOTA» su Drive), letta dallo script Google.</span>
     <ol style="margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:8px">${passi.map((x) => `<li>${x}</li>`).join("")}</ol></div>`;
+}
+
+/* ---------- convenzione con il Comune ---------- */
+// anno di convenzione che contiene una data: dalla data di inizio, un anno alla volta (senza data: anno solare)
+function periodoConv(d) {
+  if (!S.conv.inizio) { const y = d.slice(0, 4); return { inizio: `${y}-01-01`, fine: `${y}-12-31`, n: null }; }
+  const [ay, am, ad] = S.conv.inizio.split("-").map(Number), [y, m, g] = d.split("-").map(Number);
+  let k = y - ay; if (m < am || (m === am && g < ad)) k--;
+  const da = new Date(ay + k, am - 1, ad), a = new Date(ay + k + 1, am - 1, ad - 1);
+  return { inizio: iso(da), fine: iso(a), n: k + 1 };
+}
+function contaComune(p, escludi) {
+  const giorni = new Set(S.bookings.filter((b) => b.comune && active(b) && b.id !== escludi && b.data >= p.inizio && b.data <= p.fine).map((b) => b.data));
+  const date = [...giorni].sort();
+  const usate = date.filter((x) => x <= TODAY).length;
+  return { date, usate, programmate: date.length - usate, totale: date.length };
+}
+function hintComune() {
+  const d = $("#b-data").value, el = $("#b-comune-hint");
+  if (!d) { el.textContent = ""; return; }
+  const p = periodoConv(d), c = contaComune(p, S.editing);
+  const giaQuel = c.date.includes(d);
+  const n = c.totale + ($("#b-comune").checked && !giaQuel ? 1 : 0);
+  el.textContent = `${p.n ? `Anno ${p.n} della convenzione` : `Anno ${d.slice(0, 4)}`}: ${$("#b-comune").checked ? `questa è la serata n. ${giaQuel ? c.date.indexOf(d) + 1 : n} di ${S.conv.serate}` : `già ${c.totale} serate su ${S.conv.serate}`}${n > S.conv.serate ? " · oltre il numero previsto!" : ""}`;
+  el.style.color = n > S.conv.serate ? "var(--due-fg)" : "";
+}
+["#b-comune", "#b-data"].forEach((id) => $(id).addEventListener("input", hintComune));
+
+function renderComune() {
+  const el = $("#cm-body");
+  const N = S.conv.serate, A = S.conv.anni;
+  const impostazioni = `<div class="panel" style="margin-top:18px"><h2>Impostazioni della convenzione</h2><span class="hint">${S.isAdmin ? "Senza data di inizio le serate si contano per anno solare (1° gennaio – 31 dicembre). La data serve solo se l'anno della convenzione parte in un altro giorno: allora compare anche il riepilogo di tutti gli anni." : "Le modifica un amministratore."}</span>
+    <form id="cm-form" class="form" style="margin-top:10px">
+      <div class="field t"><label for="cm-inizio">Data di inizio (facoltativa)</label><input id="cm-inizio" type="date" value="${esc(S.conv.inizio || "")}"${S.isAdmin ? "" : " disabled"}></div>
+      <div class="field t"><label for="cm-serate">Serate all'anno</label><input id="cm-serate" type="number" min="1" value="${N}"${S.isAdmin ? "" : " disabled"}></div>
+      <div class="field t"><label for="cm-anni">Durata (anni)</label><input id="cm-anni" type="number" min="1" value="${A}"${S.isAdmin ? "" : " disabled"}></div>
+      ${S.isAdmin ? `<div class="field"><div><button class="btn primary" type="submit">Salva</button></div></div>` : ""}
+    </form></div>`;
+  // l'anno mostrato: quello in corso, oppure quello scelto con le frecce
+  const rif = S.cmAnno ? (() => { const d = parse(TODAY); d.setFullYear(d.getFullYear() + S.cmAnno); return iso(d); })() : TODAY;
+  const p = periodoConv(rif), c = contaComune(p);
+  const resto = N - c.totale;
+  const finita = S.conv.inizio && p.n > A, nonIniziata = S.conv.inizio && p.n < 1;
+  const anni = S.conv.inizio ? Array.from({ length: A }, (_, i) => { const [ay, am, ad] = S.conv.inizio.split("-").map(Number); const pi = { inizio: iso(new Date(ay + i, am - 1, ad)), fine: iso(new Date(ay + i + 1, am - 1, ad - 1)), n: i + 1 }; return { ...pi, ...contaComune(pi) }; }) : [];
+  const usateTot = anni.reduce((s, x) => s + x.usate, 0);
+  const sospette = S.bookings.filter((b) => !b.comune && active(b) && b.data >= p.inizio && b.data <= p.fine && /\b(comune|comunale|comunali|sindac|assessor|patrocinio)/i.test(b.titolo + " " + (b.note || "")));
+  const fmtD = (d) => parse(d).toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "numeric" });
+  const serate = S.bookings.filter((b) => b.comune && active(b) && b.data >= p.inizio && b.data <= p.fine).sort(byWhen);
+  el.innerHTML = `
+    <div class="${S.conv.inizio ? "conv" : ""}">
+      <div class="panel"><div class="cal-head" style="margin-bottom:0"><h2 style="text-transform:none">Serate del Comune ${p.n ? `· anno ${p.n}` : p.inizio.slice(0, 4)}</h2>
+          <div class="cal-nav"><button class="btn sm" type="button" id="cm-prev" aria-label="Anno precedente">‹</button><button class="btn sm" type="button" id="cm-oggi">Quest'anno</button><button class="btn sm" type="button" id="cm-next" aria-label="Anno successivo">›</button></div></div>
+        <span class="hint">${N} serate all'anno · dal ${fmtD(p.inizio)} al ${fmtD(p.fine)}${p.n ? ` · anno ${p.n} di ${A} della convenzione` : ""}${finita ? " · la convenzione è conclusa" : nonIniziata ? " · la convenzione non è ancora iniziata" : ""}</span>
+        <div class="conv-big">
+          <div><span>Usate</span><b>${c.usate}</b></div>
+          <div><span>In calendario</span><b>${c.programmate}</b></div>
+          <div class="${resto < 0 ? "over" : "rest"}"><span>${resto < 0 ? "Oltre il previsto" : "Rimaste"}</span><b>${Math.abs(resto)}</b></div>
+        </div>
+        <div class="segbar" role="img" aria-label="${c.usate} usate, ${c.programmate} in calendario, ${Math.max(0, resto)} rimaste su ${N}">
+          <i class="u" style="width:${(Math.min(c.usate, N) / Math.max(N, c.totale)) * 100}%"></i><i class="p" style="width:${(Math.min(c.programmate, Math.max(0, N - c.usate)) / Math.max(N, c.totale)) * 100}%"></i>${resto < 0 ? `<i class="x" style="width:${(-resto / c.totale) * 100}%"></i>` : ""}</div>
+        <div class="conv-leg"><span><i class="sw" style="background:var(--accent)"></i>usate</span><span><i class="sw" style="background:color-mix(in oklab, var(--accent) 40%, var(--surface))"></i>in calendario</span><span><i class="sw" style="background:var(--sunk);border:1px solid var(--line)"></i>rimaste (${N} all'anno)</span></div>
+        <h3 style="margin-top:16px">Le serate dell'anno</h3>
+        ${serate.length ? `<div class="tbl-wrap"><table><tbody>${serate.map((b, i) => `<tr class="click" data-b="${esc(b.id)}"><td class="n" style="width:2.5em">${i + 1}.</td><td style="white-space:nowrap">${esc(fmtShort(b.data))}</td><td>${esc(b.titolo)}</td><td>${b.data <= TODAY ? '<span class="pill saldato">Fatta</span>' : '<span class="pill dafare">In programma</span>'}</td></tr>`).join("")}</tbody></table></div>`
+          : `<div class="hint">Nessuna serata segnata. Per contarla, apri la prenotazione e spunta «Serata del Comune».</div>`}
+        ${sospette.length ? `<h3 style="margin-top:16px">Forse sono serate del Comune?</h3><span class="hint">Eventi dell'anno con «Comune», «sindaco», «assessore» o «patrocinio», non ancora segnati</span>
+          <div class="blist" style="margin-top:8px">${sospette.map((b) => `<div class="req panel" style="padding:10px 12px"><div class="top-line"><span><b>${esc(fmtShort(b.data))}</b> · ${esc(b.titolo)}</span><button class="btn sm" type="button" data-segna="${esc(b.id)}">Segna come serata del Comune</button></div></div>`).join("")}</div>` : ""}
+      </div>
+      ${S.conv.inizio ? `<div class="panel"><h2>Tutti gli anni della convenzione</h2>
+        ${S.conv.inizio ? `<span class="hint">${usateTot} serate usate finora su ${N * A} in ${A} anni · fino al ${fmtD(anni[A - 1].fine)}</span>
+        <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table><thead><tr><th>Anno</th><th>Periodo</th><th class="n">Usate</th><th class="n">In cal.</th><th class="n">Rimaste</th></tr></thead><tbody>
+          ${anni.map((x) => `<tr class="${x.n === p.n ? "oggi" : ""}"><td>${x.n}</td><td style="white-space:nowrap">${esc(parse(x.inizio).toLocaleDateString("it-IT", { month: "short", year: "numeric" }))} – ${esc(parse(x.fine).toLocaleDateString("it-IT", { month: "short", year: "numeric" }))}</td><td class="n">${x.usate || ""}</td><td class="n">${x.programmate || ""}</td><td class="n ${N - x.totale < 0 ? "neg" : ""}">${x.fine < TODAY ? (N - x.totale > 0 ? `${N - x.totale} non usate` : N - x.totale < 0 ? `${x.totale - N} in più` : "tutte") : N - x.totale}</td></tr>`).join("")}
+        </tbody></table></div>` : ""}
+      </div>` : ""}
+    </div>${impostazioni}`;
+  $("#cm-prev").onclick = () => { S.cmAnno--; renderComune(); };
+  $("#cm-next").onclick = () => { S.cmAnno++; renderComune(); };
+  $("#cm-oggi").onclick = () => { S.cmAnno = 0; renderComune(); };
+  el.querySelectorAll("[data-b]").forEach((r) => (r.onclick = () => openBooking(S.bookings.find((b) => b.id === r.dataset.b))));
+  el.querySelectorAll("[data-segna]").forEach((btn) => (btn.onclick = async () => { btn.disabled = true; try { await run(sb.from("bookings").update({ comune: true }).eq("id", btn.dataset.segna), "Segnata come serata del Comune"); } catch (e) { btn.disabled = false; toast(errText(e)); } }));
+  const f = $("#cm-form");
+  if (f && S.isAdmin) f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const rec = { convenzione_inizio: $("#cm-inizio").value || null, convenzione_serate: Math.max(1, Number($("#cm-serate").value) || 25), convenzione_anni: Math.max(1, Number($("#cm-anni").value) || 20) };
+    try { await run(sb.from("settings").update(rec).eq("id", 1), "Convenzione salvata"); } catch (x) { toast(errText(x)); }
+  });
 }
 
 /* ---------- donazioni e donatori ---------- */

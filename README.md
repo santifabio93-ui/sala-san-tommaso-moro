@@ -154,6 +154,14 @@ dono medio, peso su entrate e costi fissi, concentrazione, nuovi e da ricontatta
 donazioni per mese e per tipo di donatore, elenco con ricerca. Nella scheda di ogni donatore si salvano tipo, contatti,
 note, ringraziamento e ricevuta per anno, e si prepara la lettera di ringraziamento. «Esporta elenco» scarica un CSV.
 
+## Serate del Comune
+Esegui `supabase/009_comune.sql` nel SQL Editor (si può rieseguire). Ogni prenotazione ha la spunta «Serata del Comune
+(convenzione)». In **Affitti → Serate del Comune** il contatore annuale mostra serate usate, in calendario e rimaste su
+25 (anno solare, con frecce per gli altri anni), l'elenco delle serate e gli eventi che forse sono del Comune (con
+«Comune», «sindaco», «assessore», «patrocinio») da segnare con un clic. Il contatore compare anche sotto il calendario.
+Lo script Google segna da solo gli eventi nuovi del calendario con «Comune» o «comunale» nel titolo. Facoltativo: una
+data di inizio della convenzione, se l'anno non parte il 1° gennaio, con il riepilogo dei 20 anni.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

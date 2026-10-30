@@ -30,7 +30,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-10-30.8"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-10-30.9"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -198,6 +198,7 @@ function eventoPerApp(e) {
     inizio: oraInizio,
     fine: oraFine,
     giornata_intera: giornata,
+    comune: p.comune,
     note: (e.getDescription() || "").replace(/<[^>]+>/g, " ").trim().slice(0, 2000),
   };
 }
@@ -215,7 +216,9 @@ function analizzaTitolo(t) {
     titolo = titolo.replace(m[0], "");
   }
   titolo = titolo.replace(/\s{2,}/g, " ").replace(/[\s.,;]+$/, "").trim();
-  return { titolo: titolo || t, referente: referente, telefono: telefono, stato: stato };
+  // serate della convenzione con il Comune: «Comune», «comunale» (Amministrazione comunale, Consiglio comunale…)
+  const comune = /\b(comune|comunale|comunali)\b/i.test(t);
+  return { titolo: titolo || t, referente: referente, telefono: telefono, stato: stato, comune: comune };
 }
 
 function titoloCalendario(b) {

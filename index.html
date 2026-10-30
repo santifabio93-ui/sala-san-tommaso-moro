@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-10-30.8">
+<link rel="stylesheet" href="style.css?v=2026-10-30.9">
 </head>
 <body>
 
@@ -107,6 +107,10 @@
       <span class="hint" id="req-sync"></span>
     </div>
     <div id="requests"></div>
+  </main>
+
+  <main id="view-comune" hidden>
+    <div id="cm-body"></div>
   </main>
 
   <main id="view-sopralluoghi" hidden>
@@ -259,6 +263,7 @@
       <div class="field t"><label for="b-inizio">Dalle</label><input id="b-inizio" type="time" required value="16:00"></div>
       <div class="field t"><label for="b-fine">Alle</label><input id="b-fine" type="time" required value="20:00"></div>
       <div class="field"><label class="check"><input type="checkbox" id="b-giornata"> Tutto il giorno</label><div id="b-avail"></div></div>
+      <div class="field"><label class="check"><input type="checkbox" id="b-comune"> Serata del Comune (convenzione)</label><span class="hint" id="b-comune-hint"></span></div>
       <div class="field t"><label for="b-prezzo">Prezzo (€)</label><input id="b-prezzo" type="number" min="0" step="1" inputmode="decimal">
         <button class="linkbtn" type="button" id="b-suggest">Applica tariffa</button></div>
       <div class="field t"><label for="b-incassato">Incassato (€)</label><input id="b-incassato" type="number" min="0" step="1" inputmode="decimal" value="0">
@@ -475,7 +480,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-10-30.8"></script>
-<script type="module" src="app.js?v=2026-10-30.8"></script>
+<script src="config.js?v=2026-10-30.9"></script>
+<script type="module" src="app.js?v=2026-10-30.9"></script>
 </body>
 </html>
