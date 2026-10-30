@@ -100,13 +100,24 @@ function modulo(d, info) {
       <div class="campo full"><label for="f-altro">Altre richieste o esigenze</label><textarea id="f-altro" name="altro">${esc(d.altro)}</textarea></div>
     </div></section>
 
-  <section class="sez"><h2><span class="n">6</span>Regole della sala e dichiarazione</h2>
+  <section class="sez"><h2><span class="n">6</span>SIAE e diritti d'autore</h2>
+    <span class="hint">Il permesso SIAE e i diritti d'autore sono <b>a carico dell'organizzatore</b>. Servono quando nell'evento si usano musica (dal vivo o registrata), film, spettacoli o altre opere protette.</span>
+    <div class="campo"><span class="lbl obbl">L'evento usa musica, film o altre opere protette da diritto d'autore?</span>${scelta("siae", [["si", "sì"], ["no", "no, nessuna opera protetta"]], d.siae)}</div>
+    <div class="cond" data-se="siae=si">
+      <div class="campo" style="margin-top:10px"><label for="f-siae-file">Allegate il permesso SIAE (PDF o foto, massimo 10 MB)</label>
+        <input id="f-siae-file" type="file" accept="application/pdf,image/*" class="no-print">
+        <div id="siae-caricati" class="hint">${(d.siae_file || []).map((f) => `✓ ${esc(f.nome)} allegato`).join("<br>")}</div></div>
+      <label class="voce" style="margin-top:8px"><input type="checkbox" name="siae_dopo"${d.siae_dopo ? " checked" : ""}> Il permesso non l'abbiamo ancora: lo mandiamo a salatommasomoro@gmail.com prima dell'evento</label>
+    </div>
+  </section>
+
+  <section class="sez"><h2><span class="n">7</span>Regole della sala e dichiarazione</h2>
     <div class="regole">
       <h3>Sicurezza</h3><ul><li>Non sono ammessi fiamme libere, candele, petardi, fuochi d'artificio, fumogeni, bombolette di gas e materiali infiammabili.</li><li>Uscite di emergenza e percorsi d'esodo sempre liberi; le uscite di emergenza si usano solo in caso di pericolo; l'ascensore è riservato alle persone con disabilità.</li><li>Il numero di persone non può superare la capienza indicata (massimo 472). Non sono ammessi oggetti atti a offendere.</li></ul>
       <h3>Impianti</h3><ul><li>Impianti, regia, quadri elettrici, termostati e riscaldamento si usano solo con il personale della sala.</li><li>Le attrezzature esterne si collegano solo dove indica il tecnico della sala: niente prese multiple né cavi lungo pareti e vie d'esodo. Niente lavorazioni che producono scintille, polveri o fumi.</li></ul>
       <h3>In sala</h3><ul><li>Vietato fumare, anche sigarette elettroniche. Cibo e bevande non sono ammessi in sala.</li><li>Non sono ammessi animali, tranne i cani guida e di assistenza. Non sono ammessi in sala passeggini e carrozzine per bambini; sono ammesse le carrozzine per persone con disabilità.</li></ul>
       <h3>Palco e riconsegna</h3><ul><li>Si portano solo i materiali dichiarati; scenografie e tessuti ignifughi (classe 1).</li><li>A fine evento palco libero e sala riconsegnata come trovata, entro l'orario di sgombero. La sala non custodisce materiali dell'organizzatore.</li></ul>
-      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>Si occupa, se previsti, degli adempimenti SIAE e delle autorizzazioni per l'evento, salvo diverso accordo scritto con la sala.</li></ol>
+      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>Provvede a proprie spese al permesso SIAE e ai diritti d'autore, se previsti, e alle altre autorizzazioni per l'evento, e consegna alla sala copia del permesso SIAE.</li></ol>
     </div>
     <label class="accetta"><input type="checkbox" name="ok_regole"${d.ok_regole ? " checked" : ""}> <span class="obbl">Abbiamo letto le regole della sala e ci impegniamo a farle rispettare</span></label>
     <label class="accetta"><input type="checkbox" name="ok_dichiarazione"${d.ok_dichiarazione ? " checked" : ""}> <span class="obbl">Accetto la dichiarazione dell'organizzatore</span></label>
@@ -131,6 +142,7 @@ function leggi() {
     } else if (el.type === "number") { if (el.value !== "") d[el.name] = Number(el.value); }
     else if (el.value.trim()) d[el.name] = el.value.trim();
   }
+  d.siae_file = allegati.slice();
   d.orari = [...document.querySelectorAll(".riga-orari")].map((r) => {
     const v = (n) => r.querySelector(`[name="o_${n}"]`).value;
     return { data: v("data"), all_da: v("all_da"), all_a: v("all_a"), porte: v("porte"), inizio: v("inizio"), fine: v("fine"), sgombero: v("sgombero") };
@@ -153,9 +165,27 @@ function controlla(d) {
   if (!d.tipo) segna('[data-campo="tipo"]', "tipo di evento");
   if (!d.fascia) segna('[data-campo="fascia"]', "pubblico previsto");
   if (!d.orari.length || !d.orari[0].data || !d.orari[0].inizio) segna('.riga-orari', "data e ora di inizio");
+  if (!d.siae) segna('[data-campo="siae"]', "risposta sulla SIAE");
+  else if (d.siae === "si" && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
   if (!d.ok_regole || !d.ok_dichiarazione || !d.ok_privacy) segna('.accetta', "accettazione di regole, dichiarazione e privacy");
   if (!d.firma || d.firma.length < 3) segna('[name="firma"]', "nome e cognome di chi compila");
   return mancano;
+}
+
+// --- allegati (permesso SIAE): caricati nella cartella della scheda, visibili solo alla sala ---
+let allegati = [];
+async function caricaAllegato(file) {
+  const out = $("#siae-caricati");
+  if (file.size > 10 * 1024 * 1024) { toast("Il file supera i 10 MB: provate con una foto o un PDF più leggero"); return; }
+  const est = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+  const percorso = `${token}/siae-${Date.now()}${est}`;
+  out.textContent = "Caricamento in corso…";
+  const { error } = await sb.storage.from("schede").upload(percorso, file, { contentType: file.type || "application/octet-stream", upsert: false });
+  if (error) { out.innerHTML = `<span style="color:var(--due-fg)">Caricamento non riuscito: ${esc(error.message)}. Potete mandarlo per email a salatommasomoro@gmail.com</span>`; return; }
+  allegati.push({ percorso, nome: file.name, caricato: new Date().toISOString() });
+  out.innerHTML = allegati.map((f) => `✓ ${esc(f.nome)} allegato`).join("<br>");
+  salvaBozza();
+  document.querySelector("#f-siae-file").classList.remove("errore-campo");
 }
 
 // --- avvio ---
@@ -166,7 +196,9 @@ async function avvia() {
   if (info.chiusa) { mostra(`<div class="esito"><h2>Scheda già approvata</h2><p>La sala ha già approvato la scheda${info.titolo ? ` per <b>${esc(info.titolo)}</b>` : ""}. Per modifiche contattate la sala: salatommasomoro@gmail.com</p></div>`); return; }
   let d = info.dati || {};
   try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0)) d = { ...d, ...b }; } catch (e) {}
+  allegati = Array.isArray(d.siae_file) ? d.siae_file.slice() : [];
   mostra(modulo(d, info));
+  $("#f-siae-file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) caricaAllegato(f); e.target.value = ""; });
   const f = $("#scheda");
   aggiornaCondizioni();
   f.addEventListener("input", (e) => { e.target.closest(".errore-campo")?.classList.remove("errore-campo"); aggiornaCondizioni(); salvaBozza(); });

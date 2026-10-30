@@ -172,6 +172,13 @@ mandare il link o un sollecito, leggere le risposte, dare il parere di sicurezza
 copiare i dati nella prenotazione e stampare. Il link dà accesso solo a quella scheda (funzioni `scheda_apri` e
 `scheda_invia`); dopo l'approvazione non si può più modificare.
 
+**SIAE**: il permesso SIAE e i diritti d'autore sono a carico dell'organizzatore. La scheda chiede se l'evento usa
+opere protette e, in caso affermativo, di allegare il permesso (PDF o foto, massimo 10 MB) oppure di dichiarare che
+lo manderà per email prima dell'evento. Esegui `supabase/011_siae.sql`: crea lo spazio file privato `schede`, dove
+l'organizzatore può solo caricare nella cartella della sua scheda (finché non è approvata) e solo admin e
+coordinatori possono aprire i file. Il cruscotto mostra «SIAE allegata / da ricevere / non serve» e avvisa prima di
+approvare una scheda senza permesso.
+
 ## Backup
 In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CSV delle prenotazioni
 (apribile con Excel). Conviene farlo una volta al mese: il piano gratuito non ha backup scaricabili.

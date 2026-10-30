@@ -1,7 +1,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-10-31.1";
+const VERSIONE = "2026-10-31.2";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1511,6 +1511,7 @@ function renderSchede() {
         + tappa(!!s.aperta_il, s.aperta_il ? `Aperta ${dt(s.aperta_il)}` : "Non ancora aperta")
         + tappa(!!s.compilata_il, s.compilata_il ? `Compilata ${dt(s.compilata_il)}` : "Non compilata", !s.compilata_il && r.ritardo ? "ko" : "")
         + (s.stato === "respinta" ? tappa(false, "Correzioni richieste", "warn-t") : tappa(s.stato === "approvata", s.stato === "approvata" ? `Approvata ${dt(s.verificata_il)}` : "Da approvare", s.stato === "compilata" ? "warn-t" : ""))
+        + ({ allegato: tappa(true, "SIAE allegata"), da_ricevere: tappa(false, "SIAE da ricevere", s.stato === "approvata" ? "" : r.urgente ? "ko" : "warn-t"), non_serve: tappa(false, "SIAE non serve") }[siaeStato(s.dati)] || "")
         + (s.sollecitata_il ? `<span class="tappa">Sollecitata ${dt(s.sollecitata_il)}</span>` : "");
     const az = [];
     if (!s || ["da_inviare"].includes(s.stato)) az.push(`<button class="btn primary sm" type="button" data-invia="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Invia il link</button>`);
@@ -1577,17 +1578,26 @@ const ETICHETTE = {
   luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
   tecnico: "Tecnico", tecnico_nome: "Nome tecnico", tecnico_cell: "Cellulare tecnico", attrezzature: "Attrezzature da collegare", attrezzature_quali: "Quali", potenza_w: "Potenza totale (W)",
   scenografie: "Scenografie", scenografie_quali: "Cosa portano", ignifughi: "Materiali ignifughi classe 1", effetti: "Effetti", effetti_quali: "Quali effetti", durante: "Durante l'evento", pubblicabile: "Pubblicabile nel programma", locandina_entro: "Locandina entro", altro: "Altre richieste",
+  siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", siae_dopo: "Permesso SIAE",
   ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
 };
 const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
   ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
-  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
-function risposteHtml(d) {
-  const val = (k, v) => (v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
+  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
+// permesso SIAE: a carico dell'organizzatore, da allegare alla scheda
+function siaeStato(d) {
+  if (!d || !d.siae) return "";
+  if (d.siae === "no") return "non_serve";
+  return (d.siae_file || []).length ? "allegato" : "da_ricevere";
+}
+function risposteHtml(d, conLink = true) {
+  const val = (k, v) => (k === "siae" ? (v === "si" ? "sì: permesso a carico dell'organizzatore" : "no, nessuna opera protetta") : k === "siae_dopo" ? "non ancora allegato: lo mandano per email prima dell'evento" : v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
   return GRUPPI_SCHEDA.map(([g, ks]) => {
     const righe = ks.flatMap((k) => {
       if (k === "orari") return (d.orari || []).map((o, i) => `<dt>Giorno ${i + 1}</dt><dd>${esc(o.data ? fmtDay(o.data) : "")}${o.all_da ? ` · allestimento ${esc(o.all_da)}–${esc(o.all_a)}` : ""}${o.porte ? ` · porte ${esc(o.porte)}` : ""} · inizio ${esc(o.inizio)}${o.fine ? `, fine ${esc(o.fine)}` : ""}${o.sgombero ? ` · sgombero ${esc(o.sgombero)}` : ""}</dd>`);
       const v = d[k];
+      if (k === "siae_file") return (Array.isArray(v) ? v : []).map((f) => `<dt>${esc(ETICHETTE[k])}</dt><dd>${conLink ? `<a href="#" data-allegato="${esc(f.percorso)}">📎 ${esc(f.nome)}</a>` : `📎 ${esc(f.nome)}`}</dd>`);
+      if (k === "siae_dopo" && (d.siae !== "si" || (d.siae_file || []).length)) return [];
       if (v === undefined || v === "" || v === false || (Array.isArray(v) && !v.length)) return [];
       return [`<dt>${esc(ETICHETTE[k] || k)}</dt><dd>${esc(val(k, v))}</dd>`];
     });
@@ -1601,6 +1611,14 @@ function apriScheda(id) {
   $("#sk-head").textContent = (b && b.titolo) || s.dati.titolo || s.titolo || "Scheda";
   $("#sk-stato").textContent = `${STATI_SCHEDA[s.stato]} · compilata ${s.compilata_il ? new Date(s.compilata_il).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"} da ${s.firma_nome || "—"}${b ? ` · prenotazione del ${fmtShort(b.data)}` : " · non ancora in calendario"}`;
   $("#sk-risposte").innerHTML = risposteHtml(s.dati || {});
+  $("#sk-risposte").querySelectorAll("[data-allegato]").forEach((a) => (a.onclick = async (e) => {
+    e.preventDefault();
+    const w = window.open("", "_blank");
+    const { data, error } = await sb.storage.from("schede").createSignedUrl(a.dataset.allegato, 3600);
+    if (error || !data) { if (w) w.close(); toast("Allegato non disponibile: " + ((error && error.message) || "riprova")); return; }
+    if (w) w.location.href = data.signedUrl; else location.href = data.signedUrl;
+  }));
+  S.siaeAvvisato = null;
   dlgSK.querySelectorAll('[name="sk-sic"]').forEach((r) => (r.checked = r.value === s.sicurezza));
   $("#sk-note").value = s.sicurezza_note || "";
   $("#sk-error").innerHTML = "";
@@ -1611,6 +1629,11 @@ $("#sk-approva").onclick = async () => {
   const s = S.editingScheda, sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value;
   if (!sic) { $("#sk-error").innerHTML = `<div class="warn">Indica il parere del responsabile della sicurezza.</div>`; return; }
   if (sic === "non_compatibile") { $("#sk-error").innerHTML = `<div class="warn">Con parere «non compatibile» la scheda non si approva: usa «Chiedi correzioni» o contatta l'organizzatore.</div>`; return; }
+  if (siaeStato(s.dati) === "da_ricevere" && S.siaeAvvisato !== s.id) {
+    S.siaeAvvisato = s.id;
+    $("#sk-error").innerHTML = `<div class="warn">Il permesso SIAE non è allegato: è a carico dell'organizzatore e va consegnato prima dell'evento. Se l'avete già ricevuto per email, premi di nuovo «Approva».</div>`;
+    return;
+  }
   try { await run(sb.from("schede").update({ stato: "approvata", sicurezza: sic, sicurezza_note: $("#sk-note").value.trim(), verificata_da: S.me.id, verificata_il: new Date().toISOString() }).eq("id", s.id), "Scheda approvata"); dlgSK.close(); }
   catch (e) { $("#sk-error").innerHTML = `<div class="warn">${esc(errText(e))}</div>`; }
 };
@@ -1633,7 +1656,7 @@ $("#sk-stampa").onclick = () => {
   const s = S.editingScheda, w = window.open("", "_blank");
   if (!w) { toast("Il browser ha bloccato la finestra di stampa"); return; }
   w.document.write(`<!doctype html><meta charset="utf-8"><title>Scheda · ${esc($("#sk-head").textContent)}</title><style>body{font:13px/1.4 system-ui,sans-serif;margin:24px;color:#111}h1{font:600 20px Georgia,serif}h4{margin:14px 0 4px;text-transform:uppercase;font-size:11px;letter-spacing:.06em;color:#555}dl{display:grid;grid-template-columns:34% 1fr;gap:3px 12px;margin:0}dt{color:#555}dd{margin:0}</style>
-    <h1>Sala San Tommaso Moro · ${esc($("#sk-head").textContent)}</h1><p>${esc($("#sk-stato").textContent)}</p>${risposteHtml(s.dati || {})}
+    <h1>Sala San Tommaso Moro · ${esc($("#sk-head").textContent)}</h1><p>${esc($("#sk-stato").textContent)}</p>${risposteHtml(s.dati || {}, false)}
     <h4>Responsabile della sicurezza</h4><p>${esc({ compatibile: "Compatibile", condizioni: "Compatibile con condizioni", non_compatibile: "Non compatibile" }[s.sicurezza] || "—")} ${esc(s.sicurezza_note || "")}</p><script>print()<\/script>`);
   w.document.close();
 };
