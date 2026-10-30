@@ -315,6 +315,17 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Foglietto parrocchiale
+
+Ogni giovedì mattina (dalle 7) lo script Google manda dall'account della sala un'email al parroco con gli appuntamenti
+pubblici della sala dalla domenica alla domenica dopo, pronti da copiare nel foglietto: film e spettacoli (con il tipo
+e il prezzo da Cinebot), eventi organizzati dalla Sala e serate del Comune. Gli affitti privati e gli eventi da
+confermare non compaiono. In **Sito web → Foglietto parrocchiale** l'amministratore accende l'invio e imposta email
+del parroco, saluto, firma e note da aggiungere; c'è l'anteprima della settimana e «Copia il testo».
+Serve lo script `029_foglietto.sql`, lo script Google aggiornato con il nuovo `appsscript.json` (permesso
+`script.send_mail`, solo per questa email) e «+foglietto» nella MODALITA. `provaFoglietto` manda una prova all'account
+dello script, non al parroco.
+
 ## Parroco
 
 Il ruolo **Parroco** (script `027_parroco.sql`) vede la sala in sola lettura: la pagina «In breve» (cosa c'è in sala

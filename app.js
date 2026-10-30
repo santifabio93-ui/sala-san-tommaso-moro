@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.42";
+const VERSIONE = "2026-11-01.43";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -240,6 +240,7 @@ async function loadAll() {
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
+      S.foglietto = "foglietto_attivo" in st.data ? { attivo: st.data.foglietto_attivo, email: st.data.foglietto_email || "", nome: st.data.foglietto_nome || "don Giorgio", firma: st.data.foglietto_firma || "", note: st.data.foglietto_note || "", inviato: st.data.foglietto_inviato } : null; // aggiornamento 29
       S.pulizie = "pulizie_token" in st.data ? { token: st.data.pulizie_token, giorno: st.data.pulizie_giorno ?? 2, referenti: Array.isArray(st.data.pulizie_referenti) ? st.data.pulizie_referenti : null } : null; // aggiornamento 24
       S.sitoCfg = "sito_ignora" in st.data ? { nome: st.data.sito_nome || "", cell: st.data.sito_cellulare || "", avvisati: st.data.sito_avvisati || [], avvisatoIl: st.data.sito_avvisato_il, ignora: st.data.sito_ignora || [] } : null;
     }
@@ -2743,6 +2744,8 @@ function renderSito() {
       try { await run(sb.rpc("sito_segna", { p_avvisati: [...new Set([...[...avvisate].filter((k) => attuali.has(k)), ...scelte.map((v) => v.chiave)])] })); } catch (e) { toast(errText(e)); }
     }
   };
+  el.insertAdjacentHTML("beforeend", pannelloFoglietto());
+  collegaFoglietto(el);
 }
 
 /* ---------- le tariffe coprono i costi? ---------- */
@@ -3237,6 +3240,56 @@ $("#volontario-form").addEventListener("submit", async (e) => {
   } catch (x) { $("#v-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
   btn.disabled = false;
 });
+
+/* ---------- foglietto parrocchiale: l'email del giovedì al parroco (la manda lo script Google) ---------- */
+// gli appuntamenti pubblici dalla prossima domenica alla domenica dopo, come li prepara il database per lo script
+function vociFoglietto() {
+  const dal = addDays(TODAY, (7 - parse(TODAY).getDay()) % 7), al = addDays(dal, 7);
+  const film = S.proiezioni.filter((p) => p.data >= dal && p.data <= al).map((p) => { const f = S.films.find((x) => x.id === p.film_id) || {}, t = tipoSpettacolo(f);
+    return { data: p.data, ora: p.ora, titolo: f.titolo || "", tipo: t === "film" ? "Cinema" : t === "altro" ? "Spettacolo" : TIPI_SPETT[t], prezzo: (f.cinebot_info || {}).prezzo }; });
+  const eventi = S.bookings.filter((b) => b.stato === "confermata" && b.data >= dal && b.data <= al && (b.comune || b.della_sala) && !(/cinema|proiezion|cineforum/i.test(b.titolo) && S.proiezioni.some((p) => p.data === b.data)))
+    .map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, titolo: b.titolo, tipo: b.comune ? "Comune" : "Sala", prezzo: null }));
+  return { dal, al, voci: [...film, ...eventi].sort((x, y) => (x.data + x.ora).localeCompare(y.data + y.ora)) };
+}
+function testoFoglietto(f) {
+  const { dal, al, voci } = vociFoglietto(), righe = [];
+  const dIt = (d, g) => parse(d).toLocaleDateString("it-IT", g ? { weekday: "long", day: "numeric", month: "long" } : { day: "numeric", month: "long" });
+  voci.forEach((v) => { const r = righe.find((x) => x.data === v.data && x.titolo === v.titolo); if (r) { if (v.ora) r.ore.push(v.ora); return; } righe.push({ ...v, ore: v.ora ? [v.ora] : [] }); });
+  const riga = (r) => `${dIt(r.data, true).replace(/^./, (c) => c.toUpperCase())} – ${["Sala", "Comune"].includes(r.tipo) ? "" : r.tipo + ": "}«${r.titolo}»${r.ore.length ? ", ore " + r.ore.join(" e ") : ""}${r.prezzo === 0 ? " – ingresso libero" : r.prezzo > 0 ? ` – ingresso ${String(r.prezzo).replace(".", ",")} €` : ""}`;
+  const periodo = `da ${dIt(dal, true)} a ${dIt(al, true)}`;
+  const corpo = righe.length ? [`ecco gli appuntamenti della Sala San Tommaso Moro per il foglietto parrocchiale, ${periodo}:`, "", "SALA SAN TOMMASO MORO", ...righe.map(riga)]
+    : [`questa settimana (${periodo}) in Sala San Tommaso Moro non ci sono appuntamenti aperti al pubblico.`];
+  return { oggetto: `Sala San Tommaso Moro – programma per il foglietto (${dIt(dal)} – ${dIt(al)})`,
+    testo: [`Caro ${f.nome || "don Giorgio"},`, ...corpo, ...(f.note ? ["", f.note] : []), "", "Programma e biglietti: www.salasantommasomoro.it", "", "Grazie e buona giornata,", f.firma || "Sala San Tommaso Moro"].join("\n") };
+}
+function pannelloFoglietto() {
+  if (!S.foglietto) return S.isAdmin ? `<div class="panel" style="margin-top:18px"><h3>Foglietto parrocchiale</h3><p class="hint">Per l'email del giovedì al parroco esegui in Supabase lo script <b>029_foglietto.sql</b>.</p></div>` : "";
+  const f = S.foglietto, t = testoFoglietto(f), dis = S.isAdmin ? "" : " disabled";
+  const prossimo = (() => { const d = parse(TODAY), g = d.getDay(); return g === 4 ? "oggi" : `giovedì ${parse(addDays(TODAY, (4 - g + 7) % 7)).toLocaleDateString("it-IT", { day: "numeric", month: "long" })}`; })();
+  return `<div class="panel foglietto" style="margin-top:18px"><div class="section-head"><h3>📰 Foglietto parrocchiale</h3><span class="hint">ogni giovedì mattina l'email al parroco con il programma della settimana (domenica → domenica)</span></div>
+    <form id="fg-form" class="form" novalidate>
+      <div class="field"><label class="check"><input type="checkbox" id="fg-attivo"${f.attivo ? " checked" : ""}${dis}> Manda l'email ogni giovedì mattina</label>
+        <span class="hint">${f.attivo && f.email ? `Prossimo invio: ${prossimo}${f.inviato ? ` · ultimo: ${fmtShort(f.inviato)}` : ""}. La manda lo script Google (modalità «+foglietto»).` : "Spenta: nessuna email automatica."}</span></div>
+      <div class="field h"><label for="fg-email">Email del parroco</label><input id="fg-email" type="email" value="${esc(f.email)}"${dis}></div>
+      <div class="field h"><label for="fg-nome">Come salutarlo</label><input id="fg-nome" value="${esc(f.nome)}" placeholder="don Giorgio"${dis}></div>
+      <div class="field h"><label for="fg-firma">Firma</label><input id="fg-firma" value="${esc(f.firma)}" placeholder="Es. Fabio Santi"${dis}></div>
+      <div class="field"><label for="fg-note">Note da aggiungere (facoltative)</label><textarea id="fg-note" rows="2" placeholder="Es. Domenica dopo la Messa delle 10 rinfresco in sala per i volontari."${dis}>${esc(f.note)}</textarea><span class="hint">Restano finché non le togli: svuota il campo quando non servono più.</span></div>
+      ${S.isAdmin ? `<div class="field"><div class="actions"><button class="btn primary" type="submit">Salva</button><button class="btn" type="button" id="fg-copia">Copia il testo di questa settimana</button></div></div>` : ""}
+    </form>
+    <details style="margin-top:10px"><summary class="hint">Anteprima dell'email di questa settimana</summary><div class="fg-anteprima"><b>${esc(t.oggetto)}</b><pre>${esc(t.testo)}</pre></div></details></div>`;
+}
+function collegaFoglietto(root) {
+  const form = root.querySelector("#fg-form");
+  if (!form || !S.isAdmin) return;
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const email = $("#fg-email").value.trim(), attivo = $("#fg-attivo").checked;
+    if (attivo && !/^\S+@\S+\.\S+$/.test(email)) { toast("Scrivi l'email del parroco"); $("#fg-email").focus(); return; }
+    try { await run(sb.from("settings").update({ foglietto_attivo: attivo, foglietto_email: email, foglietto_nome: $("#fg-nome").value.trim(), foglietto_firma: $("#fg-firma").value.trim(), foglietto_note: $("#fg-note").value.trim() }).eq("id", 1), attivo ? "Salvato: il giovedì parte l'email" : "Salvato"); }
+    catch (x) { toast(errText(x)); }
+  };
+  root.querySelector("#fg-copia").onclick = () => { const t = testoFoglietto({ ...S.foglietto, nome: $("#fg-nome").value.trim(), firma: $("#fg-firma").value.trim(), note: $("#fg-note").value.trim() }); openCopyText(`${t.oggetto}\n\n${t.testo}`); };
+}
 
 /* ---------- gruppo pulizie: un link per tutti con l'uso della sala dall'ultima pulizia ---------- */
 const GIORNI_SETT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
@@ -3918,6 +3971,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["029_foglietto.sql", "Email del giovedì per il foglietto parrocchiale", k.has("foglietto_attivo"), "Dopo lo script SQL ricopia lo script Google (2026-11-02.2) e il file appsscript.json, e aggiungi «+foglietto» alla MODALITA"],
     ["028_cassa_tessera.sql", "Cassa con la tessera sanitaria", S.cassaNomi, "Serve solo se usi il lettore di tessere in biglietteria", true],
     ["027_parroco.sql", "Ruolo Parroco (sola lettura, conti solo totali)", undefined, "Serve solo se dai a qualcuno il ruolo Parroco", true],
     ["026_contapersone.sql", "Contapersone alla porta", chk.conta],

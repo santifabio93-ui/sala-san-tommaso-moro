@@ -24,6 +24,9 @@
  *   PRIMA_NOTA_FILE (facoltativo) id del file .xlsx della prima nota; se manca si usa il più recente della cartella
  *                  aggiungi "+sas" per copiare nell'app le email di ACEC Triveneta (conferme di programmazione e
  *                  risposte alle richieste di film); va messo nell'account che riceve le email del SAS
+ *                  aggiungi "+foglietto" per mandare ogni giovedì mattina al parroco l'email con il programma della
+ *                  settimana per il foglietto parrocchiale (destinatario e testo si impostano nell'app, in Sito web);
+ *                  serve il permesso di inviare email (script.send_mail in appsscript.json)
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
  *                  allineato con l'app: prenotazioni nate nell'app o dalle email, proiezioni del cinema, sopralluoghi.
@@ -38,7 +41,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-02.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-02.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -74,6 +77,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("primanota") !== -1) prova("prima nota", () => leggiPrimaNota(cfg, false));
     if (cfg.modalita.indexOf("sas") !== -1) prova("sas", () => leggiSas(cfg));
     if (/(^|\+)app(\+|$)/.test(cfg.modalita)) prova("calendario dell'app", () => sincronizzaCalendarioApp(cfg));
+    if (cfg.modalita.indexOf("foglietto") !== -1) prova("foglietto", () => inviaFogliettoSeServe(cfg));
   } finally {
     lock.releaseLock();
   }
@@ -391,6 +395,66 @@ function leggiCinebot(cfg) {
   if (!elenco.length) { Logger.log("Cinebot: nessun film trovato, la pagina potrebbe essere cambiata"); return; }
   const esito = rpc(cfg, "sync_cinebot_push", { p_films: elenco });
   Logger.log("Cinebot: " + JSON.stringify(esito));
+}
+
+/* ---------------- foglietto parrocchiale ---------------- */
+
+const GIORNI_IT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+const MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+function dataIt(iso, conGiorno) {
+  const p = iso.split("-").map(Number), d = new Date(p[0], p[1] - 1, p[2]);
+  return (conGiorno ? GIORNI_IT[d.getDay()] + " " : "") + p[2] + " " + MESI_IT[p[1] - 1];
+}
+
+// il giovedì dalle 7, una volta sola: l'email al parroco con gli appuntamenti pubblici della settimana
+function inviaFogliettoSeServe(cfg) {
+  const ora = new Date();
+  if (Utilities.formatDate(ora, FUSO, "u") !== "4" || Number(Utilities.formatDate(ora, FUSO, "H")) < 7) return;
+  const d = rpc(cfg, "sync_foglietto", {});
+  if (!d || !d.attivo || !d.email || d.inviato === d.oggi) return;
+  mandaFoglietto(d, d.email);
+  rpc(cfg, "sync_foglietto_inviato", {});
+  Logger.log("Foglietto: email mandata a " + d.email);
+}
+
+// da eseguire a mano: manda l'email di prova a te (all'account dello script), non al parroco
+function provaFoglietto() {
+  const cfg = leggiImpostazioni();
+  const d = rpc(cfg, "sync_foglietto", {});
+  const me = Session.getEffectiveUser().getEmail();
+  mandaFoglietto(d, me);
+  Logger.log("Foglietto: email di prova mandata a " + me + (cfg.modalita.indexOf("foglietto") === -1 ? "  ← manca «+foglietto» nella MODALITA: il giovedì non partirà da sola" : ""));
+}
+
+function testoFoglietto(d) {
+  // un rigo per giorno e titolo, con tutti gli orari
+  const righe = [];
+  (d.voci || []).forEach((v) => {
+    const r = righe.find((x) => x.data === v.data && x.titolo === v.titolo);
+    if (r) { if (v.ora) r.ore.push(v.ora); return; }
+    righe.push({ data: v.data, titolo: v.titolo, tipo: v.tipo, ore: v.ora ? [v.ora] : [], prezzo: v.prezzo });
+  });
+  const riga = (r) => {
+    const giorno = dataIt(r.data, true).replace(/^./, (c) => c.toUpperCase());
+    const cosa = (["Sala", "Comune"].indexOf(r.tipo) === -1 ? r.tipo + ": " : "") + "«" + r.titolo + "»";
+    const ore = r.ore.length ? ", ore " + r.ore.join(" e ") : "";
+    const ingresso = r.prezzo === 0 ? " – ingresso libero" : r.prezzo > 0 ? " – ingresso " + String(r.prezzo).replace(".", ",") + " €" : "";
+    return giorno + " – " + cosa + ore + ingresso;
+  };
+  const periodo = "da " + dataIt(d.dal, true) + " a " + dataIt(d.al, true);
+  const saluto = "Caro " + (d.nome || "don Giorgio") + ",";
+  const corpo = righe.length
+    ? ["ecco gli appuntamenti della Sala San Tommaso Moro per il foglietto parrocchiale, " + periodo + ":", "", "SALA SAN TOMMASO MORO"].concat(righe.map(riga))
+    : ["questa settimana (" + periodo + ") in Sala San Tommaso Moro non ci sono appuntamenti aperti al pubblico."];
+  const testo = [saluto].concat(corpo, d.note ? ["", d.note] : [], ["", "Programma e biglietti: www.salasantommasomoro.it", "", "Grazie e buona giornata,", d.firma || "Sala San Tommaso Moro"]).join("\n");
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5">' + testo.split("\n").map((l) => l === "SALA SAN TOMMASO MORO" ? "<b>" + l + "</b>" : esc(l)).join("<br>") + "</div>";
+  return { oggetto: "Sala San Tommaso Moro – programma per il foglietto (" + dataIt(d.dal) + " – " + dataIt(d.al) + ")", testo: testo, html: html };
+}
+
+function mandaFoglietto(d, a) {
+  const t = testoFoglietto(d);
+  MailApp.sendEmail({ to: a, subject: t.oggetto, body: t.testo, htmlBody: t.html, name: "Sala San Tommaso Moro" });
 }
 
 /* ---------------- C1 (riepiloghi SIAE) ---------------- */

@@ -779,3 +779,5 @@ nav.tabs { position: relative }
 .tessera-ok b { font-size: 1.6rem; font-family: var(--f-display) }
 .tess-riga { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
 .tess-riga input { flex: 1 1 220px; text-transform: uppercase }
+.fg-anteprima { margin-top: 8px; padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: .88rem }
+.fg-anteprima pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0 0 }
