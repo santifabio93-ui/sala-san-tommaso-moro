@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.31";
+const VERSIONE = "2026-11-01.32";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -189,7 +189,7 @@ async function loadAll() {
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
-      S.pulizie = "pulizie_token" in st.data ? { token: st.data.pulizie_token, giorno: st.data.pulizie_giorno ?? 2 } : null; // aggiornamento 24
+      S.pulizie = "pulizie_token" in st.data ? { token: st.data.pulizie_token, giorno: st.data.pulizie_giorno ?? 2, referenti: Array.isArray(st.data.pulizie_referenti) ? st.data.pulizie_referenti : null } : null; // aggiornamento 24
       S.sitoCfg = "sito_ignora" in st.data ? { nome: st.data.sito_nome || "", cell: st.data.sito_cellulare || "", avvisati: st.data.sito_avvisati || [], avvisatoIl: st.data.sito_avvisato_il, ignora: st.data.sito_ignora || [] } : null;
     }
     if (p.data) S.profiles = p.data;
@@ -3066,20 +3066,38 @@ const GIORNI_SETT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì"
 const linkPulizie = () => new URL("modulo/pulizie.html?t=" + S.pulizie.token, location.href.split("#")[0]).href;
 function pannelloPulizie() {
   if (!S.pulizie) return `<div class="panel"><h3>Gruppo pulizie</h3><p class="hint">Per il link del gruppo pulizie esegui in Supabase lo script <b>024_pulizie.sql</b> e ricarica la pagina.</p></div>`;
-  const ultime = S.pulizieFatte.slice(0, 4);
-  return `<div class="panel"><div class="section-head"><h3>Gruppo pulizie</h3><span class="hint">Un link per tutto il gruppo: vedono quando, quanto, dove e per cosa è stata usata la sala dall'ultima pulizia</span></div>
-    <div class="actions" style="margin:8px 0"><button class="btn primary sm" type="button" data-pul="manda">Manda il link al gruppo</button><a class="btn sm" href="${esc(linkPulizie())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
+  const ultime = S.pulizieFatte.slice(0, 4), ref = S.pulizie.referenti;
+  return `<div class="panel"><div class="section-head"><h3>Gruppo pulizie</h3><span class="hint">I referenti vedono quando, quanto, dove e per cosa è stata usata la sala dall'ultima pulizia</span></div>
+    ${ref ? `${ref.map((r, i) => `<div class="todo-riga"><div><b>${esc(r.nome)}</b> <span class="hint">${esc(r.cellulare || "senza cellulare")}</span></div>
+        <div class="az"><button class="btn primary sm" type="button" data-pul="manda-a" data-i="${i}">Manda a ${esc(r.nome.split(" ")[0])}</button>${S.isAdmin ? `<button class="btn ghost sm" type="button" data-pul="togli" data-i="${i}" aria-label="Togli ${esc(r.nome)}">×</button>` : ""}</div></div>`).join("")}
+      ${S.isAdmin ? `<form class="sito-contatto" data-pul="aggiungi" style="margin-top:8px" novalidate><input placeholder="Nome del referente" aria-label="Nome del referente" maxlength="40"><input placeholder="Cellulare" inputmode="tel" aria-label="Cellulare del referente" maxlength="20"><button class="btn sm" type="submit">Aggiungi referente</button></form>` : ""}`
+      : `<p class="hint">Per salvare i referenti (con il loro numero) riesegui in Supabase lo script <b>024_pulizie.sql</b>.</p>`}
+    <div class="actions" style="margin:10px 0 8px"><button class="btn sm" type="button" data-pul="manda">Copia il link</button><a class="btn sm" href="${esc(linkPulizie())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
       ${S.isAdmin ? `<label class="hint">Le pulizie si fanno il <select data-pul="giorno" aria-label="Giorno delle pulizie">${GIORNI_SETT.map((g, i) => `<option value="${i}"${i === S.pulizie.giorno ? " selected" : ""}>${g}</option>`).join("")}</select></label><button class="btn ghost sm" type="button" data-pul="rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
     ${ultime.length ? ultime.map((f) => `<div class="todo-riga"><div><b>${esc(f.nome)}</b> <span class="hint">pulizie del ${esc(fmtShort(f.giorno))}</span>${f.note ? `<div>${esc(f.note)}</div>` : ""}</div></div>`).join("") : `<p class="hint">Quando finiscono, dal link segnano «pulizie fatte» con eventuali note (cosa manca, cosa non va): le vedi qui e in Oggi.</p>`}</div>`;
 }
+const testoPulizie = (nome) => [`${nome ? `Ciao ${nome.split(" ")[0]}! ` : ""}🧹 Ecco il link delle pulizie della Sala San Tommaso Moro.`,
+  `Trovi cosa è successo in sala dall'ultima pulizia: quando, per quanto, in quali spazi, per cosa e con quante persone.`, linkPulizie(),
+  `Salvalo, vale sempre. Quando avete finito, tocca «Pulizie fatte» e scrivi se manca qualcosa. Grazie! 🙏`].join("\n");
 function collegaPulizie(root) {
   const q = (k) => root.querySelector(`[data-pul="${k}"]`);
   const m = q("manda"); if (!m) return;
-  m.onclick = () => openCopyText([`🧹 Gruppo pulizie della Sala San Tommaso Moro`, `Qui trovate cosa è successo in sala dall'ultima pulizia: quando, per quanto, in quali spazi, per cosa e con quante persone.`, linkPulizie(), `Quando avete finito, toccate «Pulizie fatte» e scrivete se manca qualcosa. Grazie! 🙏`].join("\n"));
+  m.onclick = () => openCopyText(testoPulizie(""));
+  const ref = S.pulizie.referenti || [];
+  const salva = (lista, msg) => run(sb.from("settings").update({ pulizie_referenti: lista }).eq("id", 1), msg).catch((x) => toast(errText(x)));
+  root.querySelectorAll('[data-pul="manda-a"]').forEach((b) => (b.onclick = () => { const r = ref[+b.dataset.i]; openCopyText(testoPulizie(r.nome), r.cellulare); }));
+  root.querySelectorAll('[data-pul="togli"]').forEach((b) => (b.onclick = () => { const r = ref[+b.dataset.i]; if (confirm(`Togliere ${r.nome} dai referenti delle pulizie?`)) salva(ref.filter((_, i) => i !== +b.dataset.i), "Referente tolto"); }));
+  const f = q("aggiungi");
+  if (f) f.onsubmit = (e) => {
+    e.preventDefault();
+    const [n, c] = f.querySelectorAll("input"), nome = n.value.trim().replace(/\s+/g, " ");
+    if (!nome) { n.focus(); return; }
+    salva([...ref, { nome, cellulare: c.value.trim() }], `${nome} aggiunto ai referenti delle pulizie`);
+  };
   const g = q("giorno"); if (g) g.onchange = async () => { try { await run(sb.from("settings").update({ pulizie_giorno: +g.value }).eq("id", 1), `Pulizie il ${GIORNI_SETT[+g.value]}`); } catch (x) { toast(errText(x)); } };
   const r = q("rinnova"); if (r) r.onclick = async () => {
-    if (!confirm("Il link vecchio smetterà di funzionare: dovrai mandare quello nuovo al gruppo. Rinnovare?")) return;
-    try { await run(sb.from("settings").update({ pulizie_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo al gruppo"); } catch (x) { toast(errText(x)); }
+    if (!confirm("Il link vecchio smetterà di funzionare: dovrai mandare quello nuovo ai referenti. Rinnovare?")) return;
+    try { await run(sb.from("settings").update({ pulizie_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo ai referenti"); } catch (x) { toast(errText(x)); }
   };
 }
 

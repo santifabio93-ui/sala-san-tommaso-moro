@@ -1,11 +1,12 @@
 -- Sala San Tommaso Moro — aggiornamento 24: link per il gruppo pulizie.
--- Un link solo per tutto il gruppo (senza account): mostra cosa è successo in sala dall'ultima pulizia — quando,
+-- Un link solo per il gruppo (senza account), da mandare ai referenti delle pulizie: mostra cosa è successo in sala dall'ultima pulizia — quando,
 -- per quanto, in quali spazi, per cosa e con quante persone — e permette di segnare «pulizie fatte» con una nota.
 -- Il giorno delle pulizie (di solito il martedì) si cambia dall'app; il link si può rinnovare se gira troppo.
 -- Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run. Si può rieseguire senza problemi.
 
 alter table public.settings add column if not exists pulizie_token uuid not null default gen_random_uuid();
 alter table public.settings add column if not exists pulizie_giorno int not null default 2;  -- 0 domenica … 2 martedì … 6 sabato
+alter table public.settings add column if not exists pulizie_referenti jsonb not null default '[]'::jsonb;  -- [{ "nome": "…", "cellulare": "…" }] a cui mandare il link
 alter table public.settings drop constraint if exists settings_pulizie_giorno_check;
 alter table public.settings add constraint settings_pulizie_giorno_check check (pulizie_giorno between 0 and 6);
 
