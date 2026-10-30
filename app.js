@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.27";
+const VERSIONE = "2026-11-01.28";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -974,8 +974,24 @@ const ACQ = { da_procurare: "Da procurare", in_arrivo: "In arrivo", disponibile:
 const showsOf = (f) => S.proiezioni.filter((p) => p.film_id === f.id).sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
 const nextShow = (f) => showsOf(f).find((p) => p.data >= TODAY);
 function addDays(isoDate, n) { const d = parse(isoDate); d.setDate(d.getDate() + n); return iso(d); }
+// su Cinebot ci sono anche teatro, danza, concerti e incontri: che cos'è lo dice la scheda, altrimenti lo deduce l'app
+const TIPI_SPETT = { film: "Film", teatro: "Teatro", danza: "Danza", musica: "Musica", incontro: "Incontro", altro: "Altro spettacolo" };
+function tipoSpettacolo(f) {
+  if (f.tipo && TIPI_SPETT[f.tipo]) return f.tipo;
+  const info = f.cinebot_info || {}, t = `${f.titolo || ""} ${info.sottotitolo || ""}`.toLowerCase();
+  if (info.classificazione || f.supporto) return "film"; // il visto di censura ce l'hanno solo i film
+  if (/\bteatr|commedia|compagnia|monolog|musical|\bprosa\b|spettacolo teatrale/.test(t)) return "teatro";
+  if (/danza|ballett|\bballo\b/.test(t)) return "danza";
+  if (/concert|\bcor[oi]\b|corale|orchestr|\bbanda\b|recital|musica dal vivo/.test(t)) return "musica";
+  if (/incontr|conferenz|dibattit|convegno|testimonianz|presentazione del libro|serata con\b/.test(t)) return "incontro";
+  if (info.prezzo === 0) return "incontro";
+  if (info.prezzo >= 12) return "altro";
+  return "film";
+}
+const isFilm = (f) => tipoSpettacolo(f) === "film";
 // stato di preparazione: ok (pronto), warn (da fare, c'è tempo), ko (in ritardo o problemi), none (nessuna proiezione futura)
 function readiness(f) {
+  if (!isFilm(f)) return { cls: "none", text: TIPI_SPETT[tipoSpettacolo(f)], detail: "", spettacolo: true };
   const nx = nextShow(f);
   if (!nx) return f.prova_esito === "ok" ? { cls: "ok", text: "Provato", detail: "" } : { cls: "none", text: "Nessuna proiezione in programma", detail: "" };
   const scad = addDays(nx.data, -GIORNI_PROVA);
@@ -997,6 +1013,7 @@ const FILM_FILTERS = [
   ["prossimi", "In programma", (f) => !!nextShow(f)],
   ["dafare", "Da sistemare", (f) => !!nextShow(f) && ["ko", "warn"].includes(readiness(f).cls) && readiness(f).text !== "Pronto, provato tardi"],
   ["passati", "Già proiettati", (f) => !nextShow(f) && showsOf(f).length > 0],
+  ["spettacoli", "Altri spettacoli", (f) => !isFilm(f)],
   ["tutti", "Tutti", () => true],
 ];
 const pillCls = { ok: "saldato", warn: "acconto", ko: "dapagare", none: "annullata" };
@@ -1031,7 +1048,7 @@ function renderCinema() {
         <div class="shows">${visible.map((p) => `<span class="show${p.data < TODAY ? " past" : ""}">${esc(fmtShort(p.data))} · ${p.ora}</span>`).join("")}${upcoming.length > 6 ? `<span class="show">+${upcoming.length - 6}</span>` : ""}</div>
         ${(() => { const cs = c1OfFilm(f); return cs.length && S.canWrite ? `<div class="c1line">${cs.reduce((s, c) => s + c.spettatori, 0)} spettatori · ${money(cs.reduce((s, c) => s + c.lordo, 0))} (C1, ${cs.length} ${cs.length > 1 ? "proiezioni" : "proiezione"})</div>` : ""; })()}
         ${S.canWrite && upcoming[0] ? (() => { const st = stimaSpettatori(upcoming[0]); return st ? `<div class="stima">Stima per ${esc(fmtShort(upcoming[0].data))}: circa <b>${st.n}</b> spettatori <span title="${esc(st.base)}">ⓘ</span></div>` : ""; })() : ""}
-        <div class="meta"><span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}</div>
+        <div class="meta">${r.spettacolo ? `<span>Non è un film: niente supporto né prova di proiezione</span>` : `<span>${f.supporto ? SUPPORTI[f.supporto] : "Supporto da decidere"} · ${ACQ[f.acquisizione]}</span>${r.detail ? `<span>${esc(r.detail)}</span>` : ""}`}</div>
       </div>
     </button>`;
   }).join("")}</div>`;
@@ -1046,6 +1063,12 @@ function openFilm(f) {
   S.editingFilm = f ? f.id : null;
   const v = f || { titolo: "", distributore: "", locandina_url: "", supporto: "", acquisizione: "da_procurare", disponibile_il: "", dove: "", provato_il: "", prova_esito: "", prova_note: "", note: "" };
   $("#f-head").textContent = f ? f.titolo : "Aggiungi film";
+  S.filmTipoOk = S.films.length ? "cinebot_info" in S.films[0] : false;
+  $("#f-tipo-campo").hidden = !S.filmTipoOk;
+  const auto = tipoSpettacolo({ ...v, tipo: null });
+  $("#f-tipo").innerHTML = `<option value="">Automatico: ${esc(TIPI_SPETT[auto].toLowerCase())}</option>` + Object.entries(TIPI_SPETT).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("");
+  $("#f-tipo").value = v.tipo || "";
+  S.filmBozza = v;
   for (const k of F_FIELDS) $("#f-" + k).value = v[k] ?? "";
   $("#f-locandina").value = v.locandina_url || "";
   $("#f-poster").hidden = !v.locandina_url; if (v.locandina_url) { $("#f-poster").src = v.locandina_url; $("#f-poster").alt = "Locandina di " + v.titolo; }
@@ -1082,13 +1105,15 @@ $("#f-pr-btn").onclick = () => {
   renderDraftPr(); updateReadiness();
 };
 function updateReadiness() {
-  const f = { id: "__draft", acquisizione: $("#f-acquisizione").value, provato_il: $("#f-provato_il").value, prova_esito: $("#f-prova_esito").value, prova_note: $("#f-prova_note").value };
+  const tipo = $("#f-tipo").value || tipoSpettacolo({ ...(S.filmBozza || {}), tipo: null });
+  $("#f-solo-film").hidden = tipo !== "film";
+  const f = { id: "__draft", tipo, acquisizione: $("#f-acquisizione").value, provato_il: $("#f-provato_il").value, prova_esito: $("#f-prova_esito").value, prova_note: $("#f-prova_note").value };
   const saved = S.proiezioni; S.proiezioni = S.draftPr.filter((p) => !p._del).map((p) => ({ ...p, film_id: "__draft" }));
   const r = readiness(f);
   S.proiezioni = saved;
   $("#f-readiness").innerHTML = `<div class="readiness ${r.cls}"><span>${esc(r.text)}</span>${r.detail ? `<small>${esc(r.detail)}</small>` : ""}</div>`;
 }
-["#f-acquisizione", "#f-provato_il", "#f-prova_esito", "#f-prova_note"].forEach((id) => $(id).addEventListener("input", updateReadiness));
+["#f-acquisizione", "#f-provato_il", "#f-prova_esito", "#f-prova_note", "#f-tipo"].forEach((id) => $(id).addEventListener("input", updateReadiness));
 $("#f-acquisizione").addEventListener("change", () => { if ($("#f-acquisizione").value === "disponibile" && !$("#f-disponibile_il").value) $("#f-disponibile_il").value = TODAY; });
 $("#f-prova-oggi").onclick = () => {
   $("#f-provato_il").value = TODAY; $("#f-prova_esito").value = "ok";
@@ -1103,6 +1128,7 @@ $("#film-form").addEventListener("submit", async (e) => {
   const rec = {};
   for (const k of F_FIELDS) rec[k] = g(k) || (["supporto", "prova_esito", "disponibile_il", "provato_il"].includes(k) ? null : "");
   rec.locandina_url = g("locandina");
+  if (S.filmTipoOk) rec.tipo = $("#f-tipo").value || null;
   rec.aggiornato = new Date().toISOString();
   const prev = S.films.find((f) => f.id === S.editingFilm);
   if (rec.prova_esito && prev?.prova_esito !== rec.prova_esito) rec.provato_da = S.me.id;
@@ -2681,8 +2707,10 @@ function coseDaFareFilm() {
   const mancaSito = new Set((S.sito.voci || []).filter((v) => v.tipo === "manca" || v.tipo === "orario").map((v) => normFilm((v.testo.match(/«([^»]+)»/) || [])[1])));
   for (const f of S.films) {
     const nx = nextShow(f), nuovo = f.creato && (Date.now() - new Date(f.creato)) < 7 * 864e5;
+    const film = isFilm(f);
     if (nx && nx.data <= fino) {
       const t = (testo, entro, azione) => out.push({ f, testo, entro, azione, nuovo, prima: nx.data });
+      if (!film) { if (S.canWrite && mancaSito.has(normFilm(f.titolo))) t("Mettere lo spettacolo (con gli orari giusti) sul sito della sala", addDays(nx.data, -GIORNI_SITO), "sito"); continue; }
       if (f.acquisizione === "da_procurare") t(`Chiedere ${SUPPORTO_ART[f.supporto] || "il DVD o il file"} al distributore${f.distributore ? ` (${f.distributore})` : ""}`, addDays(nx.data, -GIORNI_RICHIESTA), "richiesto");
       else if (f.acquisizione === "in_arrivo") t(`Controllare che arrivi ${SUPPORTO_ART[f.supporto] || "il supporto"}`, addDays(nx.data, -GIORNI_PROVA - 2), "arrivato");
       if (f.prova_esito === "problemi") t(`Risolvere i problemi della prova${f.prova_note ? `: ${f.prova_note}` : ""}`, addDays(nx.data, -2), "apri");
@@ -2691,7 +2719,7 @@ function coseDaFareFilm() {
     }
     // dopo la proiezione: la fattura del noleggio deve comparire in prima nota (solo l'amministratore la vede)
     const ultima = showsOf(f).filter((p) => p.data < TODAY).pop();
-    if (S.isAdmin && S.primaNota.length && ultima && ultima.data >= addDays(TODAY, -60) && !nx) {
+    if (film && S.isAdmin && S.primaNota.length && ultima && ultima.data >= addDays(TODAY, -60) && !nx) {
       const n = normFilm(f.titolo);
       const pagato = S.primaNota.some((r) => r.uscite > 0 && normFilm(`${r.evento} ${r.descrizione}`).includes(n));
       if (!pagato) out.push({ f, testo: "Il noleggio non risulta ancora in prima nota: controllare la fattura del distributore", entro: addDays(ultima.data, 30), azione: "", nuovo: false, prima: ultima.data });
@@ -3629,6 +3657,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["023_tipo_spettacolo.sql", "Teatro, danza e incontri di Cinebot distinti dai film", S.films.length ? "cinebot_info" in S.films[0] : undefined, "Dopo lo script SQL ricopia anche lo script Google (versione 2026-11-02.1)"],
     ["022_eventi_della_sala.sql", "Eventi organizzati dalla Sala", S.bookings.length ? "della_sala" in S.bookings[0] : undefined],
     ["021_turni_recupero.sql", "I volontari ritrovano da soli il link dei turni", chk.recupero],
     ["019_volontari_dati.sql", "Compleanni e attestati antincendio dei volontari", !manca(e2.volontari) && !manca(e2.volDati)],
@@ -3719,7 +3748,9 @@ function datiResoconto(mese) {
   const pn = S.isAdmin ? S.primaNota.filter((r) => nel(r.data)) : [];
   const pnAnno = S.isAdmin ? S.primaNota.filter((r) => r.anno === y && r.data <= `${mese}-31`) : [];
   // il mese dopo: film confermati e in programma, eventi
-  const filmProssimi = [...new Set([...S.proiezioni.filter((p) => p.data.startsWith(prossimo)).map((p) => (S.films.find((f) => f.id === p.film_id) || {}).titolo).filter(Boolean),
+  const nelMese = S.proiezioni.filter((p) => p.data.startsWith(prossimo)).map((p) => S.films.find((f) => f.id === p.film_id)).filter(Boolean);
+  const spettacoliProssimi = [...new Set(nelMese.filter((f) => !isFilm(f)).map((f) => f.titolo))];
+  const filmProssimi = [...new Set([...nelMese.filter(isFilm).map((f) => f.titolo),
     ...S.programmazione.filter((p) => p.data.startsWith(prossimo)).map((p) => p.titolo)])];
   const eventiProssimi = S.bookings.filter((b) => active(b) && b.data.startsWith(prossimo)).sort(byWhen);
   return {
@@ -3727,7 +3758,7 @@ function datiResoconto(mese) {
     spettatori: c1.reduce((s, c) => s + c.spettatori, 0), incasso: c1.reduce((s, c) => s + c.lordo, 0),
     spettatoriPrima: c1Prima.reduce((s, c) => s + c.spettatori, 0), proiezioniPrima: c1Prima.length,
     entrate: sommaE(pn), uscite: sommaU(pn), risultatoAnno: r2(sommaE(pnAnno) - sommaU(pnAnno)),
-    filmProssimi, eventiProssimi,
+    filmProssimi, spettacoliProssimi, eventiProssimi,
     // il mese dopo e le cose aperte di oggi hanno senso solo nel resoconto del mese in corso o di quello appena finito
     recente: prossimo >= TODAY.slice(0, 7),
     problemi: (S.canWrite && prossimo >= TODAY.slice(0, 7) ? coseDiOggi() : []).filter((c) => c.liv !== "info").slice(0, 8),
@@ -3742,6 +3773,7 @@ function testoResoconto(d, note) {
     d.film.length ? `Film più visti: ${d.film.slice(0, 3).map((f) => `${f.titolo} (${f.sp})`).join(", ")}.` : "",
     S.isAdmin && (d.entrate || d.uscite) ? `Conti del mese (prima nota): entrate ${money(d.entrate)}, uscite ${money(d.uscite)}, saldo ${money(r2(d.entrate - d.uscite))}; risultato da inizio anno ${money(d.risultatoAnno)}.` : "",
     ...(d.recente ? ["", `A ${nomeMese(d.prossimo)}:`, d.filmProssimi.length ? `- film: ${d.filmProssimi.join(", ")}` : "- film: ancora da definire",
+      d.spettacoliProssimi.length ? `- spettacoli: ${d.spettacoliProssimi.join(", ")}` : "",
       d.eventiProssimi.length ? `- eventi: ${d.eventiProssimi.slice(0, 10).map((b) => `${b.titolo} (${fmtShort(b.data)})`).join("; ")}` : ""] : []),
     d.problemi.length ? "\nDa sistemare:\n" + d.problemi.map((p) => `- ${p.testo}`).join("\n") : "",
     note ? `\nNote: ${note}` : ""];
@@ -3774,6 +3806,7 @@ function renderResoconto() {
         ${S.isAdmin ? `<div class="panel"><h3>Conti del mese</h3>${d.entrate || d.uscite ? `<p>Entrate <b>${money(d.entrate)}</b> · uscite <b>${money(d.uscite)}</b> · saldo <b class="${d.entrate - d.uscite < 0 ? "neg" : ""}">${money(r2(d.entrate - d.uscite))}</b></p><p>Risultato da inizio anno: <b class="${d.risultatoAnno < 0 ? "neg" : ""}">${money(d.risultatoAnno)}</b> (prima nota, competenza ${mese.slice(0, 4)}).</p>` : `<p class="hint">Nessun movimento in prima nota per questo mese.</p>`}</div>` : ""}
         ${d.recente ? `<div class="panel"><h3>${esc(nomeMese(d.prossimo).replace(/^./, (c) => c.toUpperCase()))}</h3>
           <p><b>Film:</b> ${d.filmProssimi.length ? esc(d.filmProssimi.join(", ")) : "ancora da definire"}</p>
+          ${d.spettacoliProssimi.length ? `<p><b>Spettacoli:</b> ${esc(d.spettacoliProssimi.join(", "))}</p>` : ""}
           ${d.eventiProssimi.length ? `<ul class="reso-lista">${d.eventiProssimi.slice(0, 10).map((b) => `<li>${esc(fmtShort(b.data))} · ${esc(b.titolo)}${b.stato === "opzione" ? " (da confermare)" : ""}</li>`).join("")}</ul>` : `<p class="hint">Nessun evento in calendario.</p>`}</div>` : ""}
         ${d.problemi.length ? `<div class="panel"><h3>Da sistemare</h3><ul class="reso-lista">${d.problemi.map((p) => `<li>${esc(p.testo)}</li>`).join("")}</ul></div>` : ""}
       </div>

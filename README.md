@@ -308,6 +308,16 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Film e altri spettacoli
+
+Su Cinebot si vendono anche teatro, danza, concerti e incontri: non tutto è un film. Lo script Google porta da Cinebot
+qualche indizio (sottotitolo, prezzo, visto di censura, che hanno solo i film) e l'app capisce da sola che cos'è:
+per esempio un sottotitolo «Teatro…» è teatro, un ingresso a 0 € è un incontro, un biglietto da 12 € in su senza visto
+è un altro spettacolo. Nella scheda il campo «Che cos'è» mostra la scelta automatica e si può correggere a mano.
+Per gli spettacoli che non sono film l'app non chiede supporto, distributore, prova di proiezione e fattura del
+noleggio; in Cinema c'è il filtro «Altri spettacoli» e il resoconto del mese li elenca a parte.
+Serve lo script `023_tipo_spettacolo.sql` e lo script Google aggiornato.
+
 ## Eventi organizzati dalla Sala
 
 Nella prenotazione la spunta **«Organizzato dalla Sala San Tommaso Moro»** distingue gli eventi della Sala dagli

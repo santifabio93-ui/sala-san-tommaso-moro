@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.27">
+<link rel="stylesheet" href="style.css?v=2026-11-01.28">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -396,6 +396,7 @@
       <img id="f-poster" alt="" hidden>
       <div class="form" style="flex:1;min-width:0">
         <div class="field"><label for="f-titolo">Titolo</label><input id="f-titolo" required></div>
+        <div class="field" id="f-tipo-campo"><label for="f-tipo">Che cos'è</label><select id="f-tipo"></select><span class="hint">Per teatro, danza, musica e incontri l'app non chiede supporto né prova di proiezione</span></div>
         <div class="field h"><label for="f-distributore">Distributore</label><input id="f-distributore" placeholder="Es. Lucky Red"></div>
         <div class="field h"><label for="f-locandina">Locandina (indirizzo immagine)</label><input id="f-locandina" type="url" placeholder="https://…"></div>
       </div>
@@ -409,6 +410,7 @@
       <button class="btn sm" type="button" id="f-pr-btn">+ Aggiungi proiezione</button>
     </div>
 
+    <div id="f-solo-film">
     <div class="subsec"><h3>Supporto</h3><span class="hint">Da cosa si proietta e se è già in sala</span></div>
     <div class="form">
       <div class="field t"><label for="f-supporto">Supporto</label>
@@ -426,6 +428,9 @@
         <select id="f-prova_esito"><option value="">Non ancora provato</option><option value="ok">Tutto a posto</option><option value="problemi">Problemi</option></select></div>
       <div class="field t"><label>&nbsp;</label><button class="btn sm" type="button" id="f-prova-oggi">Provato oggi: tutto ok</button></div>
       <div class="field"><label for="f-prova_note">Note sulla prova</label><input id="f-prova_note" placeholder="Es. audio basso sul DVD, sottotitoli da attivare dal menu"></div>
+    </div>
+    </div>
+    <div class="form">
       <div class="field"><label for="f-note">Altre note</label><textarea id="f-note" placeholder="Condizioni di noleggio, liberatoria, file da eliminare dopo la proiezione…"></textarea></div>
     </div>
     <div id="f-error"></div>
@@ -654,7 +659,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.27"></script>
-<script type="module" src="app.js?v=2026-11-01.27"></script>
+<script src="config.js?v=2026-11-01.28"></script>
+<script type="module" src="app.js?v=2026-11-01.28"></script>
 </body>
 </html>

@@ -38,7 +38,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-01.3"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-02.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -352,12 +352,20 @@ function leggiCinebot(cfg) {
     const idTitolo = loc ? loc[2] : (tipo === "titolo" ? numero : "evento-" + numero);
     const titolo = testoPulito((blk.match(/<h4 class="title">([\s\S]*?)<\/h4>/) || [])[1] || "");
     if (!titolo) return;
+    // indizi per capire se è un film o un altro spettacolo: sottotitolo, prezzo, visto di censura (solo i film)
+    const sotto = testoPulito((blk.match(/<h5 class="title">([\s\S]*?)<\/h5>/) || [])[1] || "");
+    const prezzo = blk.match(/fa-shopping-cart"><\/i>\s*&euro;\s*([\d.,]+)/);
+    const visto = testoPulito((blk.match(/class="film-classificazione-testo">([\s\S]*?)<\/div>/) || [])[1] || "");
     const f = films[idTitolo] || (films[idTitolo] = {
       cinebot_id: idTitolo, titolo: titolo,
       locandina: loc ? CINEBOT_SITO + loc[1] + "/hq" : "",
       url: CINEBOT_SITO + (tipo === "titolo" ? percorso : percorso),
+      info: {},
       proiezioni: [],
     });
+    if (sotto) f.info.sottotitolo = sotto;
+    if (prezzo) f.info.prezzo = Number(prezzo[1].replace(",", "."));
+    if (visto) f.info.classificazione = visto;
     const aggiungi = (key, data, ora) => { if (!f.proiezioni.some((p) => p.key === key)) f.proiezioni.push({ key: key, data: data, ora: ora }); };
     if (tipo === "evento") {
       // "Dom 01/11 21:00"
