@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Contapersone · Sala San Tommaso Moro</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0E2629">
+<link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.38">
+<style>
+.wrap { max-width: 560px }
+.head { display: flex; gap: 12px; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 12px }
+.scelta { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px }
+.contatore { text-align: center; border-radius: 20px; padding: 18px 16px 16px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm, none) }
+.contatore .num { font-size: clamp(4.5rem, 26vw, 7.5rem); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.03em }
+.contatore .su { color: var(--muted); font-weight: 600; margin-top: 2px }
+.barra { height: 16px; border-radius: 999px; background: var(--sunk); overflow: hidden; margin: 14px 0 8px }
+.barra i { display: block; height: 100%; border-radius: 999px; background: var(--ok-fg); transition: width .25s ease, background-color .25s }
+.stato { font-weight: 800; font-size: 1.05rem }
+.contatore.ok .stato { color: var(--ok-fg) }
+.contatore.quasi .barra i { background: var(--opz-fg) } .contatore.quasi .stato, .contatore.quasi .num { color: var(--opz-fg) }
+.contatore.pieno { border-color: var(--due-fg); background: var(--due-bg) } .contatore.pieno .barra i { background: var(--due-fg) } .contatore.pieno .stato, .contatore.pieno .num { color: var(--due-fg) }
+.tasti { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px }
+.tasti button { border: 0; border-radius: 18px; font: inherit; font-weight: 800; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none }
+.tasti .entra { grid-column: 1 / -1; padding: 30px 10px; font-size: 1.7rem; color: #fff; background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 85%, #fff), var(--accent)); box-shadow: 0 6px 18px color-mix(in oklab, var(--accent) 35%, transparent) }
+.tasti .esce { padding: 20px 10px; font-size: 1.2rem; background: var(--sunk); color: var(--ink) }
+.tasti .piu5 { padding: 20px 10px; font-size: 1.2rem; background: var(--accent-soft); color: var(--ink) }
+.tasti button:active { transform: scale(.98) }
+.dati { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; margin-top: 12px; color: var(--muted); font-weight: 600 }
+.dati b { color: var(--ink) }
+.capienza { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 14px }
+.sync { text-align: center; font-size: .78rem; color: var(--muted); margin-top: 10px }
+.vuoto { text-align: center; padding: 26px 10px; color: var(--muted) }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="seal ritratto" aria-hidden="true"><img src="../moro.svg" alt=""></div>
+    <div><div class="eyebrow">Parrocchia di San Biagio · Piombino Dese</div><h1>Sala San Tommaso Moro</h1><span class="hint">Contapersone</span></div>
+  </div>
+  <div id="app"><p class="muted">Caricamento dei turni…</p></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="../config.js?v=2026-11-01.38"></script>
+<script type="module" src="conta.js?v=2026-11-01.38"></script>
+</body>
+</html>

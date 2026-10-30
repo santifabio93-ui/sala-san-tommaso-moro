@@ -20,7 +20,7 @@ const giorno = (d) => new Date(d + "T12:00:00").toLocaleDateString("it-IT", { we
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3200); }
 const mostra = (html) => { $("#app").innerHTML = html; };
 
-let dati = null;
+let dati = null, stasera = [];
 let benvenuto = false; // appena ritrovato il link: si ricorda come salvarlo
 async function carica() {
   if (!token) { recupero(); return; }
@@ -29,6 +29,9 @@ async function carica() {
   if (!data) { ricorda.set(""); recupero("Questo link non è più valido (forse è stato rinnovato)."); return; }
   ricorda.set(token);
   dati = data;
+  // il giorno di un evento: il contapersone per la porta (aggiornamento 26)
+  const oggi = await sb.rpc("conta_oggi", { p_token: token });
+  stasera = (oggi.data && oggi.data.eventi) || [];
   disegna();
 }
 
@@ -74,6 +77,7 @@ function disegna() {
   for (const f of fasce) { const g = giorni[giorni.length - 1]; if (g && g.data === f.data) g.fasce.push(f); else giorni.push({ data: f.data, fasce: [f] }); }
   mostra(`<h2>Ciao ${esc(io)} 👋</h2>
     <p class="hint">Tocca «Ci sono» nelle fasce in cui puoi esserci. ${mie ? `Sei segnato in <b>${mie}</b> ${mie === 1 ? "fascia" : "fasce"}.` : ""}</p>
+    ${stasera.length ? `<a class="btn primary conta-btn" href="conta.html?t=${esc(token)}">🚪 Contapersone di stasera <small>${esc(stasera.map((e) => (e.ora ? e.ora + " " : "") + e.titolo).join(" · "))}</small></a>` : ""}
     ${salvaLink()}
     ${giorni.length ? giorni.map((g) => `<section class="giorno"><span class="eyebrow">${esc(giorno(g.data))}</span>
       ${g.fasce.map((f, i) => { const manca = Math.max(0, f.posti - f.presi), k = fasce.indexOf(f);

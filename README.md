@@ -308,6 +308,16 @@ aumentarle, quanto margine resta prima di andare sotto costo e, se i costi della
 e attività (le donazioni non si contano perché non sono certe), quanti affitti in più servirebbero o di quanto alzare le tariffe. Costi annui e giornate si
 possono correggere a mano quando una bolletta non è ancora registrata.
 
+## Contapersone alla porta
+
+Il giorno di un evento, nel link personale dei turni compare «🚪 Contapersone di stasera» (`modulo/conta.html`).
+Il volontario alla porta tocca «+1 Entra», «+5 Entrano» o «−1 Esce»: il numero delle persone in sala è lo stesso su
+tutti i telefoni (si rilegge ogni 3 secondi) ed è confrontato con la capienza (galleria 134, platea 338, platea e
+galleria 472, presa dalla prenotazione e cambiabile con un tocco). Dall'85% diventa arancione, alla capienza rosso:
+«Sala piena: non far entrare nessuno». Tiene entrati in tutto, usciti e picco; lo schermo resta acceso e i tocchi
+fatti senza rete partono appena torna. Nell'app, la pagina «La serata» mostra i numeri. Serve lo script
+`026_contapersone.sql`.
+
 ## Segreteria e accesso senza Google
 
 Il ruolo **Segreteria** (script `025_segreteria.sql`) è per chi aiuta a tenere l'agenda: vede e modifica calendario,

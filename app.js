@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.37";
+const VERSIONE = "2026-11-01.38";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -184,6 +184,9 @@ async function loadAll() {
     const sc = ["admin", "coordinatore", "segreteria", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
     S.loadErr2.scorte = sc.error && (sc.error.message || "errore");
     S.scorte = (sc.data || []).filter((x) => !x.preso_il).reverse();
+    // contapersone alla porta (aggiornamento 26)
+    const cn = await sb.from("conteggi").select("*").gte("data", addDays(TODAY, -90));
+    S.conteggi = cn.data || [];
     // richieste di film al SAS e catalogo (aggiornamento 16)
     const [rf, cf] = S.canWrite ? await Promise.all([sb.from("richieste_film").select("*").order("creato", { ascending: false }).limit(1000), sb.from("catalogo_film").select("*").order("titolo").limit(5000)]) : [{ data: null }, { data: null }];
     S.loadErr2.sas = rf.error && (rf.error.message || "errore");
@@ -242,7 +245,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -3185,6 +3188,10 @@ function renderSerata() {
       <li>Alla chiusura: luci, riscaldamento o condizionatore spenti, porte chiuse, allarme inserito.</li>
     </ul></details>`;
   el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.serataData = b.dataset.g || null; renderSerata(); }));
+  const conti = (S.conteggi || []).filter((c) => c.data === d);
+  if (conti.length) el.querySelector(".toolbar").insertAdjacentHTML("afterend", `<div class="panel conta-serata"><div class="section-head"><h3>🚪 Contapersone</h3><span class="hint">${d === TODAY ? "dal vivo, dai volontari alla porta" : "com'è andata"}</span></div>
+    ${conti.map((c) => { const pr = Math.max(0, c.entrati - c.usciti), q = pr / c.capienza;
+      return `<div class="todo-riga"><div><b>${esc(c.titolo)}</b><div class="hint">entrati in tutto ${c.entrati} · picco ${c.picco} su ${c.capienza}</div></div><div class="az"><span class="pill ${pr >= c.capienza ? "dapagare" : q >= 0.85 ? "acconto" : "saldato"}">${d === TODAY ? `in sala ${pr}/${c.capienza}` : `picco ${c.picco}`}</span></div></div>`; }).join("")}</div>`);
   el.insertAdjacentHTML("beforeend", pannelloScorte());
   collegaScorte(el);
 }
@@ -3761,6 +3768,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["026_contapersone.sql", "Contapersone alla porta", chk.conta],
     ["025_segreteria.sql", "Ruolo Segreteria (agenda e prenotazioni)", undefined, "Serve solo se dai a qualcuno il ruolo Segreteria", true],
     ["024_pulizie.sql", "Gruppo pulizie: link, referenti e scorte", k.has("pulizie_referenti") && !manca(e2.scorte), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche referenti e scorte"],
     ["023_tipo_spettacolo.sql", "Teatro, danza e incontri di Cinebot distinti dai film", S.films.length ? "cinebot_info" in S.films[0] : undefined, "Dopo lo script SQL ricopia anche lo script Google (versione 2026-11-02.1)"],
@@ -3786,6 +3794,7 @@ function lettureScript() {
 async function controlliStato() {
   const chk = {};
   try { const r = await sb.storage.from("schede").list("", { limit: 1 }); chk.siae = !r.error || !/not found/i.test(r.error.message || ""); } catch (x) { chk.siae = false; }
+  try { const r = await sb.rpc("conta_oggi", { p_token: null }); chk.conta = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.conta = false; }
   try { const r = await sb.rpc("turni_recupera", { p_cellulare: "", p_nascita: "1900-01-01" }); chk.recupero = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.recupero = false; }
   try { const r = await sb.rpc("sync_calendario_app", { p_token: "-" }); chk.calApp = !r.error || !/Could not find|schema cache/i.test(r.error.message || ""); } catch (x) { chk.calApp = false; }
   S.statoChk = chk;
