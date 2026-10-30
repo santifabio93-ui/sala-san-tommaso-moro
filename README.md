@@ -391,7 +391,7 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
 
 - **Turni nel calendario del telefono**: accanto a ogni turno in cui si è segnati c'è «📅 Mettilo nel calendario»
   (su iPhone apre «Aggiungi al calendario» con l'avviso un'ora prima, su Android apre Google Calendar con l'evento già
-  compilato) e in alto «Tutti i miei turni nel calendario» (file .ics per iPhone, Outlook, Samsung). Se ci si toglie da
+  compilato) e in alto «Tutti i miei turni nel calendario»; nella pagina Turni dell'app c'è «📅 Nel calendario» accanto ai propri turni (file .ics per iPhone, Outlook, Samsung). Se ci si toglie da
   un turno, va cancellato anche dal calendario.
 
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.

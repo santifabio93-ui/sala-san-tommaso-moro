@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.39";
+const VERSIONE = "2026-11-01.40";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -903,6 +903,7 @@ function renderShifts() {
   el.innerHTML = `<div class="shift-list">${list.map(shiftEvent).join("")}</div>`;
   el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openBooking(S.bookings.find((x) => x.id === b.dataset.edit))));
   el.querySelectorAll("[data-wa]").forEach((b) => (b.onclick = () => openCopy(S.bookings.find((x) => x.id === b.dataset.wa))));
+  el.querySelectorAll("[data-cal]").forEach((x) => (x.onclick = () => { const [bid, sid] = x.dataset.cal.split("|"), b = S.bookings.find((y) => y.id === bid); turnoCal(b, turni(b).find((t) => t.id === sid)); }));
   el.querySelectorAll("[data-join]").forEach((b) => (b.onclick = async () => {
     const [bid, sid] = b.dataset.join.split("|");
     if (S.canWrite) { S.openSignup = { bid, sid, value: "" }; renderShifts(); return; }
@@ -935,6 +936,22 @@ function renderShifts() {
     });
   }
 }
+// un turno nel calendario del telefono: su iPhone il file .ics, altrove Google Calendar già compilato
+const IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function turnoCal(b, t) {
+  const st = (d, h) => d.replace(/-/g, "") + "T" + h.replace(":", "") + "00", da = st(b.data, t.inizio), a = st(t.fine <= t.inizio ? addDays(b.data, 1) : b.data, t.fine);
+  const titolo = `Turno in sala: ${b.titolo}`, dove = "Sala San Tommaso Moro, Piombino Dese";
+  const note = `Turno «${t.label}» per ${b.titolo}. In turno: ${signupsFor(b.id, t.id).map((x) => x.nome).join(", ")}.`;
+  if (!IOS) { window.open("https://calendar.google.com/calendar/render?" + new URLSearchParams({ action: "TEMPLATE", text: titolo, dates: `${da}/${a}`, ctz: "Europe/Rome", location: dove, details: note }), "_blank", "noopener"); return; }
+  const e = (s) => String(s).replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sala San Tommaso Moro//Turni//IT",
+    "BEGIN:VTIMEZONE", "TZID:Europe/Rome", "BEGIN:DAYLIGHT", "TZOFFSETFROM:+0100", "TZOFFSETTO:+0200", "DTSTART:19700329T020000", "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU", "END:DAYLIGHT",
+    "BEGIN:STANDARD", "TZOFFSETFROM:+0200", "TZOFFSETTO:+0100", "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD", "END:VTIMEZONE",
+    "BEGIN:VEVENT", `UID:turno-${b.id}-${t.id}@salasantommasomoro`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
+    `DTSTART;TZID=Europe/Rome:${da}`, `DTEND;TZID=Europe/Rome:${a}`, `SUMMARY:${e(titolo)}`, `LOCATION:${e(dove)}`, `DESCRIPTION:${e(note)}`,
+    "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${e("Tra un'ora sei in sala: " + b.titolo)}`, "TRIGGER:-PT1H", "END:VALARM", "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  location.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+}
 function shiftEvent(b) {
   const c = coverage(b);
   const slots = turni(b).map((t) => {
@@ -956,7 +973,7 @@ function shiftEvent(b) {
       <div><div class="lbl">${esc(t.label)}</div><div class="tm">${esc(t.inizio)}–${esc(t.fine)}</div>
         <div class="meter" aria-hidden="true">${meter}</div>
         <div class="count ${miss > 0 ? "miss" : "full"}">${ppl.length}/${n} ${miss > 0 ? `· manca${miss > 1 ? "no" : ""} ${miss}` : "· completo"}</div></div>
-      <div class="people">${names || (isOpen ? "" : `<span class="hint">Ancora nessuno</span>`)}${action}</div>
+      <div class="people">${names || (isOpen ? "" : `<span class="hint">Ancora nessuno</span>`)}${action}${amIn && b.data >= TODAY ? `<button class="btn ghost sm" type="button" data-cal="${esc(b.id)}|${esc(t.id)}" title="Aggiungi il turno al calendario del telefono">📅 Nel calendario</button>` : ""}</div>
     </div>`;
   }).join("");
   return `<article class="panel shift-event">
