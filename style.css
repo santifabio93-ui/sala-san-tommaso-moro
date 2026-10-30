@@ -752,3 +752,5 @@ nav.tabs { position: relative }
 .ct-det summary::-webkit-details-marker { display: none }
 .ct-det summary h3::before { content: "▸ "; color: var(--accent) }
 .ct-det[open] summary h3::before { content: "▾ " }
+.scorte-box { margin-top: 14px }
+.scorte-chip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px }

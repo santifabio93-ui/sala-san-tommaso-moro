@@ -2,6 +2,7 @@
 -- Un link solo per il gruppo (senza account), da mandare ai referenti delle pulizie: mostra cosa è successo in sala dall'ultima pulizia — quando,
 -- per quanto, in quali spazi, per cosa e con quante persone — e permette di segnare «pulizie fatte» con una nota.
 -- Il giorno delle pulizie (di solito il martedì) si cambia dall'app; il link si può rinnovare se gira troppo.
+-- Mostra anche quando la sala serve di nuovo e le scorte che mancano (segnate dai volontari o dagli addetti).
 -- Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run. Si può rieseguire senza problemi.
 
 alter table public.settings add column if not exists pulizie_token uuid not null default gen_random_uuid();
@@ -26,6 +27,28 @@ do $$
 begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'pulizie_fatte') then
     alter publication supabase_realtime add table public.pulizie_fatte;
+  end if;
+end $$;
+
+-- scorte che mancano (carta, sapone, sacchi…): le segnano i volontari di turno e gli addetti alle pulizie
+create table if not exists public.scorte (
+  id uuid primary key default gen_random_uuid(),
+  cosa text not null check (length(trim(cosa)) between 1 and 80),
+  segnalato_da text not null default '',
+  creato timestamptz not null default now(),
+  preso_il timestamptz,
+  preso_da text not null default ''
+);
+create index if not exists scorte_aperte on public.scorte (creato) where preso_il is null;
+alter table public.scorte enable row level security;
+drop policy if exists "scorte: approvati" on public.scorte;
+create policy "scorte: approvati" on public.scorte
+  for all using (public.my_role() in ('admin', 'coordinatore', 'volontario'))
+  with check (public.my_role() in ('admin', 'coordinatore', 'volontario'));
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'scorte') then
+    alter publication supabase_realtime add table public.scorte;
   end if;
 end $$;
 
@@ -74,6 +97,18 @@ begin
       from public.proiezioni p join public.films f on f.id = p.film_id
       where p.data between g - 7 and g - 1
     ), '[]'::jsonb),
+    -- quando serve di nuovo la sala, dal giorno delle pulizie in poi
+    'prossimo', (
+      select jsonb_build_object('data', x.data, 'ora', x.ora, 'titolo', x.titolo) from (
+        select b.data, case when coalesce(b.giornata_intera, false) then '' else to_char(b.inizio, 'HH24:MI') end as ora, b.titolo
+        from public.bookings b where b.stato = 'confermata' and b.data >= g
+        union all
+        select p.data, to_char(p.ora, 'HH24:MI'), f.titolo from public.proiezioni p join public.films f on f.id = p.film_id where p.data >= g
+      ) x order by x.data, x.ora limit 1),
+    'scorte', coalesce((
+      select jsonb_agg(jsonb_build_object('id', sc.id, 'cosa', sc.cosa, 'chi', sc.segnalato_da, 'creato', sc.creato) order by sc.creato)
+      from public.scorte sc where sc.preso_il is null
+    ), '[]'::jsonb),
     'fatte', coalesce((
       select jsonb_agg(jsonb_build_object('nome', x.nome, 'note', x.note, 'creato', x.creato) order by x.creato)
       from public.pulizie_fatte x where x.giorno = g
@@ -105,6 +140,28 @@ revoke all on function public.pulizie_segna(uuid, date, text, text) from public;
 grant execute on function public.pulizie_apri(uuid, int) to anon, authenticated;
 grant execute on function public.pulizie_segna(uuid, date, text, text) to anon, authenticated;
 
+-- dal link delle pulizie: segnare che manca qualcosa (p_id vuoto) o che è stato preso (p_id della scorta)
+create or replace function public.pulizie_scorta(p_token uuid, p_cosa text, p_nome text, p_id uuid default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.settings where id = 1 and pulizie_token = p_token) then
+    raise exception 'Link non valido: chiedi il link nuovo a chi organizza';
+  end if;
+  if p_id is not null then
+    update public.scorte set preso_il = now(), preso_da = left(trim(coalesce(p_nome, '')), 60) where id = p_id and preso_il is null;
+  else
+    if length(trim(coalesce(p_cosa, ''))) = 0 then raise exception 'Scrivi cosa manca'; end if;
+    if (select count(*) from public.scorte where preso_il is null) >= 40 then raise exception 'L''elenco delle scorte è già lungo: segnate quelle prese'; end if;
+    if not exists (select 1 from public.scorte where preso_il is null and lower(cosa) = lower(trim(p_cosa))) then
+      insert into public.scorte (cosa, segnalato_da) values (left(trim(p_cosa), 80), left(trim(coalesce(p_nome, '')), 60));
+    end if;
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.pulizie_scorta(uuid, text, text, uuid) from public;
+grant execute on function public.pulizie_scorta(uuid, text, text, uuid) to anon, authenticated;
+
 notify pgrst, 'reload schema';
 
-select exists (select 1 from pg_proc where proname = 'pulizie_apri') as link_pulizie;
+select exists (select 1 from pg_proc where proname = 'pulizie_scorta') as link_pulizie;

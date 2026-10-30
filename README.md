@@ -316,7 +316,11 @@ apre WhatsApp sulla loro chat con il messaggio già scritto. Mostra cosa è succ
 cambia dallo stesso riquadro): quando e per quanto, in quali spazi (platea, galleria, palco, tappeto danza), per cosa
 e con quante persone (dalla cassa, dai C1 o dal pubblico previsto nella scheda), con in evidenza tappeto danza, molti
 bambini o tanta gente. A fine lavoro segnano «Pulizie fatte» con una nota (cosa manca, cosa non va): la nota compare
-nel riquadro e in Oggi. «Rinnova il link» lo cambia se gira troppo. Serve lo script `024_pulizie.sql`. I nomi dei
+nel riquadro e in Oggi. «Rinnova il link» lo cambia se gira troppo. In alto il link dice anche quando la sala serve di nuovo dopo le pulizie
+(in evidenza se è lo stesso giorno o il giorno dopo).
+
+**Scorte che mancano**: carta igienica, sapone, sacchi… le segnano con un tocco i volontari di turno (pagina «La serata»)
+e gli addetti alle pulizie (dal loro link); chi le compra tocca «Preso ✓». Le scorte da comprare compaiono in Oggi. Serve lo script `024_pulizie.sql`. I nomi dei
 referenti, i telefoni e gli incassi non compaiono.
 
 ## Film e altri spettacoli

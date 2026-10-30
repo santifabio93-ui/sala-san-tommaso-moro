@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.32";
+const VERSIONE = "2026-11-01.33";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -160,6 +160,10 @@ async function loadAll() {
     // pulizie fatte, con le note del gruppo pulizie (aggiornamento 24)
     const pf = S.canWrite ? await sb.from("pulizie_fatte").select("*").order("creato", { ascending: false }).limit(60) : { data: null };
     S.pulizieFatte = pf.data || [];
+    // scorte che mancano (aggiornamento 24): le vedono e le segnano tutti i volontari
+    const sc = ["admin", "coordinatore", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
+    S.loadErr2.scorte = sc.error && (sc.error.message || "errore");
+    S.scorte = (sc.data || []).filter((x) => !x.preso_il).reverse();
     // richieste di film al SAS e catalogo (aggiornamento 16)
     const [rf, cf] = S.canWrite ? await Promise.all([sb.from("richieste_film").select("*").order("creato", { ascending: false }).limit(1000), sb.from("catalogo_film").select("*").order("titolo").limit(5000)]) : [{ data: null }, { data: null }];
     S.loadErr2.sas = rf.error && (rf.error.message || "errore");
@@ -218,7 +222,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -3161,6 +3165,34 @@ function renderSerata() {
       <li>Alla chiusura: luci, riscaldamento o condizionatore spenti, porte chiuse, allarme inserito.</li>
     </ul></details>`;
   el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.serataData = b.dataset.g || null; renderSerata(); }));
+  el.insertAdjacentHTML("beforeend", pannelloScorte());
+  collegaScorte(el);
+}
+
+/* ---------- scorte che mancano: le segnano i volontari di turno e gli addetti alle pulizie ---------- */
+const SCORTE_COMUNI = ["Carta igienica", "Sapone mani", "Carta asciugamani", "Sacchi spazzatura", "Detersivo pavimenti", "Igienizzante", "Panni e spugne"];
+function pannelloScorte() {
+  if (S.loadErr2?.scorte || !S.scorte) return "";
+  const aperte = S.scorte, nomi = new Set(aperte.map((x) => x.cosa.toLowerCase()));
+  return `<div class="panel scorte-box"><div class="section-head"><h3>Scorte che mancano</h3><span class="hint">Tocca quello che sta finendo: lo vede chi fa la spesa e chi fa le pulizie</span></div>
+    <div class="scorte-chip">${SCORTE_COMUNI.filter((c) => !nomi.has(c.toLowerCase())).map((c) => `<button type="button" class="btn sm" data-scorta-add="${esc(c)}">+ ${esc(c)}</button>`).join("")}</div>
+    <form class="sito-contatto" data-scorta-form novalidate style="margin-top:8px"><input placeholder="Altro che manca…" aria-label="Altro che manca" maxlength="80"><button class="btn sm" type="submit">Segnala</button></form>
+    ${aperte.length ? aperte.map((x) => `<div class="todo-riga"><div><b>${esc(x.cosa)}</b> <span class="hint">segnalato ${esc(ago(x.creato))}${x.segnalato_da ? ` da ${esc(x.segnalato_da)}` : ""}</span></div><div class="az"><button class="btn sm" type="button" data-scorta-preso="${esc(x.id)}">Preso ✓</button></div></div>`).join("") : `<p class="hint">Non manca niente. 👍</p>`}</div>`;
+}
+function collegaScorte(root) {
+  const io = (S.me.nome || "").split(" ")[0] || "";
+  const aggiungi = async (cosa) => {
+    cosa = cosa.trim(); if (!cosa) return;
+    if (S.scorte.some((x) => x.cosa.toLowerCase() === cosa.toLowerCase())) { toast(`${cosa}: già segnalato`); return; }
+    try { await run(sb.from("scorte").insert({ cosa, segnalato_da: io }), `Segnalato: ${cosa}`); } catch (x) { toast(errText(x)); }
+  };
+  root.querySelectorAll("[data-scorta-add]").forEach((b) => (b.onclick = () => { b.disabled = true; aggiungi(b.dataset.scortaAdd); }));
+  const f = root.querySelector("[data-scorta-form]");
+  if (f) f.onsubmit = (e) => { e.preventDefault(); aggiungi(f.querySelector("input").value); };
+  root.querySelectorAll("[data-scorta-preso]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await run(sb.from("scorte").update({ preso_il: new Date().toISOString(), preso_da: io }).eq("id", b.dataset.scortaPreso), "Grazie! Tolto dall'elenco"); } catch (x) { b.disabled = false; toast(errText(x)); }
+  }));
 }
 
 /* ---------- conviene prendere questo film? ---------- */
@@ -3637,6 +3669,8 @@ function coseDiOggi() {
   righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
   S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
   S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  // scorte da comprare
+  if ((S.scorte || []).length) add("info", `Scorte da comprare: ${S.scorte.map((x) => x.cosa.toLowerCase()).join(", ")}`, "#serata");
   // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
   (S.pulizieFatte || []).filter((f) => f.creato.slice(0, 10) >= tra(-3)).forEach((f) => add(f.note ? "warn" : "info", `Pulizie fatte da ${f.nome}${f.note ? `: «${f.note}»` : ""}`, "#volontari"));
   // volontari: compleanni di oggi e domani, attestati antincendio da rinnovare
@@ -3707,7 +3741,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
-    ["024_pulizie.sql", "Link per il gruppo pulizie", k.has("pulizie_token")],
+    ["024_pulizie.sql", "Gruppo pulizie: link, referenti e scorte", k.has("pulizie_referenti") && !manca(e2.scorte), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche referenti e scorte"],
     ["023_tipo_spettacolo.sql", "Teatro, danza e incontri di Cinebot distinti dai film", S.films.length ? "cinebot_info" in S.films[0] : undefined, "Dopo lo script SQL ricopia anche lo script Google (versione 2026-11-02.1)"],
     ["022_eventi_della_sala.sql", "Eventi organizzati dalla Sala", S.bookings.length ? "della_sala" in S.bookings[0] : undefined],
     ["021_turni_recupero.sql", "I volontari ritrovano da soli il link dei turni", chk.recupero],

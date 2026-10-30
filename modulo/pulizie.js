@@ -60,6 +60,16 @@ function usi(d) {
   return out.sort((a, b) => (a.data + a.inizio).localeCompare(b.data + b.inizio));
 }
 
+const SCORTE = ["Carta igienica", "Sapone mani", "Carta asciugamani", "Sacchi spazzatura", "Detersivo pavimenti", "Igienizzante", "Panni e spugne"];
+// quando la sala serve di nuovo dopo le pulizie: se è lo stesso giorno o il giorno dopo, va detto chiaro
+function prossimo(d) {
+  const p = d.prossimo;
+  if (!p) return "";
+  const stesso = p.data === d.giorno, dopo = new Date(new Date(d.giorno + "T12:00:00").getTime() + 864e5).toISOString().slice(0, 10) === p.data;
+  const quando = stesso ? `lo stesso giorno${p.ora ? `, alle ${p.ora}` : ""}` : dopo ? `il giorno dopo (${giorno(p.data)})${p.ora ? ` alle ${p.ora}` : ""}` : `${giorno(p.data)}${p.ora ? ` alle ${p.ora}` : ""}`;
+  return `<div class="${stesso || dopo ? "attenzione" : "prossimo"}">La sala serve di nuovo ${esc(quando)}: ${esc(p.titolo)}${stesso ? ". Deve essere pronta per allora." : ""}</div>`;
+}
+
 function disegna() {
   const d = dati, lista = usi(d);
   const oggi = d.oggi, passati = lista.filter((u) => u.data < oggi || (u.data === oggi && u.fine && u.fine < new Date().toTimeString().slice(0, 5)));
@@ -83,6 +93,7 @@ function disegna() {
       <div class="numeri"><span><b>${lista.length}</b> ${lista.length === 1 ? "utilizzo" : "utilizzi"}</span><span>circa <b>${Math.round(ore / 60)}</b> ${Math.round(ore / 60) === 1 ? "ora" : "ore"}</span>${persone ? `<span>circa <b>${persone}</b> persone</span>` : ""}</div>
       <div class="zone">${Object.entries(contaZone).sort((a, b) => b[1] - a[1]).map(([z, n]) => `<span class="zona">${esc(z)}${n > 1 ? ` ×${n}` : ""}</span>`).join("")}</div>
       ${passati.length < lista.length ? `<div class="hint" style="color:rgba(244,240,230,.75);margin-top:8px">${lista.length - passati.length} ancora in programma prima delle pulizie</div>` : ""}</div>` : ""}
+    ${prossimo(d)}
     ${attenzione.length ? `<div class="attenzione">Da tenere d'occhio<ul>${attenzione.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
     ${giorni.length ? giorni.map((g) => `<section class="giorno"><span class="eyebrow">${esc(giorno(g.data))}</span>
       ${g.usi.map((u) => { const futuro = !passati.includes(u);
@@ -91,6 +102,11 @@ function disegna() {
           <div class="dett">${u.zone.map((z) => `<span class="zona">${esc(z)}</span>`).join("")}${u.palco ? `<span class="zona palco">Palco${u.palcoN ? ` (${u.palcoN} persone)` : ""}</span>` : ""}${u.tappeto ? `<span class="zona tappeto">Tappeto danza</span>` : ""}
             <span class="hint">${futuro ? "in programma" : u.persone ? `${u.persone} persone` : ""}${u.bambini ? ` · ${u.bambini} bambini` : ""}</span></div></div></div>`; }).join("")}</section>`).join("")
       : `<div class="vuoto">In questi giorni la sala non è stata usata. 🙂</div>`}
+    ${d.scorte ? `<div class="panel fatto-box"><h3>Scorte che mancano</h3>
+      ${d.scorte.length ? d.scorte.map((s) => `<div class="fatta" style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><b>${esc(s.cosa)}</b>${s.chi ? ` <span class="hint">segnalato da ${esc(s.chi)}</span>` : ""}</div><button class="btn sm" type="button" data-preso="${esc(s.id)}">Preso ✓</button></div>`).join("") : `<p class="hint">Non manca niente.</p>`}
+      <div class="scorte-chip" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">${SCORTE.filter((c) => !d.scorte.some((s) => s.cosa.toLowerCase() === c.toLowerCase())).map((c) => `<button type="button" class="btn sm" data-manca="${esc(c)}">+ ${esc(c)}</button>`).join("")}</div>
+      <form id="altro" style="display:flex;gap:6px;margin-top:8px" novalidate><input id="altro-cosa" placeholder="Altro che manca…" maxlength="80" style="flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface)"><button class="btn sm" type="submit">Segnala</button></form>
+    </div>` : ""}
     <div class="panel fatto-box"><h3>Pulizie fatte</h3>
       ${d.fatte.length ? d.fatte.map((f) => `<div class="fatta"><b>${esc(f.nome)}</b> <span class="hint">${esc(new Date(f.creato).toLocaleString("it-IT", { weekday: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }))}</span>${f.note ? `<div>${esc(f.note)}</div>` : ""}</div>`).join("") : `<p class="hint">Quando avete finito, segnatelo qui: chi organizza lo vede subito. Potete scrivere anche cosa manca o cosa non va.</p>`}
       ${d.giorno <= oggi || d.giorno <= new Date(Date.now() + 864e5).toISOString().slice(0, 10) ? `<form id="fatto" class="form" novalidate style="margin-top:10px">
@@ -99,6 +115,14 @@ function disegna() {
         <div class="field"><button class="btn primary" type="submit">Pulizie fatte ✓</button></div></form>` : ""}
     </div>`);
   $("#prima").onclick = () => { settimane++; carica(); };
+  const scorta = async (cosa, id) => {
+    const { error } = await sb.rpc("pulizie_scorta", { p_token: token, p_cosa: cosa || null, p_nome: mem.get("-nome") || "", p_id: id || null });
+    if (error) { toast(error.message); return; }
+    toast(id ? "Grazie! Tolto dall'elenco" : `Segnalato: ${cosa}`); carica();
+  };
+  document.querySelectorAll("[data-manca]").forEach((b) => (b.onclick = () => { b.disabled = true; scorta(b.dataset.manca); }));
+  document.querySelectorAll("[data-preso]").forEach((b) => (b.onclick = () => { b.disabled = true; scorta(null, b.dataset.preso); }));
+  const al = $("#altro"); if (al) al.onsubmit = (e) => { e.preventDefault(); const v = $("#altro-cosa").value.trim(); if (v) scorta(v); };
   const dopo = $("#dopo"); if (dopo) dopo.onclick = () => { settimane = Math.max(0, settimane - 1); carica(); };
   const f = $("#fatto");
   if (f) f.onsubmit = async (e) => {
