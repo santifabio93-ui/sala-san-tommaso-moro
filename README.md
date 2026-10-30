@@ -107,6 +107,17 @@ trova e stato della prova, il collegamento alla cassa e i promemoria di sicurezz
 Amministratori e coordinatori vedono anche organizzatore e responsabile in sala con il telefono, il tecnico, cosa
 c'è da sapere dalla scheda (carrozzine, effetti, attrezzature, SIAE), il parere di sicurezza e quanto resta da incassare.
 
+## Secondo calendario gestito dall'app
+Il calendario principale della sala resta in sola lettura. In un secondo calendario dello stesso account (es.
+«Sala – App») lo script tiene allineati: le prenotazioni nate nell'app o dalle email (con stato, referente e turni
+con i nomi nella descrizione), le proiezioni del cinema e i sopralluoghi, da 30 giorni fa a un anno avanti.
+1. In Google Calendar dell'account della sala: Altri calendari → + → Crea nuovo calendario («Sala – App»); nelle sue
+   impostazioni copia l'«ID calendario».
+2. Esegui `supabase/018_calendario_app.sql`.
+3. Nello script: proprietà `CALENDARIO_APP` = l'ID copiato, aggiungi `+app` alla MODALITA, e in `appsscript.json`
+   sostituisci `calendar.readonly` con `calendar`; poi esegui `provaCalendarioApp` e accetta il nuovo permesso.
+Lo script rifiuta di partire se il secondo calendario coincide con il principale e cambia solo gli eventi creati da lui.
+
 ## Cassa
 Esegui una volta `supabase/003_cassa.sql` nel SQL Editor. Nella sezione **Cassa** chi fa cassa registra per ogni serata
 biglietti online, botteghino in contanti e con POS, omaggi; conta i contanti (anche per taglio), vede se la cassa quadra,

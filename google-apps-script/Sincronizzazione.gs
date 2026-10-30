@@ -25,6 +25,11 @@
  *                  aggiungi "+sas" per copiare nell'app le email di ACEC Triveneta (conferme di programmazione e
  *                  risposte alle richieste di film); va messo nell'account che riceve le email del SAS
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
+ *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
+ *                  allineato con l'app: prenotazioni nate nell'app o dalle email, proiezioni del cinema, sopralluoghi.
+ *                  Il calendario principale resta in sola lettura. Serve il permesso di scrittura sul calendario
+ *                  (in appsscript.json: calendar al posto di calendar.readonly). Lo script modifica e cancella solo
+ *                  gli eventi che ha creato lui in quel calendario; quelli aggiunti a mano restano.
  *
  * PERMESSI: insieme a questo file va copiato anche "appsscript.json" (manifest), che limita lo script
  * alla SOLA LETTURA di calendario ed email. Google stesso impedisce allo script qualsiasi modifica.
@@ -33,7 +38,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-01.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-01.3"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -68,6 +73,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 30));
     if (cfg.modalita.indexOf("primanota") !== -1) prova("prima nota", () => leggiPrimaNota(cfg, false));
     if (cfg.modalita.indexOf("sas") !== -1) prova("sas", () => leggiSas(cfg));
+    if (/(^|\+)app(\+|$)/.test(cfg.modalita)) prova("calendario dell'app", () => sincronizzaCalendarioApp(cfg));
   } finally {
     lock.releaseLock();
   }
@@ -93,6 +99,7 @@ function leggiImpostazioni() {
     token: p.SYNC_TOKEN,
     modalita: (p.MODALITA || "email").toLowerCase(),
     calendario: p.CALENDARIO || "",
+    calendarioApp: p.CALENDARIO_APP || "",
     c1Cartella: p.C1_CARTELLA || C1_CARTELLA_SALA,
     primaNotaCartella: p.PRIMA_NOTA_CARTELLA || PRIMA_NOTA_CARTELLA,
     primaNotaFile: p.PRIMA_NOTA_FILE || "",
@@ -176,6 +183,53 @@ function sincronizzaCalendario(cfg, scrivi) {
     p_events: eventi,
   });
   Logger.log("Calendario: scritti " + scritti.length + ", cancellati " + cancellati.length + ", dall'app → " + JSON.stringify(esito));
+}
+
+/* ---------------- secondo calendario, gestito dall'app ---------------- */
+const CHIAVE_APP = "chiaveSalaApp"; // tag invisibile con la chiave dell'elemento dell'app (b:prenotazione, p:proiezione, s:sopralluogo)
+function sincronizzaCalendarioApp(cfg) {
+  if (!cfg.calendarioApp) throw new Error("Manca la proprietà CALENDARIO_APP (id del secondo calendario)");
+  const cal = CalendarApp.getCalendarById(cfg.calendarioApp);
+  if (!cal) throw new Error("Calendario dell'app non trovato: " + cfg.calendarioApp);
+  const principale = calendario(cfg);
+  if (principale && principale.getId() === cal.getId()) throw new Error("CALENDARIO_APP deve essere un calendario diverso da quello principale della sala");
+  const voluti = rpc(cfg, "sync_calendario_app", {}) || [];
+  const oggi = new Date(), da = new Date(oggi.getTime() - 31 * 864e5), a = new Date(oggi.getTime() + 367 * 864e5);
+  const esistenti = {};
+  cal.getEvents(da, a).forEach((e) => { const k = e.getTag(CHIAVE_APP); if (k) { if (esistenti[k]) e.deleteEvent(); else esistenti[k] = e; } });
+  let creati = 0, aggiornati = 0, cancellati = 0, cambi = 0;
+  const MAX = 80; // al massimo 80 modifiche per giro, il resto al giro dopo (limiti di Google Calendar)
+  voluti.forEach((v) => {
+    if (cambi >= MAX) return;
+    const e = esistenti[v.chiave];
+    delete esistenti[v.chiave];
+    const inizio = v.giornata ? dataLocale(v.data, "00:00") : dataLocale(v.data, v.inizio);
+    const fine = v.giornata ? null : dataLocale(v.data, v.fine > v.inizio ? v.fine : "23:59");
+    if (e && e.isAllDayEvent() === !!v.giornata) {
+      const ok = e.getTitle() === v.titolo && (e.getDescription() || "") === (v.descrizione || "") &&
+        (v.giornata ? e.getAllDayStartDate().getTime() === inizio.getTime() : e.getStartTime().getTime() === inizio.getTime() && e.getEndTime().getTime() === fine.getTime());
+      if (ok) return;
+      e.setTitle(v.titolo); e.setDescription(v.descrizione || "");
+      if (v.giornata) e.setAllDayDate(inizio); else e.setTime(inizio, fine);
+      aggiornati++; cambi++;
+      return;
+    }
+    if (e) { e.deleteEvent(); cambi++; }
+    const nuovo = v.giornata ? cal.createAllDayEvent(v.titolo, inizio) : cal.createEvent(v.titolo, inizio, fine);
+    nuovo.setDescription(v.descrizione || "");
+    nuovo.setTag(CHIAVE_APP, v.chiave);
+    creati++; cambi++;
+    Utilities.sleep(120);
+  });
+  // ciò che non c'è più nell'app (annullato, spostato fuori periodo, cancellato): solo eventi creati dallo script
+  Object.keys(esistenti).forEach((k) => { if (cambi < MAX) { esistenti[k].deleteEvent(); cancellati++; cambi++; } });
+  Logger.log("Calendario dell'app: " + voluti.length + " elementi · creati " + creati + ", aggiornati " + aggiornati + ", cancellati " + cancellati + (cambi >= MAX ? " (continua al prossimo giro)" : ""));
+}
+// da eseguire a mano per provare il calendario dell'app
+function provaCalendarioApp() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Modalità: " + cfg.modalita + (/(^|\+)app(\+|$)/.test(cfg.modalita) ? "" : "  ← manca «+app»: l'aggiornamento automatico non partirà"));
+  sincronizzaCalendarioApp(cfg);
 }
 
 function eventoPerApp(e) {
