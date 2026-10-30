@@ -311,7 +311,7 @@ possono correggere a mano quando una bolletta non è ancora registrata.
 ## Gruppo pulizie
 
 Un link solo per tutto il gruppo pulizie (`modulo/pulizie.html`, senza account), da Turni → Volontari → «Manda il link
-al gruppo». Mostra cosa è successo in sala nei sette giorni prima delle pulizie (di solito il martedì; il giorno si
+al gruppo» (c'è anche nella pagina Turni). Mostra cosa è successo in sala nei sette giorni prima delle pulizie (di solito il martedì; il giorno si
 cambia dallo stesso riquadro): quando e per quanto, in quali spazi (platea, galleria, palco, tappeto danza), per cosa
 e con quante persone (dalla cassa, dai C1 o dal pubblico previsto nella scheda), con in evidenza tappeto danza, molti
 bambini o tanta gente. A fine lavoro segnano «Pulizie fatte» con una nota (cosa manca, cosa non va): la nota compare

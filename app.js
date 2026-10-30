@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.30";
+const VERSIONE = "2026-11-01.31";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2875,7 +2875,7 @@ function renderVolontari() {
   if (!el) return;
   el.hidden = !S.canWrite;
   if (!S.canWrite) return;
-  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel promemoria"><div class="warn">Per i link personali dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>`; return; }
+  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel promemoria"><div class="warn">Per i link personali dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>${pannelloPulizie()}`; collegaPulizie(el); return; }
   const att = S.volontari.filter((v) => v.attivo), off = S.volontari.filter((v) => !v.attivo);
   const conta = (v) => S.signups.filter((x) => x.volontarioId === v.id && S.bookings.some((b) => b.id === x.bookingId && b.data >= TODAY)).length;
   const riga = (v) => `<div class="todo-riga"><div><b>${esc(v.nome)}</b> <span class="hint">${esc(v.cellulare || "senza cellulare")}${v.attivo ? ` · ${conta(v)} turni in programma` : " · disattivato"}</span></div>
@@ -2885,8 +2885,10 @@ function renderVolontari() {
     <form id="vol-form" class="sito-contatto" style="margin-top:10px"><input id="vol-nome" placeholder="Nome (come lo vedranno gli altri)" aria-label="Nome del volontario" maxlength="60"><input id="vol-cell" placeholder="Cellulare (per WhatsApp)" inputmode="tel" aria-label="Cellulare"><button class="btn sm primary" type="submit">Aggiungi</button></form>
     ${att.map(riga).join("") || `<p class="hint">Nessun volontario ancora: aggiungili qui sopra e manda a ciascuno il suo link.</p>`}
     ${off.length ? `<p class="hint" style="margin-top:8px">Disattivati: il loro link non funziona più.</p>${off.map(riga).join("")}` : ""}
-    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button><button class="btn" type="button" id="vol-link-gruppo">Link per la descrizione del gruppo</button></div></details></div>`;
+    <div class="actions" style="margin-top:10px"><button class="btn" type="button" id="vol-gruppo">Avviso per il gruppo</button><button class="btn" type="button" id="vol-link-gruppo">Link per la descrizione del gruppo</button></div></details></div>
+    ${pannelloPulizie()}`;
   $("#vol-det").ontoggle = (e) => (S.volAperto = e.target.open);
+  collegaPulizie(el);
   $("#vol-form").onsubmit = async (e) => {
     e.preventDefault();
     const nome = $("#vol-nome").value.trim().replace(/\s+/g, " "), cellulare = $("#vol-cell").value.trim();
@@ -2942,7 +2944,7 @@ const fmtData = (s) => (s ? parse(s).toLocaleDateString("it-IT") : "");
 
 function renderVolontariPagina() {
   const el = $("#volontari-body");
-  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel"><div class="warn">Per l'elenco dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>`; return; }
+  if (S.loadErr2?.volontari) { el.innerHTML = `<div class="panel"><div class="warn">Per l'elenco dei volontari esegui in Supabase lo script <b>014_turni_link.sql</b> e ricarica la pagina.</div></div>${pannelloPulizie()}`; collegaPulizie(el); return; }
   const nuovo = !S.loadErr2?.volDati;
   const att = S.volontari.filter((v) => v.attivo), off = S.volontari.filter((v) => !v.attivo);
   const q = (S.volQ || "").toLowerCase();
@@ -2975,7 +2977,7 @@ function renderVolontariPagina() {
       ${lista.map(riga).join("") || `<p class="hint">${S.volontari.length ? "Nessun volontario corrisponde alla ricerca." : "Nessun volontario ancora: aggiungili con «+ Nuovo volontario»."}</p>`}
     </div>`;
   $("#vol-nuovo").onclick = () => openVolontario(null);
-  collegaPulizie();
+  collegaPulizie(el);
   $("#vol-q").oninput = (e) => { S.volQ = e.target.value; const pos = e.target.selectionStart; renderVolontariPagina(); const i = $("#vol-q"); i.focus(); i.setSelectionRange(pos, pos); };
   $("#vol-tutti").onchange = (e) => { S.volTutti = e.target.checked; renderVolontariPagina(); };
   el.querySelectorAll("[data-vedit]").forEach((b) => (b.onclick = () => openVolontario(S.volontari.find((v) => v.id === b.dataset.vedit))));
@@ -3066,15 +3068,16 @@ function pannelloPulizie() {
   if (!S.pulizie) return `<div class="panel"><h3>Gruppo pulizie</h3><p class="hint">Per il link del gruppo pulizie esegui in Supabase lo script <b>024_pulizie.sql</b> e ricarica la pagina.</p></div>`;
   const ultime = S.pulizieFatte.slice(0, 4);
   return `<div class="panel"><div class="section-head"><h3>Gruppo pulizie</h3><span class="hint">Un link per tutto il gruppo: vedono quando, quanto, dove e per cosa è stata usata la sala dall'ultima pulizia</span></div>
-    <div class="actions" style="margin:8px 0"><button class="btn primary sm" type="button" id="pul-manda">Manda il link al gruppo</button><a class="btn sm" href="${esc(linkPulizie())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
-      ${S.isAdmin ? `<label class="hint">Le pulizie si fanno il <select id="pul-giorno">${GIORNI_SETT.map((g, i) => `<option value="${i}"${i === S.pulizie.giorno ? " selected" : ""}>${g}</option>`).join("")}</select></label><button class="btn ghost sm" type="button" id="pul-rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
+    <div class="actions" style="margin:8px 0"><button class="btn primary sm" type="button" data-pul="manda">Manda il link al gruppo</button><a class="btn sm" href="${esc(linkPulizie())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
+      ${S.isAdmin ? `<label class="hint">Le pulizie si fanno il <select data-pul="giorno" aria-label="Giorno delle pulizie">${GIORNI_SETT.map((g, i) => `<option value="${i}"${i === S.pulizie.giorno ? " selected" : ""}>${g}</option>`).join("")}</select></label><button class="btn ghost sm" type="button" data-pul="rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
     ${ultime.length ? ultime.map((f) => `<div class="todo-riga"><div><b>${esc(f.nome)}</b> <span class="hint">pulizie del ${esc(fmtShort(f.giorno))}</span>${f.note ? `<div>${esc(f.note)}</div>` : ""}</div></div>`).join("") : `<p class="hint">Quando finiscono, dal link segnano «pulizie fatte» con eventuali note (cosa manca, cosa non va): le vedi qui e in Oggi.</p>`}</div>`;
 }
-function collegaPulizie() {
-  const m = $("#pul-manda"); if (!m) return;
+function collegaPulizie(root) {
+  const q = (k) => root.querySelector(`[data-pul="${k}"]`);
+  const m = q("manda"); if (!m) return;
   m.onclick = () => openCopyText([`🧹 Gruppo pulizie della Sala San Tommaso Moro`, `Qui trovate cosa è successo in sala dall'ultima pulizia: quando, per quanto, in quali spazi, per cosa e con quante persone.`, linkPulizie(), `Quando avete finito, toccate «Pulizie fatte» e scrivete se manca qualcosa. Grazie! 🙏`].join("\n"));
-  const g = $("#pul-giorno"); if (g) g.onchange = async () => { try { await run(sb.from("settings").update({ pulizie_giorno: +g.value }).eq("id", 1), `Pulizie il ${GIORNI_SETT[+g.value]}`); } catch (x) { toast(errText(x)); } };
-  const r = $("#pul-rinnova"); if (r) r.onclick = async () => {
+  const g = q("giorno"); if (g) g.onchange = async () => { try { await run(sb.from("settings").update({ pulizie_giorno: +g.value }).eq("id", 1), `Pulizie il ${GIORNI_SETT[+g.value]}`); } catch (x) { toast(errText(x)); } };
+  const r = q("rinnova"); if (r) r.onclick = async () => {
     if (!confirm("Il link vecchio smetterà di funzionare: dovrai mandare quello nuovo al gruppo. Rinnovare?")) return;
     try { await run(sb.from("settings").update({ pulizie_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo al gruppo"); } catch (x) { toast(errText(x)); }
   };
