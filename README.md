@@ -434,6 +434,10 @@ antincendio (livello, data del corso, scadenza e il file PDF o la foto dell'atte
   nel messaggio; per togliersi si tocca «✓ Ci sei» e poi «Toglimi».
   Anche quando una fascia è al completo «Ci sono» resta: chi si aggiunge compare con il suo nome come gli altri
   (script `031_turni_oltre.sql`, al massimo 10 persone oltre i posti).
+- **Scambio di turno** (script `032_turni_cambi.sql`): sotto un proprio turno «🔁 Chiedi il cambio»; il turno resta suo
+  finché un altro volontario, nella sezione «Cercano un sostituto» del suo link, tocca «Lo prendo io»: allora il turno
+  passa da solo. Chi chiede può mandare il messaggio al gruppo WhatsApp e ritirare la richiesta («Ci vado io»).
+  Le richieste aperte compaiono in Oggi e nella pagina Turni.
 
 I volontari dal loro link dei turni vedono solo i nomi degli altri: telefono, data di nascita e attestati no.
 

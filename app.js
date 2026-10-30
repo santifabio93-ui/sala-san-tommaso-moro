@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.50";
+const VERSIONE = "2026-11-01.51";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -204,6 +204,10 @@ async function loadAll() {
     // pulizie fatte, con le note del gruppo pulizie (aggiornamento 24)
     const pf = S.canWrite ? await sb.from("pulizie_fatte").select("*").order("creato", { ascending: false }).limit(60) : { data: null };
     S.pulizieFatte = pf.data || [];
+    // scambi di turno aperti (aggiornamento 32)
+    const tc = S.staff ? await sb.from("turni_cambi").select("*").eq("stato", "aperta") : { data: null };
+    S.cambi = tc.data || [];
+    S.loadErr2.cambi = tc.error && (tc.error.message || "errore");
     // scorte che mancano (aggiornamento 24): le vedono e le segnano tutti i volontari
     const sc = ["admin", "coordinatore", "segreteria", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
     S.loadErr2.scorte = sc.error && (sc.error.message || "errore");
@@ -271,7 +275,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -1005,10 +1009,12 @@ function shiftEvent(b) {
       action = `<button class="btn sm${full ? "" : " primary"}" type="button" data-join="${esc(b.id)}|${esc(t.id)}">${label}</button>`;
     }
     const miss = n - ppl.length;
+    const cerca = (S.cambi || []).filter((c) => c.booking_id === b.id && c.slot_id === t.id && ppl.some((x) => x.volontarioId === c.da_volontario));
     return `<div class="slot">
       <div><div class="lbl">${esc(t.label)}</div><div class="tm">${esc(t.inizio)}–${esc(t.fine)}</div>
         <div class="meter" aria-hidden="true">${meter}</div>
         <div class="count ${miss > 0 ? "miss" : "full"}">${ppl.length}/${n} ${miss > 0 ? `· manca${miss > 1 ? "no" : ""} ${miss}` : "· completo"}</div></div>
+      ${cerca.length ? `<div class="hint" style="color:var(--opz-fg);font-weight:700">🔁 ${esc(cerca.map((c) => c.da_nome).join(", "))} ${cerca.length === 1 ? "cerca" : "cercano"} un sostituto</div>` : ""}
       <div class="people">${names || (isOpen ? "" : `<span class="hint">Ancora nessuno</span>`)}${action}${amIn && b.data >= TODAY ? `<button class="btn ghost sm" type="button" data-cal="${esc(b.id)}|${esc(t.id)}" title="Aggiungi il turno al calendario del telefono">📅 Nel calendario</button>` : ""}</div>
     </div>`;
   }).join("");
@@ -3933,6 +3939,10 @@ function coseDiOggi() {
   righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
   S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
   S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  // scambi di turno: chi cerca un sostituto (finché nessuno lo prende, il turno resta suo)
+  (S.cambi || []).forEach((c) => { const b = S.bookings.find((x) => x.id === c.booking_id), t = b && turni(b).find((x) => x.id === c.slot_id);
+    if (b && t && b.data >= TODAY && S.signups.some((s) => s.bookingId === b.id && s.slotId === t.id && s.volontarioId === c.da_volontario))
+      add(b.data <= tra(2) ? "warn" : "info", `${c.da_nome} cerca un sostituto per «${t.label}» di ${b.titolo} (${fmtShort(b.data)} ${t.inizio})`, "#turni", { entro: b.data, quando: quando(b.data) }); });
   // scorte da comprare
   if ((S.scorte || []).length) add("info", `Scorte da comprare: ${S.scorte.map((x) => x.cosa.toLowerCase()).join(", ")}`, "#serata");
   // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
@@ -4005,6 +4015,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
     ["031_turni_oltre.sql", "Ci si può segnare anche nelle fasce al completo", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],
     ["029_foglietto.sql", "Email del giovedì per il foglietto parrocchiale", k.has("foglietto_attivo"), "Dopo lo script SQL ricopia lo script Google (2026-11-02.2) e il file appsscript.json, e aggiungi «+foglietto» alla MODALITA"],

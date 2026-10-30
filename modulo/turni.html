@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.50">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.51">
 <style>
 .wrap { max-width: 640px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -83,6 +83,12 @@
 .tb.togli { background: var(--due-bg); color: var(--due-fg); border: 2px solid var(--due-fg) }
 .tb.ci-sono.anche { background: var(--surface); color: var(--accent); border: 2px solid color-mix(in oklab, var(--accent) 45%, transparent); box-shadow: none }
 .tb:active { transform: scale(.97) }
+.mio-az { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center }
+.cambio-on { font-size: .82rem; font-weight: 800; color: var(--opz-fg); background: var(--opz-bg); padding: 2px 8px; border-radius: 999px }
+.cercano { margin-top: 16px } .cercano h3 { margin: 0 0 8px }
+.cerca { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 16px; background: var(--opz-bg); border: 1px solid color-mix(in oklab, var(--opz-fg) 30%, transparent) }
+.cerca + .cerca { margin-top: 8px } .cerca .t { font-weight: 800 }
+.f-cambio { font-size: .8rem; font-weight: 700; color: var(--opz-fg); margin: 2px 0 } .f-cambio button { border: 0; background: none; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer }
 .vuoto-t { text-align: center; padding: 26px 12px; color: var(--muted) }
 .toast .annulla { margin-left: 10px; border: 0; background: none; color: #E9CF7E; font: inherit; font-weight: 800; cursor: pointer; text-decoration: underline }
 @media (max-width: 380px) { .fascia2 { grid-template-columns: 46px minmax(0, 1fr) } .f-a { grid-column: 2 } }
@@ -97,7 +103,7 @@
   <div id="app"><p class="muted">Caricamento dei turni…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.50"></script>
-<script type="module" src="turni.js?v=2026-11-01.50"></script>
+<script src="../config.js?v=2026-11-01.51"></script>
+<script type="module" src="turni.js?v=2026-11-01.51"></script>
 </body>
 </html>

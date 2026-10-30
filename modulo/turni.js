@@ -20,7 +20,7 @@ const giorno = (d) => new Date(d + "T12:00:00").toLocaleDateString("it-IT", { we
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3200); }
 const mostra = (html) => { $("#app").innerHTML = html; };
 
-let dati = null, stasera = [], badge = "";
+let dati = null, stasera = [], badge = "", cambi = [];
 let benvenuto = false; // appena ritrovato il link: si ricorda come salvarlo
 async function carica() {
   if (!token) { recupero(); return; }
@@ -35,6 +35,9 @@ async function carica() {
   // il badge della Sala per la cassa (aggiornamento 30)
   const bg = await sb.rpc("turni_badge", { p_token: token });
   badge = (bg.data && bg.data.badge) || "";
+  // scambi di turno chiesti dai volontari (aggiornamento 32)
+  const cb = await sb.rpc("turni_cambi_aperti", { p_token: token });
+  cambi = cb.data || [];
   disegna();
 }
 
@@ -145,6 +148,7 @@ function disegna() {
     ev.fasce.push(f);
   }
   const prossimo = mie[0];
+  const daPrendere = cambi.filter((c) => !c.mia && !c.gia_dentro);
   const posti = (f) => Array.from({ length: Math.max(f.posti, f.nomi.length) }, (_, i) => f.nomi[i]
     ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}" style="--h:${tinta(f.nomi[i])}">${esc(f.nomi[i])}</span>`
     : `<span class="av vuoto">libero</span>`).join("");
@@ -167,7 +171,11 @@ function disegna() {
     ${mie.length ? `<section class="miei"><h3>I tuoi turni ${mie.length > 1 ? `<span class="hint">${mie.length} · scorri →</span>` : ""}</h3><div class="miei-fila">${mie.map((f) => { const k = fasce.indexOf(f), altri = f.nomi.filter((n) => n !== io);
       return `<div class="mio"><div class="mio-q"><b>${esc(giornoBreve(f.data))}</b><span>${esc(tra(f.data))}</span></div>
         <div class="mio-c"><div class="t">${esc(f.titolo)}</div><div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}${altri.length ? ` · con ${esc(altri.join(", "))}` : ""}</div>
-          ${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}</div></div>`; }).join("")}</div></section>` : ""}
+          <div class="mio-az">${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}
+          ${(() => { const c = cambioDi(f, true); return c ? `<span class="cambio-on">🔁 Cambio chiesto</span><button class="cal-link" type="button" data-ritira="${esc(c.id)}">Ci vado io</button>` : `<button class="cal-link" type="button" data-cambio="${k}">🔁 Chiedi il cambio</button>`; })()}</div></div></div>`; }).join("")}</div></section>` : ""}
+    ${daPrendere.length ? `<section class="cercano"><h3>🔁 Cercano un sostituto</h3>${daPrendere.map((c) => `<div class="cerca">
+        <div><div class="t">${esc(c.titolo)}</div><div class="hint">${esc(giornoBreve(c.data))} · ${esc(c.fascia)} ${esc(c.inizio)}–${esc(c.fine)} · al posto di <b>${esc(c.da_nome)}</b></div></div>
+        <button class="tb ci-sono" type="button" data-prendi="${esc(c.id)}">Lo prendo io</button></div>`).join("")}</section>` : ""}
     <div class="filtri"><button type="button" data-filtro="servo" class="${filtro === "servo" ? "on" : ""}">Dove servo <span>${servono.length}</span></button><button type="button" data-filtro="tutti" class="${filtro === "tutti" ? "on" : ""}">Tutti <span>${fasce.length}</span></button></div>
     ${giorni.length > 1 ? `<nav class="giorni-strip" aria-label="Giorni">${giorni.map((g) => { const tutte = g.eventi.flatMap((e) => e.fasce);
       return `<a href="#g-${g.data}" class="${tutte.some((f) => f.mio) ? "c-me" : ""}"><small>${esc(new Date(g.data + "T12:00:00").toLocaleDateString("it-IT", { weekday: "short" }))}</small><b>${+g.data.slice(8)}</b>${tutte.some((f) => manca(f) && !f.mio) ? `<i class="punto"></i>` : ""}</a>`; }).join("")}</nav>` : ""}
@@ -177,6 +185,7 @@ function disegna() {
         ${ev.fasce.map((f) => `<div class="fascia2${f.mio ? " mia" : ""}">
           <div class="f-ora"><b>${esc(f.inizio)}</b><span>${esc(f.fine)}</span></div>
           <div class="f-c"><div class="f-n">${esc(f.fascia)}</div><div class="avs">${posti(f)}</div>
+            ${(() => { const c = cambioDi(f, false); return c && !c.gia_dentro ? `<div class="f-cambio">🔁 ${esc(c.da_nome)} cerca un sostituto · <button type="button" data-prendi="${esc(c.id)}">Lo prendo io</button></div>` : ""; })()}
             <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : "al completo ✓"}</div></div>
           <div class="f-a">${azione(f)}</div></div>`).join("")}
       </article>`).join("")}</section>`).join("")
@@ -189,6 +198,36 @@ function disegna() {
   document.querySelectorAll("[data-filtro]").forEach((b) => (b.onclick = () => { filtro = b.dataset.filtro; conferma = null; disegna(); }));
   document.querySelectorAll("[data-chiedi]").forEach((b) => (b.onclick = () => { conferma = +b.dataset.chiedi; disegna(); clearTimeout(disegna.t); disegna.t = setTimeout(() => { conferma = null; if (dati) disegna(); }, 4000); }));
   document.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => segna(fasce[+b.dataset.k], b.dataset.si === "1")));
+  document.querySelectorAll("[data-cambio]").forEach((b) => (b.onclick = () => chiediCambio(fasce[+b.dataset.cambio], b)));
+  document.querySelectorAll("[data-ritira]").forEach((b) => (b.onclick = () => azioneCambio("turni_cambio_annulla", b.dataset.ritira, "Va bene: il turno resta tuo", b)));
+  document.querySelectorAll("[data-prendi]").forEach((b) => (b.onclick = () => azioneCambio("turni_cambio_prendi", b.dataset.prendi, "Fatto! Il turno è tuo. Grazie 🙏", b)));
+}
+// la richiesta di cambio aperta per una fascia (la mia o di un altro)
+const cambioDi = (f, mia) => cambi.find((c) => c.booking_id === f.booking_id && c.slot_id === f.slot_id && c.mia === mia);
+
+// scambio di turno (aggiornamento 32): il turno resta tuo finché un altro non tocca «Lo prendo io»
+async function chiediCambio(f, b) {
+  b.disabled = true;
+  const { error } = await sb.rpc("turni_cambio_chiedi", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id });
+  if (error) { b.disabled = false; toast(/Could not find|schema cache/i.test(error.message) ? "Lo scambio di turno non è ancora attivo: avvisa chi organizza" : error.message); return; }
+  const testo = `Ciao! Non riesco più a fare il turno «${f.fascia}» per ${f.titolo}, ${giornoBreve(f.data)} ${f.inizio}–${f.fine}. Qualcuno può prenderlo? Basta aprire il proprio link dei turni e toccare «Lo prendo io»: ${new URL("turni.html", location.href).href} Grazie! 🙏`;
+  await carica();
+  toastAzione("Cambio chiesto: il turno resta tuo finché qualcuno non lo prende.", "Avvisa il gruppo", () => window.open("https://wa.me/?text=" + encodeURIComponent(testo), "_blank"));
+}
+async function azioneCambio(nome, id, ok, b) {
+  b.disabled = true;
+  const { data, error } = await sb.rpc(nome, { p_token: token, p_cambio: id });
+  if (error) { toast(error.message); await carica(); return; }
+  if (navigator.vibrate) navigator.vibrate(25);
+  toast(nome === "turni_cambio_prendi" && data && data.da ? `Fatto! Hai preso il turno di ${data.da}. Grazie 🙏` : ok);
+  await carica();
+}
+function toastAzione(msg, label, fn) {
+  const t = $("#toast");
+  t.innerHTML = `${esc(msg)} <button type="button" class="annulla">${esc(label)}</button>`;
+  t.hidden = false;
+  t.querySelector("button").onclick = () => { t.hidden = true; fn(); };
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 8000);
 }
 
 // ci sono / non ci sono più: la pagina cambia subito, il database dopo; se va male si torna indietro
