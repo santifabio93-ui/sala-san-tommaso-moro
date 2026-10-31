@@ -94,7 +94,7 @@ function modulo(d, info) {
     <div class="campo" style="margin-top:12px"><span class="lbl">Effetti speciali</span>${scelta("effetti", [["nessuno", "nessuno"], ["fumo", "macchina del fumo o della nebbia"], ["altro", "altro"]], d.effetti)}
       <span class="hint">Fiamme, candele, petardi e coriandoli non sono ammessi.</span></div>
     <div class="cond" data-se="effetti=altro">${campo("effetti_quali", "Quali effetti", d.effetti_quali)}</div>
-    <div class="campo" style="margin-top:12px"><span class="lbl">Durante l'evento</span>${scelta("durante", [["riprese", "riprese video o foto"], ["streaming", "diretta streaming"], ["vendita", "vendita di libri, CD o altro"], ["rinfresco", "rinfresco nell'atrio (da concordare)"]], d.durante, "checkbox")}</div>
+    <div class="campo" style="margin-top:12px"><span class="lbl">Durante l'evento</span>${scelta("durante", [["riprese", "riprese video o foto"], ["streaming", "diretta streaming"], ["vendita", "vendita di libri, CD o altro"]], (d.durante || []).filter((x) => x !== "rinfresco"), "checkbox")}</div>
     <div class="griglia" style="margin-top:12px">
       <div class="campo"><span class="lbl">Possiamo pubblicare l'evento nel programma della sala?</span>${scelta("pubblicabile", [["si", "sì"], ["no", "no"]], d.pubblicabile)}</div>
       ${campo("locandina_entro", "Ci mandate la locandina entro il", d.locandina_entro, "type=\"date\"")}
