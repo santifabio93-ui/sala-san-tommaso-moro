@@ -31,6 +31,8 @@
  *                  la sala ha scambiato email: solo le conversazioni in cui la sala ha scritto o risposto (niente
  *                  pubblicità né newsletter), con nome, indirizzo, telefono trovato nella firma e ultima email.
  *                  La prima volta legge tutta la posta inviata, un po' alla volta; poi ogni 6 ore le novità.
+ *                  Se nell'account della sala lo script serve solo per questo, basta MODALITA = "rubrica": non tocca
+ *                  il calendario e non legge le richieste (lo fa già l'altro account). Lo SYNC_TOKEN può essere lo stesso.
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
  *                  allineato con l'app: prenotazioni nate nell'app o dalle email, proiezioni del cinema, sopralluoghi.
