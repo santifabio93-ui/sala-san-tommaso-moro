@@ -141,3 +141,14 @@ function disegna() {
 
 carica();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && dati) carica(); });
+
+// se è uscita una versione nuova di questa pagina (e il telefono tiene quella vecchia), si ricarica da sola
+async function controllaVersione() {
+  try {
+    const mia = new URL(import.meta.url).searchParams.get("v"), html = await (await fetch(location.pathname, { cache: "reload" })).text();
+    const nuova = (html.match(/\.js\?v=([\w.-]+)/) || [])[1];
+    if (mia && nuova && nuova !== mia && sessionStorage.getItem("sala-ricarica") !== nuova) { sessionStorage.setItem("sala-ricarica", nuova); location.reload(); }
+  } catch (e) {}
+}
+controllaVersione();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) controllaVersione(); });
