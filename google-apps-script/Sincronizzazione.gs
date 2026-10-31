@@ -37,6 +37,7 @@
  *                  Se nell'account della sala lo script serve solo per questo, basta MODALITA = "rubrica": non tocca
  *                  il calendario e non legge le richieste (lo fa già l'altro account). Lo SYNC_TOKEN può essere lo stesso.
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
+ *   CALENDARIO_DAL (facoltativo) da che giorno leggere il calendario, es. 2025-01-01; se manca dal 1° gennaio dell'anno
  *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
  *                  allineato con l'app: prenotazioni nate nell'app o dalle email, proiezioni del cinema, sopralluoghi.
  *                  Il calendario principale resta in sola lettura. Serve il permesso di scrittura sul calendario
@@ -50,7 +51,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-04.3"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-04.4"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -187,8 +188,11 @@ function sincronizzaCalendario(cfg, scrivi) {
   if (scritti.length || cancellati.length) rpc(cfg, "sync_calendar_ack", { p_written: scritti, p_deleted: cancellati });
 
   // 2. poi leggo il calendario e aggiorno l'app
+  // dal 1° gennaio dell'anno (o da CALENDARIO_DAL, es. 2025-01-01), e comunque almeno gli ultimi 60 giorni
   const oggi = new Date();
-  const da = new Date(oggi.getTime() - GIORNI_INDIETRO * 864e5);
+  const dalProp = PropertiesService.getScriptProperties().getProperty("CALENDARIO_DAL");
+  const inizioAnno = dalProp && /^\d{4}-\d{2}-\d{2}$/.test(dalProp) ? dataLocale(dalProp, "00:00") : new Date(oggi.getFullYear(), 0, 1);
+  const da = new Date(Math.min(inizioAnno.getTime(), oggi.getTime() - GIORNI_INDIETRO * 864e5));
   const a = new Date(oggi.getTime() + GIORNI_AVANTI * 864e5);
   const eventi = cal.getEvents(da, a).map(eventoPerApp).filter(Boolean);
   const esito = rpc(cfg, "sync_calendar_pull", {
