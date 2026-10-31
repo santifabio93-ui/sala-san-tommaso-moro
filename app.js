@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.65";
+const VERSIONE = "2026-11-01.66";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1561,8 +1561,23 @@ function renderBilancio() {
   const catE = [...raggruppa(list.filter((r) => r.entrate), "categoria").entries()].map(([nome, rs]) => ({ nome, v: sommaE(rs) })).sort((a, b) => b.v - a.v);
   // eventi
   const spettEvento = (ev) => { const ne = normT(ev); return c1Anno.filter((c) => { const nt = normT(c.titolo); return nt.length >= 4 && (ne.includes(nt) || nt.includes(ne)); }).reduce((s, c) => s + c.spettatori, 0); };
-  const eventi = [...raggruppa(list.filter((r) => r.evento), "evento").entries()].map(([nome, rs]) => { const e = sommaE(rs), u = sommaU(rs), sp = spettEvento(nome); return { nome, settore: rs[0].settore, e, u, m: r2(e - u), sp, data: rs[0].data }; }).sort((a, b) => b.m - a.m);
-  const inPerdita = eventi.filter((x) => x.m < 0);
+  // un evento che deve ancora svolgersi ha già i costi (es. il noleggio pagato in anticipo) ma non ancora gli incassi:
+  // non è «in perdita». La data si cerca nel nome («(08/11)»), poi nelle proiezioni e nelle prenotazioni con lo stesso titolo;
+  // senza la data nel nome, se ci sono già spettatori nei C1 con quel titolo l'evento è cominciato.
+  const simile = (a, b) => { const x = normT(a), y = normT(b); return x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x)); };
+  const quandoEvento = (nome, rs) => {
+    const d = String(nome).match(/\((\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?\)/);
+    if (d && +d[2] >= 1 && +d[2] <= 12) return { data: `${d[3] ? (+d[3] < 100 ? 2000 + +d[3] : +d[3]) : S.pnYear}-${pad(d[2])}-${pad(d[1])}`, certa: true };
+    const titolo = String(nome).replace(/\(.*?\)/g, " ");
+    const date = [...S.proiezioni.filter((p) => p.data.startsWith(Y) && simile(titolo, (S.films.find((f) => f.id === p.film_id) || {}).titolo)).map((p) => p.data),
+      ...S.bookings.filter((b) => active(b) && b.data.startsWith(Y) && simile(titolo, b.titolo)).map((b) => b.data)].sort();
+    if (date.length) return { data: date[0] }; // la prima data: se è già passata, l'evento è iniziato
+    return { data: rs.every((r) => /previst/i.test(r.tipo_movimento)) ? "9999-12-31" : "" };
+  };
+  const eventi = [...raggruppa(list.filter((r) => r.evento), "evento").entries()].map(([nome, rs]) => { const e = sommaE(rs), u = sommaU(rs), sp = spettEvento(nome), q = quandoEvento(nome, rs), quando = q.data;
+    return { nome, settore: rs[0].settore, e, u, m: r2(e - u), sp, data: rs[0].data, quando, futuro: !!quando && quando >= TODAY && (q.certa || !sp) }; }).sort((a, b) => a.futuro - b.futuro || b.m - a.m);
+  const fatti = eventi.filter((x) => !x.futuro), daFare = eventi.length - fatti.length;
+  const inPerdita = fatti.filter((x) => x.m < 0);
 
   const ins = [
     costoStrutt > 0 && `<div class="insight"><span class="k">Tenere aperta la sala</span>La struttura (energia, assicurazioni, manutenzioni…) costa in media <b>${money(Math.round(struttMese))}</b> al mese. Attività, affitti e donazioni ne coprono il <b>${pct(copertura)}</b>.</div>`,
@@ -1570,7 +1585,7 @@ function renderBilancio() {
     incCinema > 0 && `<div class="insight"><span class="k">Cinema</span>Il noleggio dei film pesa il <b>${pct(noleggio / incCinema)}</b> degli incassi del cinema; SIAE e commissioni POS e online il <b>${pct((siae + comm) / (Ebig || 1))}</b> della biglietteria.</div>`,
     spett > 0 && margSpett > 0 && struttMese > 0 && `<div class="insight"><span class="k">Punto di pareggio</span>Ogni spettatore lascia in media <b>${money(r2(margSpett))}</b> di margine: per coprire da soli i costi della struttura servirebbero circa <b>${Math.round(struttMese / margSpett)}</b> spettatori al mese (oggi ${Math.round(spett / mesiTrascorsi)}).</div>`,
     cumul[minI] < 0 && `<div class="insight"><span class="k">Liquidità</span>Il saldo cumulato tocca il minimo a <b>${esc(parse(mesi[minI].k + "-01").toLocaleDateString("it-IT", { month: "long" }))}</b> (${money(cumul[minI])}): conviene tenere una riserva per quel periodo.</div>`,
-    inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${eventi.length} chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.</div>`,
+    inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${fatti.length} già svolti chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.${daFare ? ` ${daFare === 1 ? "Non conto l'evento che deve ancora svolgersi: ha già dei costi ma non ancora gli incassi." : `Non conto i ${daFare} eventi che devono ancora svolgersi: hanno già dei costi ma non ancora gli incassi.`}` : ""}</div>`,
   ].filter(Boolean).join("");
 
   const settori = [...new Set(list.map((r) => r.settore))].sort();
@@ -1602,9 +1617,9 @@ function renderBilancio() {
           <div class="hbars">${catE.slice(0, 6).map((c) => `<div class="hbar"><span class="nm" title="${esc(c.nome)}">${esc(c.nome)}</span><span class="v">${money(c.v)} · ${pct(c.v / (E || 1))}</span><div class="track"><div class="fill" style="width:${(c.v / catE[0].v) * 100}%"></div></div></div>`).join("")}</div></div>
       </div>
     </div>
-    ${eventi.length ? `<div class="panel" style="margin-top:18px"><h2>Conto economico per evento</h2><span class="hint">Incassi e costi diretti registrati con l'evento in prima nota; spettatori dai C1 quando il titolo corrisponde</span>
+    ${eventi.length ? `<div class="panel" style="margin-top:18px"><h2>Conto economico per evento</h2><span class="hint">Incassi e costi diretti registrati con l'evento in prima nota; spettatori dai C1 quando il titolo corrisponde. Gli eventi «da fare» sono in fondo: il margine è parziale finché non arrivano gli incassi.</span>
       <div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Settore</th><th class="n">Entrate</th><th class="n">Costi diretti</th><th class="n">Margine</th><th class="n">Spettatori</th><th class="n">Margine / spett.</th></tr></thead><tbody>
-      ${eventi.map((x) => `<tr><td>${esc(x.nome)}</td><td>${esc(x.settore)}</td><td class="n">${money(x.e)}</td><td class="n">${money(x.u)}</td><td class="n ${x.m < 0 ? "neg" : ""}"><b>${money(x.m)}</b></td><td class="n">${x.sp || "—"}</td><td class="n ${x.m < 0 ? "neg" : ""}">${x.sp ? money(r2(x.m / x.sp)) : "—"}</td></tr>`).join("")}
+      ${eventi.map((x) => `<tr${x.futuro ? ' class="muted"' : ""}><td>${esc(x.nome)}${x.futuro ? ` <span class="pill opzione">${x.quando < "9999" ? `da fare · ${esc(fmtShort(x.quando))}` : "da fare"}</span>` : ""}</td><td>${esc(x.settore)}</td><td class="n">${money(x.e)}</td><td class="n">${money(x.u)}</td><td class="n ${x.m < 0 && !x.futuro ? "neg" : ""}">${x.futuro ? `<span class="hint">${money(x.m)} finora</span>` : `<b>${money(x.m)}</b>`}</td><td class="n">${(!x.futuro && x.sp) || "—"}</td><td class="n ${x.m < 0 && !x.futuro ? "neg" : ""}">${x.sp && !x.futuro ? money(r2(x.m / x.sp)) : "—"}</td></tr>`).join("")}
       </tbody></table></div></div>` : ""}
     <div class="panel" style="margin-top:18px"><h2>Movimenti</h2><span class="hint">${movs.length} movimenti${S.pnSett || q ? " filtrati" : ""} · ${money(sommaE(movs))} entrate · ${money(sommaU(movs))} uscite</span>
       <div class="pn-filters"><select id="pn-sett" aria-label="Settore"><option value="">Tutti i settori</option>${settori.map((s) => `<option${s === S.pnSett ? " selected" : ""}>${esc(s)}</option>`).join("")}</select>
