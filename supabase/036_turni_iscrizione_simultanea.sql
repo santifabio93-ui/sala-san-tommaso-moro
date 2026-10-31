@@ -39,4 +39,3 @@ revoke all on function public.turni_segna(uuid, uuid, text, boolean) from public
 grant execute on function public.turni_segna(uuid, uuid, text, boolean) to anon, authenticated;
 
 notify pgrst, 'reload schema';
-
