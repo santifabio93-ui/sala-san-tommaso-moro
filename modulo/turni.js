@@ -138,7 +138,7 @@ function disegna() {
   const manca = (f) => Math.max(0, f.posti - f.presi);
   const urgente = (f) => manca(f) > 0 && !f.mio && (new Date(f.data + "T12:00:00") - new Date()) / 864e5 < 3;
   const servono = fasce.filter((f) => manca(f) > 0 && !f.mio);
-  if (!filtro) filtro = servono.length ? "servo" : "tutti";
+  if (!filtro) filtro = "tutti"; // si vedono anche le fasce al completo, dove ci si aggiunge come aiuto
   const visibili = filtro === "servo" ? fasce.filter((f) => manca(f) > 0 || f.mio) : fasce;
   // giorni → eventi → fasce
   const giorni = [];
