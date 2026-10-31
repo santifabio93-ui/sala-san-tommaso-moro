@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.60";
+const VERSIONE = "2026-11-01.61";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -393,6 +393,7 @@ function render() {
   renderTabs();
   Object.keys(VIEWS).forEach((v) => ($("#view-" + v).hidden = v !== S.view));
   $("#btn-new").hidden = !S.canWrite;
+  $("#btn-loc").hidden = !S.canWrite;
   renderKpis();
   if (S.view === "calendario") { renderCalendar(); renderDay(); }
   if (S.view === "prenotazioni") renderList();
@@ -756,6 +757,7 @@ function openBooking(b, date, prefill) {
   S.editing = b ? b.id : null;
   const v = b || { titolo: "", referente: "", tipo: "Festa privata", telefono: "", email: "", data: date || S.selected || TODAY, inizio: "16:00", fine: "20:00", prezzo: "", incassato: 0, stato: "opzione", note: "", turni: [], ...(prefill || {}) };
   if (!prefill) S.fromRequest = null;
+  S.locandinaBozza = (prefill && prefill.__locandina) || null;
   $("#b-head").textContent = b ? "Prenotazione" : "Nuova prenotazione";
   for (const k of ["titolo", "referente", "tipo", "telefono", "email", "data", "inizio", "fine", "prezzo", "incassato", "stato", "note"]) $("#b-" + k).value = v[k] ?? "";
   // tariffa: quella salvata, altrimenti lo spazio dedotto dal pubblico previsto nella scheda dell'organizzatore
@@ -912,6 +914,10 @@ $("#booking-form").addEventListener("submit", async (e) => {
       if (error) throw error;
       if (S.fromRequest) await sb.from("richieste").update({ stato: "convertita", booking_id: created.id }).eq("id", S.fromRequest);
       if (S.sopToBook) await sb.from("sopralluoghi").update({ booking_id: created.id }).eq("id", S.sopToBook);
+      // locandina letta: le informazioni vanno anche nelle info per i social (solo admin e coordinatori)
+      if (S.locandinaBozza && S.staff && S.social) { const i = S.locandinaBozza.info || {};
+        await sb.from("eventi_info").upsert({ chiave: "b:" + created.id, locandina: S.locandinaBozza.url || "", regista: i.chi || "", collaborazioni: i.collaborazioni || "", ingresso: i.ingresso || "", descrizione: i.descrizione || "", note: [i.note, i.contatti && `Contatti: ${i.contatti}`].filter(Boolean).join("\n"), aggiornato: new Date().toISOString() }, { onConflict: "chiave" }); }
+      S.locandinaBozza = null;
       S.fromRequest = null; S.sopToBook = null;
       toast("Prenotazione salvata");
       await loadAll();
@@ -3351,9 +3357,57 @@ function collegaFoglietto(root) {
   root.querySelector("#fg-copia").onclick = () => { const t = testoFoglietto({ ...S.foglietto, nome: $("#fg-nome").value.trim(), firma: $("#fg-firma").value.trim(), note: $("#fg-note").value.trim() }); openCopyText(`${t.oggetto}\n\n${t.testo}`); };
 }
 
+/* ---------- locandine: si caricano (spazio file «locandine») e Claude ne legge le informazioni (funzione leggi-locandina) ---------- */
+async function preparaImmagine(file, lato = 1600) {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error("Non riesco ad aprire l'immagine: usa una foto JPG o PNG");
+  const k = Math.min(1, lato / Math.max(bmp.width, bmp.height));
+  const c = Object.assign(document.createElement("canvas"), { width: Math.round(bmp.width * k), height: Math.round(bmp.height * k) });
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.85));
+  return { blob, b64: c.toDataURL("image/jpeg", 0.85).split(",")[1] };
+}
+// carica la locandina e la fa leggere: { url, info, errore } (l'errore della lettura non blocca il caricamento)
+async function leggiLocandina(file) {
+  const { blob, b64 } = await preparaImmagine(file);
+  const nome = `${TODAY}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const [up, ai] = await Promise.all([
+    sb.storage.from("locandine").upload(nome, blob, { contentType: "image/jpeg" }),
+    sb.functions.invoke("leggi-locandina", { body: { immagine: b64, tipo: "image/jpeg", oggi: TODAY } }).catch((error) => ({ error })),
+  ]);
+  const url = up.error ? "" : sb.storage.from("locandine").getPublicUrl(nome).data.publicUrl;
+  let errore = "";
+  if (ai.error) {
+    const st = ai.error.context && ai.error.context.status;
+    let msg = ""; try { msg = (await ai.error.context.json()).error || ""; } catch (x) {}
+    errore = st === 404 || /Failed to send|not found/i.test(ai.error.message || "") && !msg ? "la lettura automatica non è ancora attiva (funzione «leggi-locandina» in Supabase)" : msg || "lettura non riuscita, riprova";
+  }
+  return { url, info: ai.error ? null : ai.data, errore, erroreFile: up.error ? (/not found|bucket/i.test(up.error.message) ? "per salvare le locandine riesegui in Supabase lo script 033_info_social.sql" : up.error.message) : "" };
+}
+const piuOre = (h, n) => { const [a, b] = String(h).split(":").map(Number); return `${String(Math.min(23, a + n)).padStart(2, "0")}:${String(b || 0).padStart(2, "0")}`; };
+// «Da locandina»: prepara una prenotazione nuova già compilata
+async function prenotazioneDaLocandina(file) {
+  const btn = $("#btn-loc"); btn.disabled = true; btn.textContent = "Leggo…";
+  toast("Sto leggendo la locandina: qualche secondo…");
+  try {
+    const r = await leggiLocandina(file), i = r.info;
+    if (!i) { toast(`Locandina non letta: ${r.errore}`); return; }
+    const date = (i.date || []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.data)), d0 = date[0] || {};
+    const altre = date.slice(1).map((d) => `${fmtShort(d.data)}${d.inizio ? " " + d.inizio : ""}`);
+    const note = [i.chi && `Con: ${i.chi}`, i.ingresso && (/^ingresso/i.test(i.ingresso) ? i.ingresso : `Ingresso: ${i.ingresso}`), i.collaborazioni && `In collaborazione con: ${i.collaborazioni}`, i.contatti && `Contatti: ${i.contatti}`, i.note, altre.length && `Altre date sulla locandina: ${altre.join(", ")}`].filter(Boolean).join("\n");
+    const ini = /^\d{2}:\d{2}$/.test(d0.inizio) ? d0.inizio : "", fin = /^\d{2}:\d{2}$/.test(d0.fine) ? d0.fine : ini ? piuOre(ini, 2) : "";
+    S.fromRequest = null;
+    openBooking(null, d0.data || TODAY, { titolo: i.titolo || "", tipo: i.tipo || "Altro", referente: i.organizzatore || "", note, ...(ini ? { inizio: ini, fine: fin } : {}), __locandina: { url: r.url, info: i } });
+    $("#b-origin").textContent = `Dati letti dalla locandina: controllali prima di salvare.${altre.length ? ` Sulla locandina ci sono ${date.length} date: ho preparato la prima.` : ""}${r.erroreFile ? ` (Locandina non salvata: ${r.erroreFile})` : ""}`;
+  } catch (x) { toast(x.message || "Locandina non letta"); }
+  finally { btn.disabled = false; btn.textContent = "📷 Da locandina"; }
+}
+$("#btn-loc").onclick = () => $("#loc-file").click();
+$("#loc-file").onchange = () => { const f = $("#loc-file").files[0]; $("#loc-file").value = ""; if (f) prenotazioneDaLocandina(f); };
+
 /* ---------- info per i social: un link per chi cura i social, con tutte le informazioni di ogni evento ---------- */
 const linkSocial = () => new URL("modulo/social.html?t=" + S.social.token, location.href.split("#")[0]).href;
-const INFO_CAMPI = ["regista", "collaborazioni", "ingresso", "descrizione", "note", "materiali"];
+const INFO_CAMPI = ["regista", "collaborazioni", "ingresso", "descrizione", "note", "materiali", "locandina"];
 // regista già noto all'app (richieste e catalogo del SAS)
 const registaSas = (titolo) => { const t = String(titolo || "").toLowerCase(); return ((S.richiesteFilm || []).find((r) => r.regista && String(r.titolo || "").toLowerCase() === t) || (S.catalogo || []).find((r) => r.regista && String(r.titolo || "").toLowerCase() === t) || {}).regista || ""; };
 // gli stessi eventi del link: film e spettacoli dei prossimi 60 giorni (uno per titolo), eventi della Sala e del Comune
@@ -3364,12 +3418,12 @@ function eventiSocial() {
     if (!orari.length) continue;
     const t = tipoSpettacolo(f);
     out.push({ chiave: "f:" + f.id, titolo: f.titolo, tipo: t === "film" ? "Cinema" : t === "altro" ? "Spettacolo" : TIPI_SPETT[t], prima: orari[0].data, n: orari.length, film: t === "film",
-      locandina: f.locandina_url, prezzo: (f.cinebot_info || {}).prezzo, regista: registaSas(f.titolo) });
+      locandina: (S.eventiInfo["f:" + f.id] || {}).locandina || f.locandina_url, prezzo: (f.cinebot_info || {}).prezzo, regista: registaSas(f.titolo) });
   }
   for (const b of S.bookings) {
     if (b.stato !== "confermata" || b.data < TODAY || b.data > al || !(b.comune || b.della_sala)) continue;
     if (/cinema|proiezion|cineforum/i.test(b.titolo) && S.proiezioni.some((p) => p.data === b.data)) continue;
-    out.push({ chiave: "b:" + b.id, titolo: b.titolo, tipo: b.comune ? "Con il Comune" : "Evento della Sala", prima: b.data, n: 1, film: false, locandina: "", prezzo: null, regista: "" });
+    out.push({ chiave: "b:" + b.id, titolo: b.titolo, tipo: b.comune ? "Con il Comune" : "Evento della Sala", prima: b.data, n: 1, film: false, locandina: (S.eventiInfo["b:" + b.id] || {}).locandina || "", prezzo: null, regista: "" });
   }
   return out.sort((a, b) => a.prima.localeCompare(b.prima));
 }
@@ -3435,9 +3489,27 @@ function apriInfoSocial(chiave) {
   if (!i.regista && e.regista) $("#soc-regista").value = e.regista;
   $("#soc-ingresso").placeholder = e.prezzo === 0 ? "Ingresso libero (da Cinebot)" : e.prezzo != null ? `${String(e.prezzo).replace(".", ",")} € (da Cinebot)` : "Es. ingresso libero, 7 € intero e 5 € ridotto";
   $("#soc-regista").closest(".field").querySelector("label").textContent = e.film ? "Regista" : "Chi lo presenta / regia";
+  if (!i.locandina) $("#soc-locandina").value = "";
+  mostraLocandinaSocial(i.locandina || e.locandina);
+  $("#soc-loc-stato").textContent = "";
   $("#soc-error").innerHTML = "";
   dlgSoc.showModal();
 }
+function mostraLocandinaSocial(url) { const im = $("#soc-loc-img"); im.hidden = !url; if (url) im.src = url; $("#soc-loc-btn").textContent = url ? "📷 Cambia la locandina" : "📷 Carica la locandina"; }
+$("#soc-loc-btn").onclick = () => $("#soc-loc-file").click();
+$("#soc-loc-file").onchange = async () => {
+  const f = $("#soc-loc-file").files[0]; $("#soc-loc-file").value = ""; if (!f) return;
+  const st = $("#soc-loc-stato"), btn = $("#soc-loc-btn"); btn.disabled = true; st.textContent = "Carico e leggo la locandina…";
+  try {
+    const r = await leggiLocandina(f), i = r.info || {};
+    if (r.url) { $("#soc-locandina").value = r.url; mostraLocandinaSocial(r.url); }
+    // riempie solo i campi ancora vuoti
+    const da = { regista: i.chi, collaborazioni: i.collaborazioni, ingresso: i.ingresso, descrizione: i.descrizione, note: [i.note, i.contatti && `Contatti: ${i.contatti}`].filter(Boolean).join("\n") };
+    const messi = Object.entries(da).filter(([k, v]) => v && !$("#soc-" + k).value.trim()).map(([k, v]) => { $("#soc-" + k).value = v; return { regista: "chi presenta", collaborazioni: "collaborazioni", ingresso: "ingresso", descrizione: "descrizione", note: "note" }[k]; });
+    st.textContent = [r.url ? "Locandina caricata." : `Locandina non salvata: ${r.erroreFile}.`, r.info ? (messi.length ? `Ho compilato: ${messi.join(", ")}. Controlla e salva.` : "Le informazioni lette c'erano già.") : `Informazioni non lette: ${r.errore}.`].join(" ");
+  } catch (x) { st.textContent = x.message || "Locandina non caricata"; }
+  btn.disabled = false;
+};
 $("#social-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const rec = { chiave: S.editingSocial, aggiornato: new Date().toISOString() };
@@ -4135,6 +4207,7 @@ function aggiornamentiSql() {
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
+    ["functions/leggi-locandina", "Lettura delle locandine con Claude (funzione Supabase + chiave di Anthropic)", undefined, "Facoltativa: istruzioni nel README, sezione «Locandine lette da Claude». Senza, le locandine si caricano lo stesso", true],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
     ["031_turni_oltre.sql", "Nelle fasce al completo ci si aggiunge come aiuto", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],

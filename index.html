@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.60">
+<link rel="stylesheet" href="style.css?v=2026-11-01.61">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -89,6 +89,7 @@
     <nav class="tabs" aria-label="Sezioni" id="tabs"></nav>
     <div class="actions">
       <button class="btn primary" id="btn-new" type="button">+ Nuova prenotazione</button>
+      <button class="btn" id="btn-loc" type="button" hidden title="Carica la foto di una locandina: l'app prepara la prenotazione">📷 Da locandina</button><input type="file" id="loc-file" accept="image/*" hidden>
       <div class="userbox"><img id="me-avatar" alt="" hidden><span id="me-name"></span><span class="role" id="me-role"></span><button class="btn ghost sm" type="button" id="me-pw" hidden>Cambia password</button><button class="btn ghost sm" type="button" data-logout>Esci</button></div>
     </div>
   </header>
@@ -393,6 +394,8 @@
     <div class="dlg-head"><h2 id="soc-head">Info per i social</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
     <p class="hint" id="soc-sotto" style="margin:0"></p>
     <div class="form">
+      <div class="field"><label for="soc-loc-btn">Locandina</label><div class="soc-loc"><img id="soc-loc-img" alt="Locandina" hidden><div><button class="btn sm" type="button" id="soc-loc-btn">📷 Carica la locandina</button><input type="file" id="soc-loc-file" accept="image/*" hidden><input type="hidden" id="soc-locandina">
+        <span class="hint" id="soc-loc-stato"></span><span class="hint">Dalla foto della locandina l'app legge e compila i campi vuoti.</span></div></div></div>
       <div class="field h"><label for="soc-regista">Regista</label><input id="soc-regista" maxlength="200"></div>
       <div class="field h"><label for="soc-collaborazioni">In collaborazione con</label><input id="soc-collaborazioni" maxlength="300" placeholder="Es. associazione, scuola, Comune, sponsor da taggare"></div>
       <div class="field h"><label for="soc-ingresso">Ingresso</label><input id="soc-ingresso" maxlength="200"></div>
@@ -698,7 +701,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.60"></script>
-<script type="module" src="app.js?v=2026-11-01.60"></script>
+<script src="config.js?v=2026-11-01.61"></script>
+<script type="module" src="app.js?v=2026-11-01.61"></script>
 </body>
 </html>

@@ -782,3 +782,6 @@ nav.tabs { position: relative }
 .tess-riga input { flex: 1 1 220px; text-transform: uppercase }
 .fg-anteprima { margin-top: 8px; padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: .88rem }
 .fg-anteprima pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0 0 }
+
+.soc-loc { display: flex; gap: 12px; align-items: flex-start } .soc-loc img { width: 84px; height: auto; max-height: 126px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line) }
+.soc-loc > div { display: grid; gap: 6px; justify-items: start; min-width: 0 }

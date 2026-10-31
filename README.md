@@ -389,6 +389,24 @@ Gli eventi nuovi o cambiati dall'ultima visita (date, orari, informazioni) hanno
 «Novità». Con «❓ Chiedi» (o toccando «da chiedere») fanno una domanda: arriva in Oggi e nel riquadro, si risponde da lì
 e la risposta compare nel loro link.
 
+## Locandine lette da Claude
+
+Nell'app si può caricare la foto di una locandina in due punti:
+- **«📷 Da locandina»** in alto, accanto a «+ Nuova prenotazione»: prepara una prenotazione già compilata
+  (titolo, tipo, data, orari, organizzatore; ingresso, chi presenta, collaborazioni, contatti e altre date nelle note).
+  Si controlla e si salva come sempre; la locandina e le informazioni vanno anche nelle info per i social.
+- **Sito web → Info per i social → «Completa» → «📷 Carica la locandina»**: compila solo i campi ancora vuoti e la
+  locandina si vede e si scarica dal link dei social.
+
+Le locandine si salvano nello spazio file pubblico `locandine` (script `033_info_social.sql`). La lettura la fa Claude
+attraverso una piccola funzione di Supabase; la chiave di Anthropic resta in Supabase e non è mai nell'app. Per attivarla:
+1. Su https://console.anthropic.com crea un account, aggiungi un po' di credito (bastano 5 €: ogni locandina costa
+   circa 1–2 centesimi) e in **API Keys** crea una chiave. Non scriverla in chat né nel codice.
+2. In Supabase: **Edge Functions → Secrets** → aggiungi `ANTHROPIC_API_KEY` con la chiave.
+3. In Supabase: **Edge Functions → Deploy a new function → Via Editor**, nome `leggi-locandina`, incolla tutto il file
+   `supabase/functions/leggi-locandina/index.ts` e premi **Deploy**.
+La funzione la possono usare solo admin, coordinatori e segreteria.
+
 ## Film e altri spettacoli
 
 Su Cinebot si vendono anche teatro, danza, concerti e incontri: non tutto è un film. Lo script Google porta da Cinebot

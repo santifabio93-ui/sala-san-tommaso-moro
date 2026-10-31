@@ -3,6 +3,7 @@
 -- ingresso, regista, collaborazioni, distributore, descrizione, note, biglietti, locandina e cartella dei materiali.
 -- Quello che l'app sa lo riempie da sola; il resto si completa nell'app (Sito web → Info per i social).
 -- Dal link possono fare domande su un evento: si risponde dall'app e la risposta compare nel loro link.
+-- Le locandine caricate nell'app (anche per leggerne le informazioni) vanno nello spazio file pubblico «locandine».
 -- Gli affitti privati non compaiono. Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run.
 -- Si può rieseguire senza problemi.
 
@@ -54,6 +55,22 @@ begin
 exception when undefined_object then null;
 end $$;
 
+-- la locandina caricata nell'app (vale più di quella di Cinebot)
+alter table public.eventi_info add column if not exists locandina text not null default '';
+
+-- spazio file pubblico per le locandine (si vedono dal link dei social), massimo 10 MB, solo immagini
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('locandine', 'locandine', true, 10485760, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists "locandine: staff carica" on storage.objects;
+create policy "locandine: staff carica" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'locandine' and public.my_role() in ('admin', 'coordinatore', 'segreteria'));
+drop policy if exists "locandine: staff elimina" on storage.objects;
+create policy "locandine: staff elimina" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'locandine' and public.my_role() in ('admin', 'coordinatore', 'segreteria'));
+
 -- regista e distributore già noti all'app (richieste e conferme del SAS), se ci sono
 create or replace function public.info_da_sas(p_titolo text, p_campo text)
 returns text
@@ -93,7 +110,7 @@ begin
                   from public.proiezioni p where p.film_id = f.id and p.data between dal and al),
         'prima', (select min(p.data) from public.proiezioni p where p.film_id = f.id and p.data between dal and al),
         'prezzo', to_jsonb(f)->'cinebot_info'->'prezzo',
-        'locandina', f.locandina_url, 'biglietti', f.cinebot_url,
+        'locandina', coalesce(nullif(i.locandina, ''), f.locandina_url), 'biglietti', f.cinebot_url,
         'regista', coalesce(nullif(i.regista, ''), public.info_da_sas(f.titolo, 'regista')),
         'distributore', coalesce(nullif(f.distributore, ''), public.info_da_sas(f.titolo, 'distributore')),
         'collaborazioni', coalesce(i.collaborazioni, ''), 'ingresso', coalesce(i.ingresso, ''), 'descrizione', coalesce(i.descrizione, ''),
@@ -105,7 +122,7 @@ begin
     select jsonb_build_object(
         'chiave', 'b:' || b.id, 'titolo', b.titolo, 'tipo', case when b.comune then 'Con il Comune' else 'Evento della Sala' end,
         'orari', jsonb_build_array(jsonb_build_object('data', b.data, 'ora', case when coalesce(b.giornata_intera, false) then '' else to_char(b.inizio, 'HH24:MI') end)),
-        'prima', b.data, 'prezzo', null, 'locandina', '', 'biglietti', '',
+        'prima', b.data, 'prezzo', null, 'locandina', coalesce(i.locandina, ''), 'biglietti', '',
         'regista', coalesce(i.regista, ''), 'distributore', '',
         'collaborazioni', coalesce(i.collaborazioni, ''), 'ingresso', coalesce(i.ingresso, ''), 'descrizione', coalesce(i.descrizione, ''),
         'note', coalesce(i.note, ''), 'materiali', coalesce(i.materiali, '')) as e
