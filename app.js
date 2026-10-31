@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.70";
+const VERSIONE = "2026-11-01.71";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -4256,15 +4256,37 @@ const condizioniSas = (titolo) => S.richiesteFilm.filter((r) => r.stato === "con
 /* ---------- email del SAS: programmazione confermata e risposte ---------- */
 let sasMod = null;
 // le email nuove arrivate dallo script: le conferme diventano righe della programmazione (una per data e film)
+// titoli rimasti con i codici HTML («L&#39;uomo d&#39;argilla») e doppioni nati rileggendo le email: si sistemano
+async function pulisciProgrammazione() {
+  if (!S.canWrite) return;
+  const ent = sasMod.entita, sporco = (p) => ["titolo", "originale", "agenzia", "distributore", "note"].some((k) => /&#?\w+;/.test(p[k] || ""));
+  const gruppi = new Map();
+  for (const p of S.programmazione) { const k = p.data + "|" + sasMod.norm(p.titolo); if (!gruppi.has(k)) gruppi.set(k, []); gruppi.get(k).push(p); }
+  let cambi = 0;
+  for (const righe of gruppi.values()) {
+    // si tiene la riga con più informazioni (condizioni, titolo pulito, più recente); gli «fatto» si uniscono
+    const punti = (p) => (p.minimo != null || p.fisso != null ? 4 : 0) + (p.percentuale != null ? 2 : 0) + (sporco(p) ? 0 : 1);
+    righe.sort((a, b) => punti(b) - punti(a) || String(b.aggiornato || "").localeCompare(String(a.aggiornato || "")));
+    const [tieni, ...via] = righe;
+    const fatti = Object.assign({}, ...via.map((p) => p.fatti || {}), tieni.fatti || {});
+    const agg = {};
+    for (const k of ["titolo", "originale", "agenzia", "distributore", "note"]) if (tieni[k] && ent(tieni[k]) !== tieni[k]) agg[k] = ent(tieni[k]);
+    if (via.length && JSON.stringify(fatti) !== JSON.stringify(tieni.fatti || {})) agg.fatti = fatti;
+    if (Object.keys(agg).length) { const { error } = await sb.from("programmazione").update(agg).eq("id", tieni.id); if (!error) { Object.assign(tieni, agg); cambi++; } }
+    if (via.length) { const { error } = await sb.from("programmazione").delete().in("id", via.map((p) => p.id)); if (!error) { S.programmazione = S.programmazione.filter((p) => !via.includes(p)); cambi += via.length; } }
+  }
+  if (cambi) render();
+}
 async function elaboraEmailSas() {
   // le conferme lette senza il minimo (le email del SAS sono in HTML: «min. &euro; 100.00») si rileggono una volta sola
   let riletti; try { riletti = new Set(JSON.parse(localStorage.getItem("sala-sas-riletti-2") || "[]")); } catch (x) { riletti = new Set(); }
   const daRileggere = new Set(S.programmazione.filter((p) => p.minimo == null && p.fisso == null && p.email_id && !riletti.has(p.email_id)).map((p) => p.email_id));
   for (const m of S.sasEmail) if (daRileggere.has(m.id) && /&euro;|&#8364;|&#x20ac;/i.test(m.testo || "")) { m.elaborata = false; riletti.add(m.id); }
   try { localStorage.setItem("sala-sas-riletti-2", JSON.stringify([...riletti].slice(-500))); } catch (x) {}
+  sasMod = sasMod || (await import(`./sas-email.js?v=${VERSIONE}`));
+  await pulisciProgrammazione();
   const nuove = S.sasEmail.filter((m) => !m.elaborata);
   if (!nuove.length) return;
-  sasMod = sasMod || (await import(`./sas-email.js?v=${VERSIONE}`));
   for (const m of nuove.sort((a, b) => a.data.localeCompare(b.data))) {
     const righe = /Agenzia:/i.test(m.testo) && /Distributore:/i.test(m.testo) ? sasMod.confermeProgrammazione(m.testo, m.data) : [];
     for (const r of righe) {
