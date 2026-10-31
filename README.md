@@ -247,9 +247,13 @@ dell'anno prima (o dalla proiezione dell'anno in corso). Esegui `supabase/015_pr
 
 ## Bilancio dalla prima nota
 Esegui `supabase/007_prima_nota.sql` nel SQL Editor (si può rieseguire). Con `+primanota` nella proprietà `MODALITA`
-dello script Google lo script legge il file Excel (.xlsx) più recente nella cartella Drive «PRIMA NOTA» (foglio
-«Prima nota», nomi di settori e categorie dal foglio «Piano dei conti») e lo rilegge solo quando cambia; per provarlo
-subito esegui `provaPrimaNota`. In **Economia → Bilancio** (solo amministratori): entrate, uscite, risultato di gestione
+dello script Google lo script legge dalla cartella Drive «PRIMA NOTA» il **registro di chi tiene i conti** (fogli
+«Prima nota 26», «Prima nota 2025»…: anno rif., codice, data, descrizione, nr fatt., entrate, uscite, data/evento, codice
+evento) e lo rilegge solo quando cambia; per provarlo subito esegui `provaPrimaNota`. Se nella cartella c'è anche il file
+«ordinato» (foglio «Prima nota» con codici di settore e categoria + «Piano dei conti»), per le righe che contiene usa
+settore, categoria, evento e controparte sistemati lì; le righe nuove le classifica da solo: settore dal codice, categoria
+dalla descrizione (C1 = biglietti, SIAE, Stripe/Cinebot = commissioni, noleggio film, Enel = energia, donazioni…), evento
+dal C1 o dal codice evento, rimborsi tra le entrate come note di credito. Senza registro legge il file ordinato come prima. In **Economia → Bilancio** (solo amministratori): entrate, uscite, risultato di gestione
 (per competenza o tutti i movimenti), costi previsti da pagare, incasso per spettatore; frasi di sintesi (costo mensile
 della struttura e quanto è coperto, settore migliore e in perdita, peso di noleggio film, SIAE e commissioni, punto di
 pareggio in spettatori, mese di minima liquidità, eventi in perdita); entrate e uscite per mese, saldo cumulato,

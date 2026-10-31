@@ -21,7 +21,10 @@
  *                  i riepiloghi C1 dalla cartella Drive e dagli allegati email (es. "lettura+email+cinema+c1")
  *   C1_CARTELLA    (facoltativo) id della cartella Drive con i C1; se manca si usa quella della sala
  *                  aggiungi "+primanota" per leggere la contabilità (file .xlsx nella cartella PRIMA NOTA)
- *   PRIMA_NOTA_FILE (facoltativo) id del file .xlsx della prima nota; se manca si usa il più recente della cartella
+ *   PRIMA_NOTA_FILE (facoltativo) id del file .xlsx della prima nota. Di solito non serve: lo script legge da solo il registro
+ *                  di chi tiene i conti (fogli «Prima nota 26», «Prima nota 2025»…) e, se nella cartella c'è anche il file
+ *                  «ordinato» (foglio «Prima nota» + «Piano dei conti»), ne usa le righe sistemate a mano; le righe nuove le
+ *                  classifica da solo (settore dal codice, categoria dalla descrizione, evento dal C1).
  *                  aggiungi "+sas" per copiare nell'app le email di ACEC Triveneta (conferme di programmazione e
  *                  risposte alle richieste di film); va messo nell'account che riceve le email del SAS
  *                  aggiungi "+foglietto" per mandare ogni giovedì mattina al parroco l'email con il programma della
@@ -47,7 +50,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-03.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-04.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -739,29 +742,56 @@ const PRIMA_NOTA_CARTELLA = "14D2sZWpTAGwkIJi27V22NpWvVDkUkTF-"; // cartella "PR
 // legge la prima nota solo quando il file è cambiato (o sempre, con forza = true)
 function leggiPrimaNota(cfg, forza) {
   const props = PropertiesService.getScriptProperties();
-  const file = filePrimaNota(cfg);
-  if (!file) { Logger.log("Prima nota: nessun file .xlsx nella cartella"); return; }
-  const chiave = file.getId() + "_" + file.getLastUpdated().getTime();
+  const f = filePrimaNota(cfg);
+  if (!f.fonte) { Logger.log("Prima nota: nessun file .xlsx nella cartella"); return; }
+  const chiave = [f.fonte, f.arricchimento].filter(Boolean).map((x) => x.getId() + "_" + x.getLastUpdated().getTime()).join("|");
   if (!forza && props.getProperty("PN_ULTIMO") === chiave) return;
-  const righe = primaNotaDaXlsx(file.getBlob());
-  if (!righe.length) throw new Error("Prima nota: nel file «" + file.getName() + "» non trovo il foglio «Prima nota» con i movimenti");
-  const esito = rpc(cfg, "sync_prima_nota_push", { p_file: file.getName(), p_rows: righe });
+  const righe = primaNotaDaXlsx(f.fonte.getBlob(), f.arricchimento ? f.arricchimento.getBlob() : null);
+  if (!righe.length) throw new Error("Prima nota: nel file «" + f.fonte.getName() + "» non trovo i movimenti (fogli «Prima nota 26», «Prima nota 2025»… oppure «Prima nota»)");
+  righe.forEach((r) => delete r.daRegole);
+  const regole = primaNotaDaXlsx.regole || 0;
+  const esito = rpc(cfg, "sync_prima_nota_push", { p_file: f.fonte.getName(), p_rows: righe });
   props.setProperty("PN_ULTIMO", chiave);
   const e = righe.reduce((s, r) => s + (r.entrate || 0), 0), u = righe.reduce((s, r) => s + (r.uscite || 0), 0);
-  Logger.log("Prima nota «" + file.getName() + "»: " + righe.length + " movimenti, entrate " + e.toFixed(2) + ", uscite " + u.toFixed(2) + " → " + JSON.stringify(esito));
+  Logger.log("Prima nota «" + f.fonte.getName() + "»" + (f.arricchimento ? " (con le correzioni di «" + f.arricchimento.getName() + "»)" : "") + ": " + righe.length + " movimenti, entrate " + e.toFixed(2) + ", uscite " + u.toFixed(2)
+    + (regole ? ", " + regole + " classificati in automatico" : "") + " → " + JSON.stringify(esito));
 }
 
-// il file .xlsx più recente nella cartella della prima nota (o quello indicato in PRIMA_NOTA_FILE)
+// i file nella cartella della prima nota:
+//  - fonte: il registro di chi tiene i conti, con i fogli «Prima nota 26», «Prima nota 2025»… (il più recente);
+//    se non c'è, il file «ordinato» con il foglio «Prima nota» e il «Piano dei conti» (com'era prima)
+//  - arricchimento: il file «ordinato», se c'è: per le righe che contiene dà settore, categoria, evento e controparte sistemati a mano
+// PRIMA_NOTA_FILE (facoltativo) indica il file fonte; se indica il file ordinato, si preferisce comunque il registro.
 function filePrimaNota(cfg) {
-  if (cfg.primaNotaFile) return DriveApp.getFileById(cfg.primaNotaFile);
+  const xlsx = [];
   const it = DriveApp.getFolderById(cfg.primaNotaCartella).getFiles();
-  let migliore = null;
-  while (it.hasNext()) {
-    const f = it.next();
-    if (!/\.xlsx$/i.test(f.getName())) continue;
-    if (!migliore || f.getLastUpdated() > migliore.getLastUpdated()) migliore = f;
-  }
-  return migliore;
+  while (it.hasNext()) { const f = it.next(); if (/\.xlsx$/i.test(f.getName())) xlsx.push(f); }
+  xlsx.sort((a, b) => b.getLastUpdated() - a.getLastUpdated());
+  // che tipo di file è (registro, ordinato o altro): si guarda solo quando il file cambia
+  const props = PropertiesService.getScriptProperties(), memo = JSON.parse(props.getProperty("PN_TIPI") || "{}"), nuovo = {};
+  const tipo = (f) => {
+    const m = memo[f.getId()], t = f.getLastUpdated().getTime();
+    if (m && m.t === t) return (nuovo[f.getId()] = m).tipo;
+    let x = "";
+    try { x = tipoPrimaNota(fogliXlsx(f.getBlob())); } catch (e) { Logger.log("Prima nota: «" + f.getName() + "» non leggibile: " + e.message); }
+    nuovo[f.getId()] = { t: t, tipo: x };
+    return x;
+  };
+  const tipi = {};
+  xlsx.forEach((f) => (tipi[f.getId()] = tipo(f)));
+  props.setProperty("PN_TIPI", JSON.stringify(nuovo));
+  let fonte = cfg.primaNotaFile ? DriveApp.getFileById(cfg.primaNotaFile) : null;
+  if (fonte && !(fonte.getId() in tipi)) { try { tipi[fonte.getId()] = tipoPrimaNota(fogliXlsx(fonte.getBlob())); } catch (e) { tipi[fonte.getId()] = ""; } }
+  if (!fonte || tipi[fonte.getId()] !== "registro") fonte = xlsx.find((f) => tipi[f.getId()] === "registro") || fonte || xlsx.find((f) => tipi[f.getId()] === "ordinato") || null;
+  const arricchimento = fonte && tipi[fonte.getId()] === "registro" ? xlsx.find((f) => tipi[f.getId()] === "ordinato") || null : null;
+  return { fonte: fonte, arricchimento: arricchimento };
+}
+const normPn = (s) => String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+const fogliRegistro = (fogli) => Object.keys(fogli).filter((n) => /^\s*prima\s*nota\s*(\d{2}|\d{4})\s*$/i.test(n));
+function tipoPrimaNota(fogli) {
+  if (fogliRegistro(fogli).length) return "registro";
+  if (Object.keys(fogli).some((n) => normPn(n) === "primanota") && Object.keys(fogli).some((n) => normPn(n).indexOf("pianodeiconti") !== -1)) return "ordinato";
+  return "";
 }
 
 // apre il file Excel (è uno zip di file XML) e ne legge i fogli come tabelle di valori
@@ -807,10 +837,15 @@ function fogliXlsx(blob) {
   return fogli;
 }
 
-// trasforma il foglio «Prima nota» in movimenti; nomi di settori e categorie dal foglio «Piano dei conti»
-function primaNotaDaXlsx(blob) {
+// i movimenti: dal registro (con le correzioni del file ordinato, se c'è) oppure dal file ordinato
+function primaNotaDaXlsx(blob, blobArricchimento) {
   const fogli = fogliXlsx(blob);
-  const norm = (s) => String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+  if (tipoPrimaNota(fogli) === "registro") return primaNotaRegistro(fogli, blobArricchimento ? primaNotaOrdinata(fogliXlsx(blobArricchimento)) : []);
+  return primaNotaOrdinata(fogli);
+}
+// il file «ordinato»: foglio «Prima nota» con codici di settore e categoria; nomi dal foglio «Piano dei conti»
+function primaNotaOrdinata(fogli) {
+  const norm = normPn;
   const nomeFoglio = (cerca) => Object.keys(fogli).find((n) => norm(n) === cerca) || Object.keys(fogli).find((n) => norm(n).indexOf(cerca) !== -1);
   const pn = fogli[nomeFoglio("primanota")] || [];
   const pc = fogli[nomeFoglio("pianodeiconti")] || [];
@@ -827,7 +862,7 @@ function primaNotaDaXlsx(blob) {
   const C = {
     n: col("n"), data: col("data"), anno: col("annocompetenza"), sett: col("codsettore"), settNome: col("settore"), cat: col("codcat"), catNome: col("categoria"),
     contro: col("controparte"), descr: col("descrizione"), doc: col("ndocumento"), evento: col("eventotitolo", "evento"),
-    entrate: col("entrate"), uscite: col("uscite"), tipo: col("tipomovimento"), file: col("documentoindrive"), note: col("note"),
+    entrate: col("entrate"), uscite: col("uscite"), tipo: col("tipomovimento"), file: col("documentoindrive"), note: col("note"), riga: col("rigaprimanota"),
   };
   const dataIso = (v) => {
     if (typeof v === "number") { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5); return d.toISOString().slice(0, 10); }
@@ -852,8 +887,139 @@ function primaNotaDaXlsx(blob) {
       controparte: txt(r, C.contro), descrizione: txt(r, C.descr), n_documento: txt(r, C.doc), evento: txt(r, C.evento),
       entrate: Math.round(e * 100) / 100, uscite: Math.round(u * 100) / 100,
       tipo_movimento: txt(r, C.tipo) || "Movimento", documento: txt(r, C.file), note: txt(r, C.note),
+      riga: typeof r[C.riga] === "number" ? r[C.riga] : null,
     });
   });
+  return out;
+}
+
+/* il registro di chi tiene i conti: fogli «Prima nota 26», «Prima nota 2025»… con le colonne
+   anno rif. · codice · Data · descrizione · nr fatt. · entrate · uscite · data/evento · Codice Evento */
+const SETTORI_PN = { 2: "Affitto sala", 3: "Donazioni", 4: "Costi struttura sala", 5: "Energia asilo", 101: "Cinema in famiglia", 102: "Cineforum",
+  103: "Teatro", 104: "Musica", 105: "Danza", 106: "Auditorium Trebaseleghe", 107: "Rassegna cinema" };
+const CATEGORIE_PN = { E01: "Biglietteria (borderò C1)", E02: "Affitto / utilizzo sala", E03: "Erogazioni liberali e donazioni", E99: "Altre entrate",
+  U01: "Noleggio film e licenze", U02: "SIAE diritti d'autore", U03: "Biglietteria online, commissioni e POS", U04: "Programmazione ACEC",
+  U05: "Compagnie, artisti e organizzazione spettacoli", U06: "Service audio e luci", U07: "Extra serata (ospitalità, foto, trasporti)",
+  U08: "Energia elettrica", U09: "Acqua", U10: "Manutenzioni e sicurezza impianti", U11: "Comunicazione e social media", U12: "Telefonia e allarme",
+  U13: "Assicurazioni", U14: "Materiali e piccoli acquisti", U15: "Rassegna Auditorium Trebaseleghe", U99: "Altre uscite" };
+// la categoria dalla descrizione (regole ricavate dalle righe già sistemate a mano)
+function categoriaPn(testo, entrata, settore) {
+  const t = String(testo).toLowerCase();
+  if (entrata) {
+    if (/^\s*c1\b|\bc1\s|biglietter|borderò|bordero|\bstm\b.*bigliett|incasso serata/.test(t)) return "E01";
+    if (/erogazione comune|convenzione/.test(t)) return "E02";
+    if (/donaz|donoz|erogaz|liberal|offert|contribut/.test(t) || settore === 3) return "E03";
+    if (/utilizzo sala|affitto|compenso|fattura|erogazione comune|convenzione/.test(t) || settore === 2) return "E02";
+    return "E99";
+  }
+  if (/\bsiae\b/.test(t)) return "U02";
+  if (/stripe|cinebot|\bcbot\b|numia|\bpos\b|commi\w*sion/.test(t)) return "U03";
+  if (/\bacec\b/.test(t)) return "U04";
+  if (/amazon|\bcd\b|minuteria|duplicat|\btape\b|panno|materia|acquist|cancelleria|de grandis|peroni|endrizzi/.test(t)) return "U14";
+  if (/cilindro|trebaseleghe/.test(t) && settore === 106) return "U15";
+  if (/noleggio|\bnolo\b|\bfilms?\b|docufilm|mplc|distribu|licenz/.test(t)) return "U01";
+  if (/audio|\bluci\b|service|corazza/.test(t)) return "U06";
+  if (/fotograf|pul+m+an|panini|presentator|ospitalit|\bcena\b|pranzo|rinfresco|fipex/.test(t)) return "U07";
+  if (/\benel\b|energia|contator/.test(t)) return "U08";
+  if (/\betra\b|acquedott|\bacqua\b/.test(t)) return "U09";
+  if (/manut|verific|ascensor|allarm|emergenz|vergati|meca|ca\.?\s?mon|\bimq\b|zago|condizionam|riparaz|intervent|antincend|estintor/.test(t)) return "U10";
+  if (/social|newsletter|benini|grafic|volantin|manifest|tipografi|pubblicit/.test(t)) return "U11";
+  if (/\btim\b|telefon|guardian|\b956\b/.test(t)) return "U12";
+  if (/assicuraz/.test(t)) return "U13";
+  if (/compagni|teatr|organizza|cachet|artist|spettacol|compenso|cilindro|esibizion|maestr|\bm°|balletto|concerto|orchestr/.test(t)) return "U05";
+  if (settore >= 100) return "U05"; // le altre spese di uno spettacolo sono quasi sempre per chi si esibisce
+  return "U99";
+}
+const titoloPn = (s) => String(s || "").replace(/\s+/g, " ").trim();
+function primaNotaRegistro(fogli, ordinati) {
+  const norm = normPn;
+  // settori: i nomi di sempre, poi il foglio «codifiche», poi quelli del file ordinato
+  const settori = Object.assign({}, SETTORI_PN);
+  (fogli[Object.keys(fogli).find((n) => norm(n) === "codifiche")] || []).forEach((r) => {
+    if (!r) return;
+    const cod = typeof r[3] === "number" ? r[3] : typeof r[2] === "number" ? r[2] : null, nome = titoloPn(r[1] || r[0]);
+    if (cod != null && nome && !settori[cod]) settori[cod] = nome.charAt(0).toUpperCase() + nome.slice(1);
+  });
+  ordinati.forEach((o) => { if (o.cod_settore != null && o.settore && !/^Settore /.test(o.settore)) settori[o.cod_settore] = o.settore; });
+  // le righe sistemate a mano: per data e descrizione, raggruppate per riga del registro (una riga può diventare più movimenti)
+  const corr = {};
+  ordinati.forEach((o) => {
+    if (!o.riga) return;
+    const k = o.data + "|" + norm(o.descrizione);
+    const g = (corr[k] = corr[k] || []);
+    let gr = g.find((x) => x.riga === o.riga);
+    if (!gr) g.push((gr = { riga: o.riga, righe: [] }));
+    gr.righe.push(o);
+  });
+  const out = [];
+  let regole = 0;
+  fogliRegistro(fogli).sort().forEach((nomeFoglio) => {
+    const nn = +nomeFoglio.match(/(\d{2,4})\s*$/)[1], annoFoglio = nn < 100 ? 2000 + nn : nn;
+    const pn = fogli[nomeFoglio] || [];
+    const iHead = pn.findIndex((r) => r && r.some((v) => norm(v) === "data") && r.some((v) => norm(v).indexOf("entrate") === 0));
+    if (iHead < 0) return;
+    const h = pn[iHead].map(norm);
+    const col = (...nomi) => h.findIndex((x) => nomi.some((n) => x === n || x.indexOf(n) === 0));
+    const C = { anno: col("annorif"), cod: col("codice"), data: col("data"), descr: col("descrizione"), doc: col("nrfatt", "nfatt", "fattura"),
+      entrate: col("entrate"), uscite: col("uscite"), note: col("dataevento", "note"), codEv: col("codiceevento") };
+    const dataIso = (v) => {
+      if (typeof v === "number") { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5); return d.toISOString().slice(0, 10); }
+      const m = String(v || "").match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+      if (!m || +m[2] < 1 || +m[2] > 12) return null;
+      const y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : annoFoglio;
+      return y + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+    };
+    const importo = (v) => (typeof v === "number" ? v : v ? Number(String(v).replace(/[€\s.]/g, "").replace(",", ".")) || 0 : 0);
+    const txt = (r, i) => (i < 0 || r[i] == null ? "" : String(r[i]).trim());
+    const righe = [];
+    pn.slice(iHead + 1).forEach((r, k) => {
+      if (!r) return;
+      const data = dataIso(r[C.data]), e = Math.round(importo(r[C.entrate]) * 100) / 100, u = Math.round(importo(r[C.uscite]) * 100) / 100;
+      if (!data || (!e && !u)) return;
+      const cod = typeof r[C.cod] === "number" ? r[C.cod] : r[C.cod] ? Number(String(r[C.cod]).replace(/\D/g, "")) || null : null;
+      righe.push({ data: data, cod: cod, descr: txt(r, C.descr), doc: typeof r[C.doc] === "number" ? String(r[C.doc]) : txt(r, C.doc), e: e, u: u,
+        note: typeof r[C.note] === "number" ? "" : txt(r, C.note), codEv: typeof r[C.codEv] === "number" ? r[C.codEv] : null,
+        anno: typeof r[C.anno] === "number" ? r[C.anno] : null });
+    });
+    // titoli degli eventi: dal C1 con il codice evento (le commissioni dicono «ev 148»)
+    const titoloC1 = (d) => titoloPn(String(d).replace(/^\s*c1\s*/i, "").replace(/^(?:[\s\/-]*(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|\d{1,2}[:.]\d{2}))+[\s\/-]*/, ""));
+    const eventi = {};
+    righe.forEach((x) => { if (x.codEv && /^\s*c1\b/i.test(x.descr)) eventi[x.codEv] = titoloC1(x.descr); });
+    righe.forEach((x) => {
+      const corrette = corr[x.data + "|" + norm(x.descr)] || [];
+      // (una nota di credito scritta tra le entrate nel file ordinato è un'uscita in negativo)
+      const i = corrette.findIndex((g) => { const ge = g.righe.reduce((s, o) => s + o.entrate, 0), gu = g.righe.reduce((s, o) => s + o.uscite, 0);
+        return (Math.abs(ge - x.e) < 0.01 && Math.abs(gu - x.u) < 0.01) || (!x.u && Math.abs(ge) < 0.01 && Math.abs(gu + x.e) < 0.01); });
+      if (i >= 0) { corrette.splice(i, 1)[0].righe.forEach((o) => { const c = Object.assign({}, o); delete c.riga; out.push(c); }); return; }
+      regole++;
+      const testo = x.descr + " " + x.note;
+      let cc = categoriaPn(testo, x.e > 0 && !x.u, x.cod), e = x.e, u = x.u, nota = /nota\s*(di\s*)?credito|storno|rettific/i.test(testo);
+      // un rimborso tra le entrate (SIAE, noleggio film, compagnie…) è una nota di credito: un'uscita in negativo
+      if (cc === "E99") { const cu = categoriaPn(testo, false, x.cod); if (cu !== "U99") { cc = cu; u = -e; e = 0; nota = true; } }
+      let evento = "";
+      if (/^\s*c1\b/i.test(x.descr)) evento = titoloC1(x.descr);
+      else { const ev = testo.match(/\bev\.?\s*(\d{2,4})\b/i); if (ev && eventi[+ev[1]]) evento = eventi[+ev[1]]; }
+      if (!evento && cc === "U01") {
+        const m = testo.match(/(?:noleggio\s+(?:copia\s+|docufilm\s+|film\s+)*|\bfilm\s+)([^\d\n]{3,60})/i);
+        if (m) evento = titoloPn(m[1].replace(/\b(tenitura|proiezione|del|dal)\b.*$/i, ""));
+      }
+      out.push({
+        n: 0, data: x.data, anno: x.anno || +x.data.slice(0, 4), cod_settore: x.cod, settore: settori[x.cod] || (x.cod != null ? "Settore " + x.cod : "Senza settore"),
+        cod_cat: cc, categoria: CATEGORIE_PN[cc], descrizione: titoloPn(x.descr),
+        // chi paga o chi riceve: per le donazioni scritte «Erogazione liberale» il nome è nella colonna accanto
+        controparte: cc === "E01" ? "Biglietteria – pubblico" : cc === "E03" && /^(erogazione liberale|donazion[ei]|erogazione)$/i.test(titoloPn(x.descr)) && x.note ? titoloPn(x.note) : titoloPn(x.descr),
+        n_documento: x.doc, evento: evento, entrate: e, uscite: u,
+        tipo_movimento: nota ? "Nota di credito / rettifica" : "Movimento", documento: "", note: titoloPn(x.note),
+      });
+    });
+  });
+  // i movimenti aggiunti a mano nel file ordinato (da documenti) che nel registro non ci sono
+  ordinati.filter((o) => !o.riga && /aggiunt/i.test(o.tipo_movimento)).forEach((o) => {
+    if (!out.some((x) => x.data === o.data && Math.abs(x.entrate - o.entrate) < 0.01 && Math.abs(x.uscite - o.uscite) < 0.01)) { const c = Object.assign({}, o); delete c.riga; out.push(c); }
+  });
+  out.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
+  out.forEach((r, i) => (r.n = i + 1));
+  primaNotaDaXlsx.regole = regole;
   return out;
 }
 
@@ -862,7 +1028,7 @@ function provaPrimaNota() {
   const cfg = leggiImpostazioni();
   Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("primanota") === -1 ? "  ← manca «+primanota»: la lettura automatica non partirà" : ""));
   const f = filePrimaNota(cfg);
-  Logger.log("File trovato: " + (f ? f.getName() + " (modificato il " + f.getLastUpdated() + ")" : "nessuno"));
+  Logger.log("File letto: " + (f.fonte ? f.fonte.getName() + " (modificato il " + f.fonte.getLastUpdated() + ")" : "nessuno") + (f.arricchimento ? " · correzioni da: " + f.arricchimento.getName() : ""));
   leggiPrimaNota(cfg, true);
 }
 
