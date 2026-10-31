@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.59";
+const VERSIONE = "2026-11-01.60";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -774,6 +774,7 @@ function openBooking(b, date, prefill) {
   $("#b-comune").checked = !!v.comune;
   $("#b-sala").checked = !!v.della_sala;
   $("#b-sala-campo").hidden = !dellaSalaAttivo();
+  senzaTariffa();
   hintComune();
   syncAllDay();
   $("#b-origin").textContent = !b ? (S.fromRequest ? "Dati presi dall'email: controllali prima di salvare." : "")
@@ -1962,6 +1963,16 @@ function hintComune() {
   el.style.color = n > S.conv.serate ? "var(--due-fg)" : "";
 }
 ["#b-comune", "#b-data"].forEach((id) => $(id).addEventListener("input", hintComune));
+// eventi della Sala e serate del Comune non sono affitti: tariffa, prezzo e incasso non servono
+// (prezzo e incasso restano visibili se c'è già un importo, per non nascondere dati)
+function senzaTariffa() {
+  const no = ($("#b-sala").checked && dellaSalaAttivo()) || $("#b-comune").checked;
+  if (no && S.prezzoAuto != null && Number($("#b-prezzo").value) === S.prezzoAuto) { $("#b-prezzo").value = ""; S.prezzoAuto = null; }
+  const soldi = Number($("#b-prezzo").value) > 0 || Number($("#b-incassato").value) > 0;
+  document.querySelector("#booking-form .field.tariffa").hidden = no;
+  for (const id of ["#b-prezzo", "#b-incassato"]) $(id).closest(".field").hidden = no && !soldi;
+}
+["#b-sala", "#b-comune"].forEach((id) => $(id).addEventListener("change", senzaTariffa));
 
 function renderComune() {
   const el = $("#cm-body");
