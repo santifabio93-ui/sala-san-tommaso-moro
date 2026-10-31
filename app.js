@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.79";
+const VERSIONE = "2026-11-01.80";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2716,7 +2716,15 @@ function download(name, text, type) {
 }
 $("#btn-export").onclick = () => {
   const stamp = TODAY;
-  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), prenotazioni: S.bookings, iscrizioni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni, c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, tariffe: S.tariffe, persone: S.profiles }, null, 2), "application/json");
+  // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
+  const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
+    c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, ...v }) => v),
+    pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
+    email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
+    convenzione: S.conv, persone: S.profiles };
+  const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
+  download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
+  try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
   const cols = ["data", "inizio", "fine", "titolo", "tipo", "referente", "telefono", "email", "stato", "prezzo", "incassato", "note"];
   const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csv = [cols.join(";"), ...[...S.bookings].sort(byWhen).map((b) => cols.map((c) => (typeof b[c] === "number" ? String(b[c]).replace(".", ",") : cell(b[c]))).join(";"))].join("\r\n");
@@ -4397,6 +4405,10 @@ function coseDiOggi() {
   // scorte da comprare
   if ((S.scorte || []).length) add("info", `Scorte da comprare: ${S.scorte.map((x) => x.cosa.toLowerCase()).join(", ")}`, "#serata");
   // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
+  // promemoria del backup (una volta al mese, per l'amministratore)
+  if (S.isAdmin) { let ub = null; try { ub = localStorage.getItem("sala-ultimo-backup"); } catch (e) {}
+    const gg = ub ? Math.floor((Date.now() - new Date(ub)) / 864e5) : null;
+    if (gg == null || gg >= 30) add("info", gg == null ? "Da questo dispositivo non è mai stato scaricato un backup: Economia → Spese e tariffe → «Esporta tutto»" : `Ultimo backup scaricato ${gg} giorni fa: è ora di farne uno (Economia → Spese e tariffe → «Esporta tutto»)`, "#economia"); }
   (S.socialDomande || []).filter((d) => !d.risposta).forEach((d) => add("warn", `Domanda dai social${d.titolo ? ` su «${d.titolo}»` : ""}${d.chi ? ` (${d.chi})` : ""}: «${d.testo}»`, "#sito"));
   (S.pulizieFatte || []).filter((f) => f.creato.slice(0, 10) >= tra(-3)).forEach((f) => add(f.note ? "warn" : "info", `Pulizie fatte da ${f.nome}${f.note ? `: «${f.note}»` : ""}`, "#volontari"));
   // volontari: compleanni di oggi e domani, attestati antincendio da rinnovare

@@ -1,5 +1,7 @@
 # Sala San Tommaso Moro
 
+> Per chi subentra nella gestione: [Passaggio di consegne](PASSAGGIO_CONSEGNE.md) (account, cose da fare ogni mese, come ripartire).
+
 App web per gestire la sala: calendario e prenotazioni, turni dei volontari, entrate e spese, tariffe.
 Accesso con Google, permessi in base al ruolo.
 
