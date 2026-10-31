@@ -150,12 +150,13 @@ function disegna() {
   const prossimo = mie[0];
   const daPrendere = cambi.filter((c) => !c.mia && !c.gia_dentro);
   const posti = (f) => Array.from({ length: Math.max(f.posti, f.nomi.length) }, (_, i) => f.nomi[i]
-    ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}" style="--h:${tinta(f.nomi[i])}">${esc(f.nomi[i])}</span>`
+    ? `<span class="av${f.mio && f.nomi[i] === io ? " io" : ""}${i >= f.posti ? " aiuto" : ""}" style="--h:${tinta(f.nomi[i])}">${esc(f.nomi[i])}${i >= f.posti ? "<small>aiuto</small>" : ""}</span>`
     : `<span class="av vuoto">libero</span>`).join("");
   const azione = (f) => {
     const k = fasce.indexOf(f);
     if (f.mio) return conferma === k ? `<button class="tb togli" type="button" data-k="${k}" data-si="0">Toglimi</button>` : `<button class="tb ci-sei" type="button" data-chiedi="${k}">✓ Ci sei</button>`;
-    return `<button class="tb ci-sono${manca(f) ? "" : " anche"}" type="button" data-k="${k}" data-si="1">Ci sono</button>`;
+    return manca(f) ? `<button class="tb ci-sono" type="button" data-k="${k}" data-si="1">Ci sono</button>`
+      : `<button class="tb ci-sono anche" type="button" data-k="${k}" data-si="1">+ Come aiuto</button>`;
   };
   mostra(`
     <section class="ciao">
@@ -170,7 +171,7 @@ function disegna() {
     ${salvaLink()}
     ${mie.length ? `<section class="miei"><h3>I tuoi turni ${mie.length > 1 ? `<span class="hint">${mie.length} · scorri →</span>` : ""}</h3><div class="miei-fila">${mie.map((f) => { const k = fasce.indexOf(f), altri = f.nomi.filter((n) => n !== io);
       return `<div class="mio"><div class="mio-q"><b>${esc(giornoBreve(f.data))}</b><span>${esc(tra(f.data))}</span></div>
-        <div class="mio-c"><div class="t">${esc(f.titolo)}</div><div class="hint">${esc(f.fascia)} · ${esc(f.inizio)}–${esc(f.fine)}${altri.length ? ` · con ${esc(altri.join(", "))}` : ""}</div>
+        <div class="mio-c"><div class="t">${esc(f.titolo)}</div><div class="hint">${esc(f.fascia)}${f.nomi.indexOf(io) >= f.posti ? " (come aiuto)" : ""} · ${esc(f.inizio)}–${esc(f.fine)}${altri.length ? ` · con ${esc(altri.join(", "))}` : ""}</div>
           <div class="mio-az">${IOS ? `<button class="cal-link" type="button" data-cal="${k}">📅 Nel calendario</button>` : `<a class="cal-link" href="${esc(linkGoogle(f))}" target="_blank" rel="noopener">📅 Nel calendario</a>`}
           ${(() => { const c = cambioDi(f, true); return c ? `<span class="cambio-on">🔁 Cambio chiesto</span><button class="cal-link" type="button" data-ritira="${esc(c.id)}">Ci vado io</button>` : `<button class="cal-link" type="button" data-cambio="${k}">🔁 Chiedi il cambio</button>`; })()}</div></div></div>`; }).join("")}</div></section>` : ""}
     ${daPrendere.length ? `<section class="cercano"><h3>🔁 Cercano un sostituto</h3>${daPrendere.map((c) => `<div class="cerca">
@@ -186,7 +187,7 @@ function disegna() {
           <div class="f-ora"><b>${esc(f.inizio)}</b><span>${esc(f.fine)}</span></div>
           <div class="f-c"><div class="f-n">${esc(f.fascia)}</div><div class="avs">${posti(f)}</div>
             ${(() => { const c = cambioDi(f, false); return c && !c.gia_dentro ? `<div class="f-cambio">🔁 ${esc(c.da_nome)} cerca un sostituto · <button type="button" data-prendi="${esc(c.id)}">Lo prendo io</button></div>` : ""; })()}
-            <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : "al completo ✓"}</div></div>
+            <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : `Completo ✓${f.presi > f.posti ? ` · +${f.presi - f.posti} di aiuto` : f.mio ? "" : " · puoi aggiungerti come aiuto"}`}</div></div>
           <div class="f-a">${azione(f)}</div></div>`).join("")}
       </article>`).join("")}</section>`).join("")
       : `<div class="vuoto-t">${filtro === "servo" ? "In questo momento non servono persone: grazie! Tocca «Tutti» per vedere tutti i turni." : "Al momento non ci sono turni nei prossimi 30 giorni."}</div>`}`);
@@ -233,13 +234,13 @@ function toastAzione(msg, label, fn) {
 // ci sono / non ci sono più: la pagina cambia subito, il database dopo; se va male si torna indietro
 async function segna(f, si, annulla) {
   const io = dati.nome;
-  const prima = { mio: f.mio, presi: f.presi, nomi: [...f.nomi] };
+  const prima = { mio: f.mio, presi: f.presi, nomi: [...f.nomi] }, aiuto = si && f.presi >= f.posti;
   f.mio = si; f.presi += si ? 1 : -1; f.nomi = si ? [...f.nomi, io] : f.nomi.filter((n, i) => !(n === io && i === f.nomi.lastIndexOf(io)));
   conferma = null; disegna();
   if (navigator.vibrate) navigator.vibrate(si ? 25 : [12, 40, 12]);
   const { error } = await sb.rpc("turni_segna", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id, p_si: si });
   if (error) { Object.assign(f, prima); disegna(); toast(error.message); return; }
-  if (!annulla) toastAnnulla(si ? "Grazie, sei in turno! 🎉" : "Ti sei tolto dal turno", () => segna(f, !si, true));
+  if (!annulla) toastAnnulla(si ? (aiuto ? "Grazie, ci sei come aiuto! 🙌" : "Grazie, sei in turno! 🎉") : "Ti sei tolto dal turno", () => segna(f, !si, true));
   setTimeout(carica, 600);
 }
 function toastAnnulla(msg, fn) {

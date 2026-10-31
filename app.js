@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.52";
+const VERSIONE = "2026-11-01.53";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1004,12 +1004,12 @@ function shiftEvent(b) {
     const isOpen = S.openSignup && S.openSignup.bid === b.id && S.openSignup.sid === t.id;
     const amIn = ppl.some(isMine);
     const canRm = (x) => S.canWrite || isMine(x);
-    const names = ppl.map((x) => `<span class="person${isMine(x) ? " me" : ""}${canRm(x) ? "" : " solo"}">${esc(x.nome)}${S.canWrite && haAntincendio(volontarioDi(x)) ? ' <span title="Addetto antincendio">🧯</span>' : ""}${canRm(x) ? `<button type="button" data-rm="${esc(x.id)}" aria-label="Togli ${esc(x.nome)}">×</button>` : ""}</span>`).join("");
+    const names = ppl.map((x, i) => `<span class="person${isMine(x) ? " me" : ""}${canRm(x) ? "" : " solo"}">${esc(x.nome)}${i >= n ? ' <small class="aiuto">aiuto</small>' : ""}${S.canWrite && haAntincendio(volontarioDi(x)) ? ' <span title="Addetto antincendio">🧯</span>' : ""}${canRm(x) ? `<button type="button" data-rm="${esc(x.id)}" aria-label="Togli ${esc(x.nome)}">×</button>` : ""}</span>`).join("");
     let action = "";
     if (isOpen) action = `<form class="signup" novalidate><input aria-label="Nome del volontario" placeholder="Nome e cognome" maxlength="60"><button class="btn primary sm" type="submit">Conferma</button><button class="btn sm" type="button" data-cancel>Annulla</button></form>`;
     else if (b.data >= TODAY && (S.canWrite || !amIn)) {
       const full = ppl.length >= n;
-      const label = S.canWrite ? "+ Aggiungi nome" : full ? "+ Mi segno anch'io" : "+ Mi segno";
+      const label = S.canWrite ? (full ? "+ Aggiungi aiuto" : "+ Aggiungi nome") : full ? "+ Mi aggiungo come aiuto" : "+ Mi segno";
       action = `<button class="btn sm${full ? "" : " primary"}" type="button" data-join="${esc(b.id)}|${esc(t.id)}">${label}</button>`;
     }
     const miss = n - ppl.length;
@@ -1017,7 +1017,7 @@ function shiftEvent(b) {
     return `<div class="slot">
       <div><div class="lbl">${esc(t.label)}</div><div class="tm">${esc(t.inizio)}–${esc(t.fine)}</div>
         <div class="meter" aria-hidden="true">${meter}</div>
-        <div class="count ${miss > 0 ? "miss" : "full"}">${ppl.length}/${n} ${miss > 0 ? `· manca${miss > 1 ? "no" : ""} ${miss}` : "· completo"}</div></div>
+        <div class="count ${miss > 0 ? "miss" : "full"}">${ppl.length}/${n} ${miss > 0 ? `· manca${miss > 1 ? "no" : ""} ${miss}` : `· completo${miss < 0 ? ` · +${-miss} di aiuto` : ""}`}</div></div>
       ${cerca.length ? `<div class="hint" style="color:var(--opz-fg);font-weight:700">🔁 ${esc(cerca.map((c) => c.da_nome).join(", "))} ${cerca.length === 1 ? "cerca" : "cercano"} un sostituto</div>` : ""}
       <div class="people">${names || (isOpen ? "" : `<span class="hint">Ancora nessuno</span>`)}${action}${amIn && b.data >= TODAY ? `<button class="btn ghost sm" type="button" data-cal="${esc(b.id)}|${esc(t.id)}" title="Aggiungi il turno al calendario del telefono">📅 Nel calendario</button>` : ""}</div>
     </div>`;
@@ -1036,7 +1036,7 @@ function waText(b) {
   for (const t of turni(b)) {
     const ppl = signupsFor(b.id, t.id), n = Number(t.posti) || 0, miss = n - ppl.length;
     lines.push(`▪️ *${t.label}* ${t.inizio}–${t.fine} (${ppl.length}/${n})`);
-    lines.push(ppl.length ? "   " + ppl.map((x) => x.nome).join(", ") : "   nessuno ancora");
+    lines.push(ppl.length ? "   " + ppl.map((x, i) => x.nome + (i >= n ? " (aiuto)" : "")).join(", ") : "   nessuno ancora");
     if (miss > 0) lines.push(`   👉 servono ancora ${miss} ${miss > 1 ? "persone" : "persona"}`);
   }
   lines.push("", `Per segnarti: ${location.origin + location.pathname}#turni`);
@@ -4105,7 +4105,7 @@ function aggiornamentiSql() {
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento", k.has("social_token")],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
-    ["031_turni_oltre.sql", "Ci si può segnare anche nelle fasce al completo", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
+    ["031_turni_oltre.sql", "Nelle fasce al completo ci si aggiunge come aiuto", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],
     ["029_foglietto.sql", "Email del giovedì per il foglietto parrocchiale", k.has("foglietto_attivo"), "Dopo lo script SQL ricopia lo script Google (2026-11-02.2) e il file appsscript.json, e aggiungi «+foglietto» alla MODALITA"],
     ["028_cassa_tessera.sql", "Cassa con la tessera sanitaria", S.cassaNomi, "Serve solo se usi il lettore di tessere in biglietteria", true],
