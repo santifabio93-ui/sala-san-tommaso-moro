@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.74";
+const VERSIONE = "2026-11-01.75";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1815,7 +1815,7 @@ function renderSchede() {
         + tappa(!!s.aperta_il, s.aperta_il ? `Aperta ${dt(s.aperta_il)}` : "Non ancora aperta")
         + tappa(!!s.compilata_il, s.compilata_il ? `Compilata ${dt(s.compilata_il)}` : "Non compilata", !s.compilata_il && r.ritardo ? "ko" : "")
         + (s.stato === "respinta" ? tappa(false, "Correzioni richieste", "warn-t") : tappa(s.stato === "approvata", s.stato === "approvata" ? `Approvata ${dt(s.verificata_il)}` : "Da approvare", s.stato === "compilata" ? "warn-t" : ""))
-        + ({ allegato: tappa(true, "SIAE allegata"), da_ricevere: tappa(false, "SIAE da ricevere", s.stato === "approvata" ? "" : r.urgente ? "ko" : "warn-t"), non_serve: tappa(false, "SIAE non serve") }[siaeStato(s.dati)] || "")
+        + ({ allegato: tappa(true, "SIAE allegata"), da_ricevere: tappa(false, "SIAE da ricevere", s.stato === "approvata" ? "" : r.urgente ? "ko" : "warn-t"), non_serve: tappa(false, "SIAE non serve"), sala: tappa(true, "SIAE: la fa la sala") }[siaeStato(s.dati, s)] || "")
         + (s.sollecitata_il ? `<span class="tappa">Sollecitata ${dt(s.sollecitata_il)}</span>` : "");
     const az = [];
     if (!s || ["da_inviare"].includes(s.stato)) az.push(`<button class="btn primary sm" type="button" data-invia="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Invia il link</button>`);
@@ -1823,6 +1823,7 @@ function renderSchede() {
     if (s && ["compilata", "approvata", "respinta"].includes(s.stato)) az.push(`<button class="btn ${s.stato === "compilata" ? "primary" : ""} sm" type="button" data-vedi="${esc(s.id)}">${s.stato === "compilata" ? "Verifica" : "Vedi risposte"}</button>`);
     if (!s || !["approvata", "non_serve", "compilata"].includes(s.stato)) az.push(`<button class="btn ghost sm" type="button" data-nonserve="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Non serve</button>`);
     if (s && s.stato === "non_serve") az.push(`<button class="btn ghost sm" type="button" data-riattiva="${esc(s.id)}">Serve</button>`);
+    if (s && s.stato !== "non_serve" && "siae_sala" in s && !(b && b.della_sala)) az.push(`<button class="btn ghost sm" type="button" data-siaesala="${esc(s.id)}" title="Evento co-organizzato: il permesso SIAE lo fa la sala">${s.siae_sala ? "SIAE: la fa l'organizzatore" : "SIAE: la fa la sala"}</button>`);
     if (b && !s && dellaSalaAttivo()) az.push(`<button class="btn ghost sm" type="button" data-dellasala="${esc(b.id)}" title="Evento organizzato dalla Sala: non serve la scheda">È della Sala</button>`);
     return `<article class="panel sc-row ${r.urgente ? "sc-urgente" : ""}">
       <div class="quando">${r.data ? `<b>${esc(fmtShort(r.data))}</b><span class="tra ${r.urgente ? "urg" : ""}">${r.gg === 0 ? "oggi" : r.gg > 0 ? `tra ${r.gg} giorni` : `${-r.gg} giorni fa`}</span>` : `<span>data da definire</span>`}</div>
@@ -1835,6 +1836,10 @@ function renderSchede() {
   L.querySelectorAll("[data-sollecita]").forEach((x) => (x.onclick = () => sollecitaScheda(x.dataset.sollecita)));
   L.querySelectorAll("[data-link]").forEach((x) => (x.onclick = () => { const s = S.schede.find((y) => y.id === x.dataset.link); openCopyText(linkScheda(s)); }));
   L.querySelectorAll("[data-vedi]").forEach((x) => (x.onclick = () => apriScheda(x.dataset.vedi)));
+  L.querySelectorAll("[data-siaesala]").forEach((x) => (x.onclick = async () => {
+    const s = S.schede.find((y) => y.id === x.dataset.siaesala); x.disabled = true;
+    try { await run(sb.from("schede").update({ siae_sala: !s.siae_sala }).eq("id", s.id), s.siae_sala ? "La SIAE torna a carico dell'organizzatore" : "SIAE a carico della sala: l'organizzatore non deve allegare il permesso"); } catch (e) { toast(errText(e)); x.disabled = false; }
+  }));
   L.querySelectorAll("[data-nonserve]").forEach((x) => (x.onclick = async () => {
     x.disabled = true;
     try {
@@ -1886,15 +1891,18 @@ const ETICHETTE = {
   titolo: "Titolo", tipo: "Tipo", descrizione: "Descrizione", ingresso: "Ingresso", prezzo: "Prezzo €", biglietti: "Biglietti gestiti da", fascia: "Fascia di pubblico", pubblico_n: "Pubblico previsto", bambini_n: "di cui bambini", carrozzina_n: "Persone in carrozzina", palco_n: "Persone sul palco",
   luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
   tecnico: "Tecnico", tecnico_nome: "Nome tecnico", tecnico_cell: "Cellulare tecnico", attrezzature: "Attrezzature da collegare", attrezzature_quali: "Quali", potenza_w: "Potenza totale (W)",
-  scenografie: "Scenografie", scenografie_quali: "Cosa portano", ignifughi: "Materiali ignifughi classe 1", effetti: "Effetti", effetti_quali: "Quali effetti", durante: "Durante l'evento", pubblicabile: "Pubblicabile nel programma", locandina_entro: "Locandina entro", altro: "Altre richieste",
+  scenografie: "Scenografie", scenografie_quali: "Cosa portano", ignifughi: "Materiali ignifughi classe 1", effetti: "Effetti", effetti_quali: "Quali effetti", durante: "Durante l'evento", siae_opere: "Opere protette usate", pubblicabile: "Pubblicabile nel programma", locandina_entro: "Locandina entro", altro: "Altre richieste",
   siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", siae_dopo: "Permesso SIAE",
   ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
 };
 const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
   ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
-  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
+  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_opere", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
 // permesso SIAE: a carico dell'organizzatore, da allegare alla scheda
-function siaeStato(d) {
+// evento co-organizzato: la SIAE la fa la sala (scelta nella scheda o evento «Organizzato dalla Sala»)
+const siaeDellaSala = (s) => !!(s && (s.siae_sala || (S.bookings.find((b) => b.id === s.booking_id) || {}).della_sala));
+function siaeStato(d, s) {
+  if (s && siaeDellaSala(s)) return "sala";
   if (!d || !d.siae) return "";
   if (d.siae === "no") return "non_serve";
   return (d.siae_file || []).length ? "allegato" : "da_ricevere";
@@ -1938,7 +1946,7 @@ $("#sk-approva").onclick = async () => {
   const s = S.editingScheda, sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value;
   if (!sic) { $("#sk-error").innerHTML = `<div class="warn">Indica il parere del responsabile della sicurezza.</div>`; return; }
   if (sic === "non_compatibile") { $("#sk-error").innerHTML = `<div class="warn">Con parere «non compatibile» la scheda non si approva: usa «Chiedi correzioni» o contatta l'organizzatore.</div>`; return; }
-  if (siaeStato(s.dati) === "da_ricevere" && S.siaeAvvisato !== s.id) {
+  if (siaeStato(s.dati, s) === "da_ricevere" && S.siaeAvvisato !== s.id) {
     S.siaeAvvisato = s.id;
     $("#sk-error").innerHTML = `<div class="warn">Il permesso SIAE non è allegato: è a carico dell'organizzatore e va consegnato prima dell'evento. Se l'avete già ricevuto per email, premi di nuovo «Approva».</div>`;
     return;
@@ -4378,7 +4386,7 @@ function coseDiOggi() {
   const daVer = schedeDaVerificare();
   if (daVer) add("warn", `${daVer} ${daVer === 1 ? "scheda compilata" : "schede compilate"} da verificare e approvare`, "#schede");
   righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
-  S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
+  S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati, s) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
   S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
   // scambi di turno: chi cerca un sostituto (finché nessuno lo prende, il turno resta suo)
   (S.cambi || []).forEach((c) => { const b = S.bookings.find((x) => x.id === c.booking_id), t = b && turni(b).find((x) => x.id === c.slot_id);
@@ -4457,6 +4465,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["035_siae_sala.sql", "SIAE a carico della sala per gli eventi co-organizzati", S.schede.length ? "siae_sala" in S.schede[0] : undefined],
     ["034_rubrica.sql", "Rubrica della sala (anche i contatti della posta)", !manca(e2.rubrica) && !manca(e2.rubricaMail), "Per i contatti della posta: ricopia lo script Google (2026-11-03.2) e aggiungi «+rubrica» alla MODALITA dell'account della sala"],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
     ["functions/leggi-locandina", "Lettura delle locandine con Claude (funzione Supabase + chiave di Anthropic)", undefined, "Facoltativa: istruzioni nel README, sezione «Locandine lette da Claude». Senza, le locandine si caricano lo stesso", true],

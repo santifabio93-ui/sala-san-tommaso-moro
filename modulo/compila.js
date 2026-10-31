@@ -78,7 +78,7 @@ function modulo(d, info) {
       ${voce("luci", "luci di scena", d)}${voce("sipario", "sipario e quinte", d)}${voce("audio", "impianto audio", d)}
       ${voce("mic_filo", "microfoni a filo", d, { nome: "mic_filo_n", max: 5 })}${voce("radiomic", "radiomicrofoni (max 2)", d, { nome: "radiomic_n", max: 2 })}
       ${voce("proiettore", "proiettore e schermo (HDMI)", d)}${voce("tavolo", "tavolo relatori, posti", d, { nome: "tavolo_n", max: 10 })}
-      ${voce("mic_tavolo", "microfoni da tavolo (max 3)", d, { nome: "mic_tavolo_n", max: 3 })}${voce("leggio", "leggio", d)}
+      ${voce("mic_tavolo", "microfoni da tavolo (max 3)", d, { nome: "mic_tavolo_n", max: 3 })}
     </div>
     <div class="campo" style="margin-top:12px"><span class="lbl">Tecnico</span>${scelta("tecnico", [["nostro", "abbiamo un nostro tecnico"], ["nessuno", "non serve"]], d.tecnico === "sala" ? "" : d.tecnico)}<span class="hint">La sala non ha un tecnico: se vi servono luci o audio oltre all'uso semplice, portate il vostro.</span></div>
     <div class="cond" data-se="tecnico=nostro"><div class="griglia">${campo("tecnico_nome", "Nome del tecnico", d.tecnico_nome)}${campo("tecnico_cell", "Cellulare del tecnico", d.tecnico_cell, "type=\"tel\"")}</div></div>
@@ -102,7 +102,9 @@ function modulo(d, info) {
     </div></section>
 
   <section class="sez"><h2><span class="n">6</span>SIAE e diritti d'autore</h2>
-    <span class="hint">Il permesso SIAE e i diritti d'autore sono <b>a carico dell'organizzatore</b>. Servono quando nell'evento si usano musica (dal vivo o registrata), film, spettacoli o altre opere protette.</span>
+    ${info.siae_sala ? `<span class="hint">L'evento è <b>co-organizzato con la Sala San Tommaso Moro</b>: il permesso SIAE lo fa <b>la sala</b>. Non dovete allegare niente; ci serve solo sapere se userete musica, film o altre opere protette e quali.</span>
+    <div class="campo"><span class="lbl obbl">L'evento usa musica, film o altre opere protette da diritto d'autore?</span>${scelta("siae", [["si", "sì"], ["no", "no, nessuna opera protetta"]], d.siae)}</div>
+    <div class="cond" data-se="siae=si"><div class="campo full" style="margin-top:10px"><label for="f-siae_opere">Cosa userete (brani, autori, film, spettacolo…)</label><textarea id="f-siae_opere" name="siae_opere">${esc(d.siae_opere)}</textarea></div></div>` : `<span class="hint">Il permesso SIAE e i diritti d'autore sono <b>a carico dell'organizzatore</b>. Servono quando nell'evento si usano musica (dal vivo o registrata), film, spettacoli o altre opere protette.</span>
     <div class="campo"><span class="lbl obbl">L'evento usa musica, film o altre opere protette da diritto d'autore?</span>${scelta("siae", [["si", "sì"], ["no", "no, nessuna opera protetta"]], d.siae)}</div>
     <div class="cond" data-se="siae=si">
       <div class="campo" style="margin-top:10px"><label for="f-siae-file">Allegate il permesso SIAE (PDF o foto, massimo 10 MB)</label>
@@ -110,6 +112,7 @@ function modulo(d, info) {
         <div id="siae-caricati" class="hint">${(d.siae_file || []).map((f) => `✓ ${esc(f.nome)} allegato`).join("<br>")}</div></div>
       <label class="voce" style="margin-top:8px"><input type="checkbox" name="siae_dopo"${d.siae_dopo ? " checked" : ""}> Il permesso non l'abbiamo ancora: lo mandiamo a salatommasomoro@gmail.com prima dell'evento</label>
     </div>
+  `}
   </section>
 
   <section class="sez"><h2><span class="n">7</span>Regole della sala e dichiarazione</h2>
@@ -118,7 +121,7 @@ function modulo(d, info) {
       <h3>Impianti</h3><ul><li>Impianti, regia, quadri elettrici, termostati e riscaldamento si usano solo con il personale della sala.</li><li>Le attrezzature esterne si collegano solo dove indica il responsabile della sala: niente prese multiple né cavi lungo pareti e vie d'esodo. Niente lavorazioni che producono scintille, polveri o fumi.</li></ul>
       <h3>In sala</h3><ul><li>Vietato fumare, anche sigarette elettroniche. Cibo e bevande non sono ammessi in sala.</li><li>Non sono ammessi animali, tranne i cani guida e di assistenza. Non sono ammessi in sala passeggini e carrozzine per bambini; sono ammesse le carrozzine per persone con disabilità.</li></ul>
       <h3>Palco e riconsegna</h3><ul><li>Si portano solo i materiali dichiarati; scenografie e tessuti ignifughi (classe 1).</li><li>A fine evento palco libero e sala riconsegnata come trovata, entro l'orario di sgombero. La sala non custodisce materiali dell'organizzatore.</li></ul>
-      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>Provvede a proprie spese al permesso SIAE e ai diritti d'autore, se previsti, e alle altre autorizzazioni per l'evento, e consegna alla sala copia del permesso SIAE.</li></ol>
+      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>${info.siae_sala ? "Provvede alle autorizzazioni per l'evento diverse dalla SIAE, che fa la sala (evento co-organizzato), e comunica alla sala le opere protette che userà." : "Provvede a proprie spese al permesso SIAE e ai diritti d'autore, se previsti, e alle altre autorizzazioni per l'evento, e consegna alla sala copia del permesso SIAE."}</li></ol>
     </div>
     <label class="accetta"><input type="checkbox" name="ok_regole"${d.ok_regole ? " checked" : ""}> <span class="obbl">Abbiamo letto le regole della sala e ci impegniamo a farle rispettare</span></label>
     <label class="accetta"><input type="checkbox" name="ok_dichiarazione"${d.ok_dichiarazione ? " checked" : ""}> <span class="obbl">Accetto la dichiarazione dell'organizzatore</span></label>
@@ -167,14 +170,14 @@ function controlla(d) {
   if (!d.fascia) segna('[data-campo="fascia"]', "pubblico previsto");
   if (!d.orari.length || !d.orari[0].data || !d.orari[0].inizio) segna('.riga-orari', "data e ora di inizio");
   if (!d.siae) segna('[data-campo="siae"]', "risposta sulla SIAE");
-  else if (d.siae === "si" && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
+  else if (d.siae === "si" && !siaeSala && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
   if (!d.ok_regole || !d.ok_dichiarazione || !d.ok_privacy) segna('.accetta', "accettazione di regole, dichiarazione e privacy");
   if (!d.firma || d.firma.length < 3) segna('[name="firma"]', "nome e cognome di chi compila");
   return mancano;
 }
 
 // --- allegati (permesso SIAE): caricati nella cartella della scheda, visibili solo alla sala ---
-let allegati = [];
+let allegati = [], siaeSala = false;
 async function caricaAllegato(file) {
   const out = $("#siae-caricati");
   if (file.size > 10 * 1024 * 1024) { toast("Il file supera i 10 MB: provate con una foto o un PDF più leggero"); return; }
@@ -198,8 +201,9 @@ async function avvia() {
   let d = info.dati || {};
   try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0)) d = { ...d, ...b }; } catch (e) {}
   allegati = Array.isArray(d.siae_file) ? d.siae_file.slice() : [];
+  siaeSala = !!info.siae_sala;
   mostra(modulo(d, info));
-  $("#f-siae-file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) caricaAllegato(f); e.target.value = ""; });
+  if ($("#f-siae-file")) $("#f-siae-file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) caricaAllegato(f); e.target.value = ""; });
   const f = $("#scheda");
   aggiornaCondizioni();
   f.addEventListener("input", (e) => { e.target.closest(".errore-campo")?.classList.remove("errore-campo"); aggiornaCondizioni(); salvaBozza(); });
