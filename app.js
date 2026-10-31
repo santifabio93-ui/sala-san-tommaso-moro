@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.69";
+const VERSIONE = "2026-11-01.70";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -4257,10 +4257,11 @@ const condizioniSas = (titolo) => S.richiesteFilm.filter((r) => r.stato === "con
 let sasMod = null;
 // le email nuove arrivate dallo script: le conferme diventano righe della programmazione (una per data e film)
 async function elaboraEmailSas() {
-  // le conferme già lette senza condizioni (es. «&euro;» nelle email in HTML) si rileggono una volta
-  S.sasRiletti = S.sasRiletti || new Set();
-  const daRileggere = new Set(S.programmazione.filter((p) => p.minimo == null && p.fisso == null && p.percentuale == null && p.email_id && !S.sasRiletti.has(p.email_id)).map((p) => p.email_id));
-  for (const m of S.sasEmail) if (daRileggere.has(m.id) && /min|€|&euro;|&#8364;|%/i.test(m.testo || "")) { m.elaborata = false; S.sasRiletti.add(m.id); }
+  // le conferme lette senza il minimo (le email del SAS sono in HTML: «min. &euro; 100.00») si rileggono una volta sola
+  let riletti; try { riletti = new Set(JSON.parse(localStorage.getItem("sala-sas-riletti-2") || "[]")); } catch (x) { riletti = new Set(); }
+  const daRileggere = new Set(S.programmazione.filter((p) => p.minimo == null && p.fisso == null && p.email_id && !riletti.has(p.email_id)).map((p) => p.email_id));
+  for (const m of S.sasEmail) if (daRileggere.has(m.id) && /&euro;|&#8364;|&#x20ac;/i.test(m.testo || "")) { m.elaborata = false; riletti.add(m.id); }
+  try { localStorage.setItem("sala-sas-riletti-2", JSON.stringify([...riletti].slice(-500))); } catch (x) {}
   const nuove = S.sasEmail.filter((m) => !m.elaborata);
   if (!nuove.length) return;
   sasMod = sasMod || (await import(`./sas-email.js?v=${VERSIONE}`));
