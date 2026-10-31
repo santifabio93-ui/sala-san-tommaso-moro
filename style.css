@@ -801,3 +801,32 @@ nav.tabs { position: relative }
 .perdite { margin-top: 8px } .perdite summary { cursor: pointer; font-weight: 700; color: var(--accent) }
 .perdite ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px }
 .perdite li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line) } .perdite li small { color: var(--muted); margin-left: 4px } .perdite li b { white-space: nowrap }
+
+/* Scheda evento: preparazione, documenti e operazioni raccolti per prenotazione. */
+.evento-header { align-items: flex-start; margin-bottom: 20px }
+.evento-header .eyebrow { margin-top: 16px }
+.evento-header h2 { font-size: clamp(1.5rem, 4vw, 2rem); overflow-wrap: anywhere }
+.evento-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px }
+.evento-panel { min-width: 0; overflow-wrap: anywhere }
+.evento-panel h3 { margin-bottom: 14px }
+.evento-panel .actions { margin-top: 14px }
+.evento-panel details + details { margin-top: 12px }
+.evento-prossime { border-left: 4px solid var(--accent) }
+.evento-prossime ul { padding: 0; list-style: none; margin-bottom: 0 }
+.evento-prossime li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line) }
+.evento-prossime li span { flex: 1 }
+.evento-prossime li .btn { flex-shrink: 0 }
+.evento-totali { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px }
+.evento-totali div { min-width: 0 }
+.evento-totali dt { color: var(--muted); font-size: .85rem }
+.evento-totali dd { margin: 6px 0; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums }
+.evento-info { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 10px }
+.evento-info dt { color: var(--muted) }
+.evento-info dd { margin: 0 }
+.evento-note { white-space: pre-wrap; overflow-wrap: anywhere }
+@media (max-width: 700px) {
+  .evento-grid { grid-template-columns: minmax(0, 1fr) }
+  .evento-prossime li { align-items: flex-start; flex-direction: column }
+  .evento-prossime li .btn { max-width: 100%; white-space: normal }
+  .evento-totali dd { font-size: 1.15rem }
+}
