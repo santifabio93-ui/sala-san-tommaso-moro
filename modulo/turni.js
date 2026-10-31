@@ -265,3 +265,4 @@ async function controllaVersione() {
 }
 controllaVersione();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) controllaVersione(); });
+{ const v = $("#versione"); if (v) v.textContent = "Versione " + (new URL(import.meta.url).searchParams.get("v") || "?"); }
