@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.72";
+const VERSIONE = "2026-11-01.73";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -3808,7 +3808,7 @@ function renderSerata() {
       const ppl = signupsFor(b.id, t.id), manca = Math.max(0, (Number(t.posti) || 0) - ppl.length);
       return `<div class="sr-turno"><b>${esc(t.label)}</b> <span class="hint">${esc(t.inizio)}–${esc(t.fine)}</span><div>${ppl.length ? ppl.map((x) => `<span class="person solo${isMine(x) ? " me" : ""}">${esc(x.nome)}</span>`).join(" ") : '<span class="hint">nessuno</span>'}${manca ? ` <span class="pill dapagare">${manca === 1 ? "manca 1 persona" : `mancano ${manca} persone`}</span>` : ""}</div></div>`;
     }).join("");
-    const tecnico = { sala: "serve il tecnico della sala", nostro: `loro tecnico${dd.tecnico_nome ? ": " + esc(dd.tecnico_nome) : ""} ${tel(dd.tecnico_cell)}`, nessuno: "non serve" }[dd.tecnico];
+    const tecnico = { sala: "chiedeva il tecnico della sala (la sala non ce l'ha)", nostro: `loro tecnico${dd.tecnico_nome ? ": " + esc(dd.tecnico_nome) : ""} ${tel(dd.tecnico_cell)}`, nessuno: "non serve" }[dd.tecnico];
     const daIncassare = S.canWrite ? residuo(b) : 0;
     return `<article class="panel sr-evento">
       <div class="section-head"><h3>${esc(b.titolo)}</h3><span class="pill ${b.stato}">${STATI[b.stato]}</span></div>
