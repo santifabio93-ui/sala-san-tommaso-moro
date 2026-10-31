@@ -1,0 +1,66 @@
+# Pubblica l'app su GitHub Pages a ogni modifica, con il codice JavaScript compresso.
+# Nel repository i file restano leggibili; sul sito vanno solo quelli compressi.
+# Non vengono pubblicati: script SQL (supabase/), script Google, README, passaggio di consegne, LICENSE.
+#
+# Requisito (una volta sola): Settings → Pages → Build and deployment → Source: «GitHub Actions».
+# Per tornare indietro in qualsiasi momento: Source: «Deploy from a branch» (main, / root).
+name: Pubblica il sito
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  compila:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copia i file del sito
+        run: |
+          mkdir _site
+          rsync -a \
+            --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'node_modules' \
+            --exclude 'supabase' --exclude 'google-apps-script' \
+            --exclude '*.md' --exclude 'LICENSE' --exclude '.gitignore' --exclude '.DS_Store' \
+            ./ _site/
+
+      - name: Comprimi il JavaScript
+        run: |
+          npm install --silent --no-audit --no-fund --prefix "$RUNNER_TEMP/terser" terser@5.49.2
+          TERSER="$RUNNER_TEMP/terser/node_modules/.bin/terser"
+          # config.js resta com'è: contiene solo indirizzo e chiave pubblica di Supabase
+          find _site -name '*.js' ! -name 'config.js' -print0 | while IFS= read -r -d '' f; do
+            "$TERSER" "$f" --module --compress passes=2 --mangle --format comments=false --output "$f.min"
+            mv "$f.min" "$f"
+            echo "compresso: $f"
+          done
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  pubblica:
+    needs: compila
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
