@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.78";
+const VERSIONE = "2026-11-01.79";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -431,8 +431,10 @@ function render() {
 
 function renderKpis() {
   // il parroco ha già i suoi numeri nella pagina «In breve»
-  $("#kpis").hidden = !!(S.isParroco || S.postazione);
-  if (S.isParroco || S.postazione) return;
+  // le quattro schede in alto servono solo in Oggi ed Economia → Spese e tariffe: nelle altre pagine occupano spazio e basta
+  const conKpi = ["oggi", "economia"].includes(S.view);
+  $("#kpis").hidden = !!(S.isParroco || S.postazione) || !conKpi;
+  if (S.isParroco || S.postazione || !conKpi) return;
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
   const next = upcoming[0];
   const scoperti = upcoming.reduce((s, b) => { const c = coverage(b); return s + c.need - c.have; }, 0);
