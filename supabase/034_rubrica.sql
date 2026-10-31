@@ -3,6 +3,8 @@
 -- email, sopralluoghi, volontari). In questa tabella si salvano i contatti aggiunti a mano (fornitori, tecnici, enti…)
 -- e le correzioni a quelli trovati dall'app: categoria, ente, note, oppure «nascondi».
 -- La vedono amministratori, coordinatori e segreteria.
+-- Con «+rubrica» nella MODALITA dello script Google (account della sala) entrano anche le persone con cui la sala
+-- ha scambiato email: nome, indirizzo, telefono trovato nella firma, ultima email.
 -- Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run. Si può rieseguire senza problemi.
 
 create table if not exists public.rubrica (
@@ -30,6 +32,55 @@ begin
 exception when undefined_object then null;
 end $$;
 
+-- i contatti della posta della sala (li manda lo script Google)
+create table if not exists public.rubrica_mail (
+  email text primary key,
+  nome text not null default '',
+  telefono text not null default '',
+  oggetto text not null default '',
+  link text not null default '',
+  primo timestamptz,
+  ultimo timestamptz,
+  aggiornato timestamptz not null default now()
+);
+alter table public.rubrica_mail enable row level security;
+drop policy if exists "rubrica mail: staff e segreteria leggono" on public.rubrica_mail;
+create policy "rubrica mail: staff e segreteria leggono" on public.rubrica_mail
+  for select using (public.my_role() in ('admin', 'coordinatore', 'segreteria'));
+drop policy if exists "rubrica mail: admin elimina" on public.rubrica_mail;
+create policy "rubrica mail: admin elimina" on public.rubrica_mail
+  for delete using (public.my_role() = 'admin');
+alter table public.settings add column if not exists sync_rubrica timestamptz;
+
+create or replace function public.sync_rubrica_push(p_token text, p_items jsonb)
+returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  perform public.sync_check(p_token);
+  insert into public.rubrica_mail as r (email, nome, telefono, oggetto, link, primo, ultimo)
+  select distinct on (lower(btrim(x->>'email')))
+         lower(btrim(x->>'email')), left(coalesce(x->>'nome', ''), 120), left(coalesce(x->>'telefono', ''), 40),
+         left(coalesce(x->>'oggetto', ''), 200), left(coalesce(x->>'link', ''), 300), (x->>'primo')::timestamptz, (x->>'ultimo')::timestamptz
+  from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) x
+  where coalesce(x->>'email', '') ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+  order by lower(btrim(x->>'email')), (x->>'ultimo') desc
+  on conflict (email) do update set
+    nome = case when excluded.nome <> '' and (r.nome = '' or excluded.ultimo >= r.ultimo) then excluded.nome else r.nome end,
+    telefono = case when excluded.telefono <> '' then excluded.telefono else r.telefono end,
+    oggetto = case when excluded.ultimo >= coalesce(r.ultimo, excluded.ultimo) then excluded.oggetto else r.oggetto end,
+    link = case when excluded.ultimo >= coalesce(r.ultimo, excluded.ultimo) then excluded.link else r.link end,
+    primo = least(r.primo, excluded.primo),
+    ultimo = greatest(r.ultimo, excluded.ultimo),
+    aggiornato = now();
+  get diagnostics n = row_count;
+  update public.settings set sync_rubrica = now() where id = 1;
+  return n;
+end $$;
+revoke all on function public.sync_rubrica_push(text, jsonb) from public;
+grant execute on function public.sync_rubrica_push(text, jsonb) to anon;
+
 notify pgrst, 'reload schema';
 
-select to_regclass('public.rubrica') is not null as rubrica;
+select to_regclass('public.rubrica') is not null and to_regclass('public.rubrica_mail') is not null as rubrica;

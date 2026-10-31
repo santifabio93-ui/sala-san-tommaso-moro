@@ -396,7 +396,10 @@ raccolti da soli da prenotazioni, schede di richiesta (organizzatore, responsabi
 richiesta, sopralluoghi, volontari e contatti del SAS, uniti per telefono o email. Per ognuno: categoria, ultimo
 contatto e lo storico con la sala; bottoni per chiamare, WhatsApp ed email; «Nuova prenotazione» già compilata.
 Si aggiungono contatti a mano (fornitori, tecnici, enti…), si correggono nome, ente, categoria e note, si nascondono
-quelli inutili. «Esporta (Excel)» scarica l'elenco filtrato. Serve lo script `034_rubrica.sql`. Sono dati personali:
+quelli inutili. «Esporta (Excel)» scarica l'elenco filtrato. Serve lo script `034_rubrica.sql`. Con «+rubrica» nella MODALITA dello script Google
+dell'account della sala entrano anche le persone con cui la sala ha scambiato email (solo le conversazioni in cui la sala
+ha scritto o risposto: niente pubblicità né newsletter), con il telefono trovato nella firma e il link all'ultima email.
+La prima volta lo script legge tutta la posta inviata a blocchi (40 conversazioni ogni 15 minuti), poi ogni 6 ore. Sono dati personali:
 restano nel database e si usano solo per le attività della sala.
 
 ## Locandine lette da Claude

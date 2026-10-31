@@ -27,6 +27,10 @@
  *                  aggiungi "+foglietto" per mandare ogni giovedì mattina al parroco l'email con il programma della
  *                  settimana per il foglietto parrocchiale (destinatario e testo si impostano nell'app, in Sito web);
  *                  serve il permesso di inviare email (script.send_mail in appsscript.json)
+ *                  aggiungi "+rubrica" (nell'account della sala) per portare nella rubrica dell'app le persone con cui
+ *                  la sala ha scambiato email: solo le conversazioni in cui la sala ha scritto o risposto (niente
+ *                  pubblicità né newsletter), con nome, indirizzo, telefono trovato nella firma e ultima email.
+ *                  La prima volta legge tutta la posta inviata, un po' alla volta; poi ogni 6 ore le novità.
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
  *                  allineato con l'app: prenotazioni nate nell'app o dalle email, proiezioni del cinema, sopralluoghi.
@@ -41,7 +45,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-02.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-03.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -78,6 +82,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("sas") !== -1) prova("sas", () => leggiSas(cfg));
     if (/(^|\+)app(\+|$)/.test(cfg.modalita)) prova("calendario dell'app", () => sincronizzaCalendarioApp(cfg));
     if (cfg.modalita.indexOf("foglietto") !== -1) prova("foglietto", () => inviaFogliettoSeServe(cfg));
+    if (cfg.modalita.indexOf("rubrica") !== -1) prova("rubrica", () => leggiRubricaSeServe(cfg));
   } finally {
     lock.releaseLock();
   }
@@ -998,6 +1003,76 @@ function trovaDataOra(testo, ricevuta) {
   const o = s.match(/\b(?:ore|alle|dalle|h\.?)\s*(\d{1,2})(?:[.:,](\d{2}))?\b/);
   if (o && +o[1] < 24) ora = ("0" + o[1]).slice(-2) + ":" + (o[2] || "00");
   return { data: data, ora: ora };
+}
+
+/* ---------------- rubrica: le persone con cui la sala ha scambiato email ---------------- */
+// Si guardano solo le conversazioni in cui la sala ha scritto o risposto (posta inviata): così pubblicità, newsletter
+// e notifiche restano fuori. Per ogni persona: nome, indirizzo, prima e ultima email, oggetto e telefono della firma.
+const RUBRICA_BLOCCO = 40; // conversazioni per giro (ogni 15 minuti) durante la prima lettura
+const NON_PERSONE = /no-?reply|do-?not-?reply|newsletter|mailer-daemon|postmaster|notific|bounce|calendar|invitations|@(?:[\w-]+\.)*(?:google|googlemail|facebookmail|linkedin|paypal|amazon|apple|microsoft|github|mailchimp|sendgrid|brevo|sendinblue)\./i;
+function leggiRubricaSeServe(cfg) {
+  const mem = PropertiesService.getUserProperties();
+  const fine = mem.getProperty("RUBRICA_FINE"), ultima = Number(mem.getProperty("RUBRICA_ULTIMA") || 0);
+  if (fine && Date.now() - ultima < 6 * 3600e3) return;
+  leggiRubrica(cfg, mem, !fine);
+}
+function leggiRubrica(cfg, mem, primaVolta) {
+  const account = Session.getActiveUser().getEmail() || "account";
+  let mie = [account.toLowerCase()];
+  try { mie = mie.concat((Gmail.Users.Settings.SendAs.list("me").sendAs || []).map((a) => String(a.sendAsEmail).toLowerCase())); } catch (e) {}
+  const pagina = primaVolta ? mem.getProperty("RUBRICA_PAGINA") || "" : "";
+  const lista = Gmail.Users.Threads.list("me", Object.assign({ q: primaVolta ? "in:sent" : "in:sent newer_than:3d", maxResults: RUBRICA_BLOCCO }, pagina ? { pageToken: pagina } : {}));
+  const persone = {};
+  const indirizzi = (t) => {
+    const out = [], re = /(?:"([^"]*)"\s*|([^"<>,;@]*?)\s*)<?([\w.+'-]+@[\w-]+(?:\.[\w-]+)+)>?/g;
+    let m; while ((m = re.exec(String(t || "")))) out.push({ nome: (m[1] || m[2] || "").trim().replace(/^'+|'+$/g, ""), email: m[3].toLowerCase() });
+    return out;
+  };
+  const aggiungi = (a, quando, oggetto, link, telefono) => {
+    if (!a.email || mie.indexOf(a.email) !== -1 || NON_PERSONE.test(a.email)) return;
+    const nome = a.nome && a.nome.indexOf("@") === -1 ? a.nome : "";
+    const p = persone[a.email] || (persone[a.email] = { email: a.email, nome: "", telefono: "", oggetto: "", link: "", primo: quando, ultimo: quando });
+    if (nome && (!p.nome || quando >= p.ultimo)) p.nome = nome;
+    if (telefono && (!p.telefono || quando >= p.ultimo)) p.telefono = telefono;
+    if (quando <= p.primo) p.primo = quando;
+    if (quando >= p.ultimo) { p.ultimo = quando; p.oggetto = oggetto; p.link = link; }
+  };
+  (lista.threads || []).forEach((t) => {
+    let th;
+    try { th = Gmail.Users.Threads.get("me", t.id, { format: "full" }); } catch (e) { Logger.log("Rubrica: conversazione " + t.id + " non letta: " + e.message); return; }
+    const link = "https://mail.google.com/mail/?authuser=" + encodeURIComponent(account) + "#all/" + t.id;
+    (th.messages || []).forEach((msg) => {
+      const h = (nome) => ((msg.payload.headers || []).find((x) => x.name.toLowerCase() === nome) || {}).value || "";
+      const quando = new Date(Number(msg.internalDate)).toISOString(), oggetto = h("subject").slice(0, 200);
+      const da = indirizzi(h("from"))[0];
+      if (da && mie.indexOf(da.email) !== -1) indirizzi(h("to") + "," + h("cc")).forEach((a) => aggiungi(a, quando, oggetto, link, ""));
+      else if (da) aggiungi(da, quando, oggetto, link, telefonoFirma(corpoTesto(msg.payload) || msg.snippet || ""));
+    });
+  });
+  const items = Object.keys(persone).map((k) => persone[k]);
+  for (let i = 0; i < items.length; i += 100) rpc(cfg, "sync_rubrica_push", { p_items: items.slice(i, i + 100) });
+  if (primaVolta) {
+    if (lista.nextPageToken) mem.setProperty("RUBRICA_PAGINA", lista.nextPageToken);
+    else { mem.deleteProperty("RUBRICA_PAGINA"); mem.setProperty("RUBRICA_FINE", "1"); }
+  }
+  mem.setProperty("RUBRICA_ULTIMA", String(Date.now()));
+  Logger.log("Rubrica: " + (lista.threads || []).length + " conversazioni lette, " + items.length + " contatti mandati all'app" + (primaVolta ? (lista.nextPageToken ? " (prima lettura: continua al prossimo giro)" : " (prima lettura finita)") : ""));
+}
+// il primo cellulare (o un fisso con «tel») nella parte nuova dell'email, senza il testo citato delle risposte
+function telefonoFirma(testo) {
+  const nuovo = String(testo).split(/\n\s*(?:Il .{3,120}ha scritto:|On .{3,120}wrote:|-{2,}\s*(?:Messaggio originale|Original Message)|Da:\s|From:\s)/i)[0]
+    .split("\n").filter((r) => !/^\s*>/.test(r)).join("\n");
+  const cell = nuovo.match(/(?:\+39[\s.]?)?\b3\d{2}[\s.\/-]?\d{3}[\s.-]?\d{3,4}\b/);
+  if (cell) return cell[0].trim();
+  const fisso = nuovo.match(/\b(?:tel|telefono|tel\.)\s*[:.]?\s*((?:\+39[\s.]?)?0\d{1,3}[\s.\/-]?\d{5,8})\b/i);
+  return fisso ? fisso[1].trim() : "";
+}
+// da eseguire a mano: legge subito un blocco di posta (la prima volta riparte dall'inizio) e scrive nel log cosa trova
+function provaRubrica() {
+  const cfg = leggiImpostazioni(), mem = PropertiesService.getUserProperties();
+  Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("rubrica") === -1 ? "  ← manca «+rubrica»: la lettura automatica non partirà" : ""));
+  leggiRubrica(cfg, mem, !mem.getProperty("RUBRICA_FINE"));
+  Logger.log(JSON.stringify(["Mario Rossi\nCoro San Biagio\ncell. 347 123 4567", "Grazie!\n\nIl giorno lun 3 nov, Sala ha scritto:\n> 333 0000000", "Tel. 049 9365111"].map(telefonoFirma)));
 }
 
 /* ---------------- prova manuale ---------------- */

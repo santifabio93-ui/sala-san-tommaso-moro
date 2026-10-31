@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.63";
+const VERSIONE = "2026-11-01.64";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -215,6 +215,9 @@ async function loadAll() {
     const rb = S.canWrite ? await sb.from("rubrica").select("*") : { data: null };
     S.rubrica = rb.data || [];
     S.loadErr2.rubrica = rb.error && (rb.error.message || "errore");
+    const rm = S.canWrite && !rb.error ? await sb.from("rubrica_mail").select("*").order("ultimo", { ascending: false }).limit(5000) : { data: null };
+    S.rubricaMail = rm.data || [];
+    S.loadErr2.rubricaMail = rm.error && (rm.error.message || "errore");
     const sd = S.staff ? await sb.from("social_domande").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
     S.socialDomande = sd.data || [];
     S.loadErr2.socialDomande = sd.error && (sd.error.message || "errore");
@@ -251,7 +254,7 @@ async function loadAll() {
       S.preventivo = st.data.preventivo || {};
       S.sasContatti = Array.isArray(st.data.sas_contatti) ? st.data.sas_contatti : [];
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file, sas: st.data.sync_sas };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file, sas: st.data.sync_sas, rubrica: st.data.sync_rubrica };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
@@ -3364,7 +3367,7 @@ function collegaFoglietto(root) {
 }
 
 /* ---------- rubrica: i contatti di chi ha avuto a che fare con la sala ---------- */
-const CATEGORIE = ["Organizzatore", "Associazione", "Scuola", "Comune ed enti", "Parrocchia", "Artista", "Tecnico", "Fornitore", "Distributore", "Volontario", "Richiesta di informazioni", "Altro"];
+const CATEGORIE = ["Organizzatore", "Associazione", "Scuola", "Comune ed enti", "Parrocchia", "Artista", "Tecnico", "Fornitore", "Distributore", "Volontario", "Richiesta di informazioni", "Contatto email", "Altro"];
 const soloCifre = (t) => { let d = String(t || "").replace(/\D/g, "").replace(/^00/, ""); if (/^39\d{9,10}$/.test(d)) d = d.slice(2); return d.length >= 6 ? d : ""; };
 const mailPulita = (m) => { const x = String(m || "").trim().toLowerCase(); return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x) ? x : ""; };
 const nomePulito = (n) => String(n || "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -3375,9 +3378,11 @@ function contattiSala() {
     const tel = soloCifre(x.telefono), mail = mailPulita(x.email), nome = String(x.nome || "").trim().replace(/\s+/g, " ");
     if (!tel && !mail && !nome) return;
     const chiavi = [tel && "tel:" + tel, mail && "mail:" + mail, !tel && !mail && nome && "nome:" + nomePulito(nome) + "|" + nomePulito(x.ente)].filter(Boolean);
-    let c = chiavi.map((k) => perChiave.get(k)).find(Boolean);
+    // stesso nome e cognome = stessa persona (es. sopralluogo con il telefono ed email con l'indirizzo)
+    const nn = nome.includes(" ") ? "nn:" + nomePulito(nome) : "";
+    let c = [...chiavi, nn].filter(Boolean).map((k) => perChiave.get(k)).find(Boolean);
     if (!c) { c = { chiave: chiavi[0], nome: "", ente: "", telefoni: [], email: [], ruoli: new Set(), storia: [], ultimo: "" }; out.push(c); }
-    chiavi.forEach((k) => perChiave.set(k, c));
+    [...chiavi, nn].filter(Boolean).forEach((k) => perChiave.has(k) || perChiave.set(k, c));
     if (nome && (!c.nome || c.nome === c.nome.toUpperCase())) c.nome = nome;
     if (x.ente && !c.ente) c.ente = String(x.ente).trim();
     if (x.telefono && tel && !c.telefoni.some((t) => soloCifre(t) === tel)) c.telefoni.push(String(x.telefono).trim());
@@ -3399,6 +3404,8 @@ function contattiSala() {
   for (const x of S.sopralluoghi || []) add({ nome: x.nome, ente: x.ente, telefono: x.telefono, email: x.email, ruolo: "Richiesta di informazioni", storia: { k: "s:" + x.id, data: x.data, testo: `Sopralluogo${x.evento ? ": " + x.evento : ""}`, b: x.booking_id } });
   for (const v of S.volontari || []) add({ nome: v.nome, telefono: v.cellulare, ruolo: "Volontario" });
   for (const c of S.sasContatti || []) add({ nome: c.nome, email: c.email, ente: "SAS", ruolo: "Distributore" });
+  // le persone con cui la sala ha scambiato email (script Google, «+rubrica»)
+  for (const m of S.rubricaMail || []) add({ nome: m.nome, email: m.email, telefono: m.telefono, ruolo: "Contatto email", storia: m.ultimo ? { k: "m:" + m.email, data: String(m.ultimo).slice(0, 10), testo: "Email: " + (m.oggetto || "(senza oggetto)"), link: m.link } : null });
   // correzioni e contatti a mano
   // ogni riga salvata si ritrova per chiave, telefono o email (così un contatto aggiunto a mano si unisce a quello trovato)
   const salvati = new Map((S.rubrica || []).map((r) => [r.chiave, r])), indice = new Map();
@@ -3425,7 +3432,7 @@ function renderRubrica() {
   const conta = (k) => visibili.filter((c) => c.categoria === k).length;
   const mostrati = lista.slice(0, S.rbTanti ? 2000 : 80);
   el.innerHTML = (S.loadErr2?.rubrica ? el.innerHTML : "") + `
-    <div class="toolbar"><div><h2>Rubrica della sala</h2><span class="hint">${visibili.length} contatti: chi ha prenotato, scritto, fatto un sopralluogo o compilato una scheda, i volontari e quelli aggiunti a mano</span></div>
+    <div class="toolbar"><div><h2>Rubrica della sala</h2><span class="hint">${visibili.length} contatti: chi ha prenotato, scritto alla sala, fatto un sopralluogo o compilato una scheda, i volontari e quelli aggiunti a mano</span></div>
       <div class="actions"><button class="btn primary" type="button" id="rb-nuovo"${S.loadErr2?.rubrica ? " disabled" : ""}>+ Nuovo contatto</button><button class="btn" type="button" id="rb-csv">Esporta (Excel)</button></div></div>
     <div class="rb-barra"><input type="search" id="rb-q" placeholder="Cerca nome, associazione, telefono, evento…" value="${esc(S.rbQ || "")}" aria-label="Cerca nella rubrica">
       <select id="rb-cat" aria-label="Categoria"><option value="">Tutte le categorie</option>${CATEGORIE.filter(conta).map((k) => `<option${k === cat ? " selected" : ""}>${esc(k)}</option>`).join("")}</select>
@@ -3437,7 +3444,7 @@ function renderRubrica() {
       ${lista.length > mostrati.length ? `<p style="text-align:center"><button class="btn" type="button" id="rb-tutti">Mostra tutti (${lista.length})</button></p>` : ""}`
       : `<div class="empty">${q || cat ? "Nessun contatto con questa ricerca." : "Ancora nessun contatto."}</div>`}
     <p class="hint" style="margin-top:12px">${S.rbNascosti ? `<button class="linkbtn" type="button" id="rb-nasc">← Torna alla rubrica</button>` : tutti.some((c) => c.nascosto) ? `<button class="linkbtn" type="button" id="rb-nasc">Contatti nascosti (${tutti.filter((c) => c.nascosto).length})</button>` : ""}
-      I contatti si aggiornano da soli con le nuove prenotazioni, schede, email e sopralluoghi. Sono dati personali: usali solo per le attività della sala.</p>`;
+      I contatti si aggiornano da soli con le nuove prenotazioni, schede, email e sopralluoghi${(S.rubricaMail || []).length ? `, e con la posta della sala (${S.rubricaMail.length} persone)` : ". Per aggiungere le persone con cui la sala ha scambiato email, aggiungi «+rubrica» alla MODALITA dello script Google della sala"}. Sono dati personali: usali solo per le attività della sala.</p>`;
   const q1 = $("#rb-q"); q1.oninput = () => { S.rbQ = q1.value; S.rbTanti = false; const pos = q1.selectionStart; renderRubrica(); const n = $("#rb-q"); n.focus(); n.setSelectionRange(pos, pos); };
   $("#rb-cat").onchange = (e) => { S.rbCat = e.target.value; renderRubrica(); };
   $("#rb-ord").onchange = (e) => { S.rbOrd = e.target.value; renderRubrica(); };
@@ -3467,7 +3474,7 @@ function apriContatto(c) {
   const trovato = c && !c.aMano;
   $("#rb-telefono").readOnly = $("#rb-email").readOnly = !!(trovato && (c.telefoni.length || c.email.length));
   $("#rb-trovato").textContent = trovato ? `Trovato dall'app: ${c.ruoli.join(", ").toLowerCase() || "contatto"}. Nome, ente, categoria e note si possono correggere qui.` : "";
-  $("#rb-storia").innerHTML = c && c.storia.length ? `<h4 style="margin:12px 0 4px">Con la sala (${c.storia.length})</h4>${c.storia.map((s) => `<div class="todo-riga"><div><b>${esc(fmtShort(s.data))}</b> ${esc(s.testo)}</div>${s.b && S.bookings.some((x) => x.id === s.b) ? `<div class="az"><button class="btn ghost sm" type="button" data-rb-b="${esc(s.b)}">Apri</button></div>` : ""}</div>`).join("")}` : "";
+  $("#rb-storia").innerHTML = c && c.storia.length ? `<h4 style="margin:12px 0 4px">Con la sala (${c.storia.length})</h4>${c.storia.map((s) => `<div class="todo-riga"><div><b>${esc(fmtShort(s.data))}</b> ${esc(s.testo)}</div>${s.b && S.bookings.some((x) => x.id === s.b) ? `<div class="az"><button class="btn ghost sm" type="button" data-rb-b="${esc(s.b)}">Apri</button></div>` : s.link && /^https:\/\/mail\.google\.com\//.test(s.link) ? `<div class="az"><a class="btn ghost sm" href="${esc(s.link)}" target="_blank" rel="noopener">Apri l'email</a></div>` : ""}</div>`).join("")}` : "";
   $("#rb-storia").querySelectorAll("[data-rb-b]").forEach((b) => (b.onclick = () => { dlgRb.close(); openBooking(S.bookings.find((x) => x.id === b.dataset.rbB)); }));
   $("#rb-nascondi").hidden = !c; $("#rb-nascondi").textContent = c && c.nascosto ? "Rimetti nella rubrica" : c && c.aMano ? "Elimina" : "Nascondi dalla rubrica";
   $("#rb-prenota").hidden = !c;
@@ -4350,7 +4357,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
-    ["034_rubrica.sql", "Rubrica della sala", !manca(e2.rubrica)],
+    ["034_rubrica.sql", "Rubrica della sala (anche i contatti della posta)", !manca(e2.rubrica) && !manca(e2.rubricaMail), "Per i contatti della posta: ricopia lo script Google (2026-11-03.1) e aggiungi «+rubrica» alla MODALITA dell'account della sala"],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
     ["functions/leggi-locandina", "Lettura delle locandine con Claude (funzione Supabase + chiave di Anthropic)", undefined, "Facoltativa: istruzioni nel README, sezione «Locandine lette da Claude». Senza, le locandine si caricano lo stesso", true],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
@@ -4379,6 +4386,7 @@ function lettureScript() {
     ["Borderò C1", s.c1, 24 * 10, "c1"],
     ["Prima nota", s.primaNota, 24 * 14, "primanota"],
     ["Email del SAS", s.sas, 6, "sas"],
+    ...(s.rubrica ? [["Contatti della posta (rubrica)", s.rubrica, 24, "rubrica"]] : []),
   ].map(([cosa, quando, ore, modo]) => ({ cosa, quando, modo, stato: !quando ? "mai" : (Date.now() - new Date(quando)) / 36e5 > ore ? "vecchia" : "ok" }));
 }
 // controlli che richiedono una chiamata: spazio file della SIAE e funzione del calendario dell'app
