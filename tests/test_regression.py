@@ -5,6 +5,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -93,6 +94,7 @@ class Regression(unittest.TestCase):
         self.booking_ids = []
         self.volunteer_ids = []
         self.expense_ids = []
+        self.request_ids = []
         self.context = self.browser.new_context()
         self.errors = []
         self.context.on('page', lambda page: page.on('pageerror', lambda error: self.errors.append(str(error))))
@@ -105,6 +107,8 @@ class Regression(unittest.TestCase):
 
     def tearDown(self):
         self.context.close()
+        for rid in self.request_ids:
+            ok(api('/rest/v1/richieste?id=eq.' + rid, 'DELETE', service=True))
         for bid in self.booking_ids:
             ok(api('/rest/v1/schede?booking_id=eq.' + bid, 'DELETE', service=True))
             ok(api('/rest/v1/eventi_info?chiave=eq.b:' + bid, 'DELETE', service=True))
@@ -262,6 +266,7 @@ class Regression(unittest.TestCase):
         expect(page.locator('#evento-body')).not_to_contain_text('Referente riservato')
         expect(page.locator('#evento-body')).not_to_contain_text('Nota riservata')
         expect(page.locator('[data-event-action="edit"]')).to_have_count(0)
+        expect(page.locator('[data-event-action="quote"]')).to_have_count(0)
 
     def test_event_unavailable_data_is_not_shown_as_complete(self):
         b = self.booking()
@@ -285,6 +290,116 @@ class Regression(unittest.TestCase):
         expect(page.locator('#evento-prossime')).to_have_count(0)
         page.goto('http://127.0.0.1:8765/#evento/' + str(uuid4()))
         expect(page.locator('#evento-body')).to_contain_text('Evento non disponibile')
+
+    def test_quote_tariffs_supplements_and_vat_do_not_change_booking(self):
+        b = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH',
+               {'referente': 'Cliente prova', 'tariffa': {'spazio': 'galleria', 'biglietteria': True}}, service=True))
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        page.locator('[data-event-action="quote"]').click()
+        expect(page.locator('#qa-modo')).to_have_value('concordato')
+        expect(page.locator('#qa-preview')).to_contain_text('500,00')
+        page.locator('#qa-modo').select_option('tariffa')
+        expect(page.locator('#qa-preview')).to_contain_text('588,00')
+        expect(page.locator('#qa-preview')).to_contain_text('88,00')
+        expect(page.locator('#qa-differenza')).to_contain_text('500,00')
+        page.locator('#qa-commerciale').check()
+        expect(page.locator('#qa-preview')).to_contain_text('688,00')
+        page.locator('#qa-close').click()
+        page.locator('[data-event-action="quote"]').click()
+        expect(page.locator('#qa-commerciale')).to_be_checked()
+        expect(page.locator('#qa-preview')).to_contain_text('688,00')
+        record = ok(api('/rest/v1/bookings?id=eq.' + b['id'], service=True))[0]
+        self.assertEqual(record['prezzo'], 500)
+        self.assertEqual(record['incassato'], 0)
+        self.assertNotIn('commerciale', record['tariffa'])
+        page.locator('#qa-close').click()
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'prezzo': 600}, service=True))
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+        expect(page.locator('#evento-pagamenti')).to_contain_text('600')
+        page.locator('[data-event-action="quote"]').click()
+        expect(page.locator('#qa-preview')).to_contain_text('688,00')
+        expect(page.locator('#qa-differenza')).to_contain_text('600,00')
+
+    def test_quote_vat_can_include_supplements(self):
+        settings = ok(api('/rest/v1/settings?id=eq.1', service=True))[0]
+        tariffs = {**settings['tariffe'], 'iva_supplementi': True}
+        try:
+            ok(api('/rest/v1/settings?id=eq.1', 'PATCH', {'tariffe': tariffs}, service=True))
+            b = self.booking()
+            ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'referente': 'Cliente prova',
+                   'tariffa': {'spazio': 'galleria', 'biglietteria': True}}, service=True))
+            page = self.login()
+            page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+            page.locator('[data-event-action="quote"]').click()
+            page.locator('#qa-modo').select_option('tariffa')
+            expect(page.locator('#qa-preview')).to_contain_text('110,00')
+            expect(page.locator('#qa-preview')).to_contain_text('610,00')
+        finally:
+            ok(api('/rest/v1/settings?id=eq.1', 'PATCH', {'tariffe': settings['tariffe']}, service=True))
+
+    def test_quote_prints_pdf_without_private_notes(self):
+        b = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {
+            'referente': 'Cliente PDF', 'note': 'NOTA-INTERNA-RISERVATA', 'incassato': 150}, service=True))
+        self.context.add_init_script('window.print = () => { window.printCalled = true; };')
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        page.locator('[data-event-action="quote"]').click()
+        expect(page.locator('#qa-destinatario')).to_have_value('Cliente PDF')
+        page.locator('#qa-condizioni').fill('Condizione concordata per il test.\nSeconda riga.')
+        page.locator('#qa-note').fill('<script>window.evil=true</script> Testo da stampare')
+        expect(page.locator('#qa-preview')).not_to_contain_text('NOTA-INTERNA-RISERVATA')
+        with self.context.expect_page() as opened:
+            page.locator('#qa-print').click()
+        popup = opened.value
+        expect(popup.locator('h1')).to_have_text('Preventivo utilizzo sala')
+        expect(popup.locator('body')).to_contain_text('Cliente PDF')
+        expect(popup.locator('body')).to_contain_text('500,00')
+        expect(popup.locator('body')).to_contain_text('Seconda riga.')
+        expect(popup.locator('body')).not_to_contain_text('NOTA-INTERNA-RISERVATA')
+        self.assertIsNone(popup.evaluate('window.evil'))
+        self.assertTrue(popup.evaluate('window.printCalled'))
+        pdf = popup.pdf(format='A4', print_background=True)
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertGreater(len(pdf), 5000)
+        if os.environ.get('SALA_QUOTE_PDF'):
+            Path(os.environ['SALA_QUOTE_PDF']).write_bytes(pdf)
+        if os.environ.get('SALA_QUOTE_SCREENSHOT'):
+            page.set_viewport_size({'width': 390, 'height': 844})
+            page.locator('#sipario').wait_for(state='detached', timeout=10000)
+            self.assertTrue(page.locator('#dlg-preventivo-affitto').evaluate('(el) => el.scrollWidth <= el.clientWidth'))
+            page.screenshot(path=os.environ['SALA_QUOTE_SCREENSHOT'], full_page=True)
+
+    def test_quote_from_request_requires_missing_data_and_valid_amounts(self):
+        request = ok(api('/rest/v1/richieste', 'POST', {'account': 'test@example.test', 'thread_id': uuid4().hex,
+            'mittente': 'Cliente email', 'mittente_email': 'cliente@example.test', 'oggetto': 'Richiesta sala per incontro',
+            'testo': 'Testo originale non destinato al preventivo'}, service=True))[0]
+        self.request_ids.append(request['id'])
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#richieste')
+        page.locator('[data-preventivo-richiesta="' + request['id'] + '"]').click()
+        expect(page.locator('#qa-destinatario')).to_have_value('Cliente email')
+        expect(page.locator('#qa-condizioni')).to_have_value(re.compile('.*scheda tecnica.*', re.S))
+        expect(page.locator('#qa-print')).to_be_disabled()
+        page.locator('#qa-data').fill(DAY)
+        page.locator('#qa-inizio').fill('18:00')
+        page.locator('#qa-fine').fill('22:00')
+        page.locator('#qa-spazio').select_option('platea')
+        expect(page.locator('#qa-preview')).to_contain_text('610,00')
+        expect(page.locator('#qa-print')).to_be_enabled()
+        page.locator('#qa-modo').select_option('concordato')
+        page.locator('#qa-importo').fill('-10')
+        expect(page.locator('#qa-print')).to_be_disabled()
+        page.locator('#qa-importo').fill('125.50')
+        expect(page.locator('#qa-preview')).to_contain_text('125,50')
+        expect(page.locator('#qa-print')).to_be_enabled()
+        page.locator('#qa-validita').fill('2020-01-01')
+        expect(page.locator('#qa-print')).to_be_disabled()
+        record = ok(api('/rest/v1/richieste?id=eq.' + request['id'], service=True))[0]
+        self.assertIsNone(record['booking_id'])
+        self.assertEqual(record['stato'], 'nuova')
 
     def test_signup_is_idempotent_and_invalid_link_rejected(self):
         b = self.booking()

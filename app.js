@@ -1,9 +1,10 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { schedaEvento } from "./evento.js?v=2026-11-01.81";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.82";
+import { schedaEvento } from "./evento.js?v=2026-11-01.82";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.81";
+const VERSIONE = "2026-11-01.82";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -65,6 +66,7 @@ const MENU = [
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese", turni: "Turni", volontari: "Volontari" };
 const canSee = (k) => (S.postazione ? k === "cassa" : k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
+const apriPreventivo = creaPreventivi({ getState: () => S, calcolaTariffa, esc, iso, fmtDay });
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
 
 const S = {
@@ -588,6 +590,7 @@ function renderEvento() {
   root.querySelectorAll("[data-event-action]").forEach((button) => { button.onclick = () => {
     const action = button.dataset.eventAction;
     if (["edit", "payment"].includes(action) && S.canWrite) { openBooking(b); if (action === "payment") $("#b-incassato").focus(); }
+    else if (action === "quote" && S.canWrite) apriPreventivo(b);
     else if (action === "document" && S.canWrite) { const s = schedaDi(b); if (s) apriScheda(s.id); }
     else if (action === "send-document" && S.canWrite) inviaScheda(b.id, schedaDi(b)?.id);
     else if (action === "shifts") location.hash = "turni/" + b.id;
@@ -760,6 +763,7 @@ function renderRequests() {
       <div class="btns">
         ${r.stato === "nuova" ? `<button class="btn primary sm" type="button" data-conv="${esc(r.id)}">Crea prenotazione</button><button class="btn sm" type="button" data-sopr="${esc(r.id)}">Fissa sopralluogo</button><button class="btn sm" type="button" data-skip="${esc(r.id)}">Scarta</button>` : ""}
         ${r.stato === "scartata" ? `<button class="btn sm" type="button" data-back="${esc(r.id)}">Rimetti tra quelle da gestire</button>` : ""}
+        ${S.canWrite ? `<button class="btn sm" type="button" data-preventivo-richiesta="${esc(r.id)}">Prepara preventivo</button>` : ""}
         ${linked ? `<button class="btn sm" type="button" data-open="${esc(linked.id)}">Apri prenotazione</button>` : ""}
         ${r.link ? `<a class="btn ghost sm" href="${esc(r.link)}" target="_blank" rel="noopener">Apri in Gmail</a>` : ""}
       </div>
@@ -768,6 +772,11 @@ function renderRequests() {
   const setState = async (id, stato, msg) => { try { await run(sb.from("richieste").update({ stato }).eq("id", id), msg); } catch (e) { toast(errText(e)); } };
   el.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.skip, "scartata", "Richiesta scartata"); }));
   el.querySelectorAll("[data-back]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.back, "nuova", "Richiesta rimessa tra quelle da gestire"); }));
+  el.querySelectorAll("[data-preventivo-richiesta]").forEach((button) => { button.onclick = () => {
+    const r = S.requests.find((x) => x.id === button.dataset.preventivoRichiesta);
+    const b = r && S.bookings.find((x) => x.id === r.booking_id);
+    if (r) apriPreventivo(b || { titolo: r.oggetto, referente: r.mittente, email: r.mittente_email, data: r.data_proposta, inizio: hm(r.ora_proposta), fine: "" }, "richiesta:" + r.id);
+  }; });
   el.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => { location.hash = "evento/" + b.dataset.open; }));
   el.querySelectorAll("[data-sopr]").forEach((b) => (b.onclick = () => {
     const r = S.requests.find((x) => x.id === b.dataset.sopr);

@@ -72,3 +72,14 @@ vista volontario, eventi annullati o inesistenti e servizi temporaneamente non
 disponibili. La vista mobile è controllata a 390 px per evitare scorrimento
 orizzontale. Per salvare uno screenshot di prova, impostare `SALA_SCREENSHOT`
 a un percorso locale durante l’esecuzione.
+
+## Preventivo per affitti
+
+I test verificano l’IVA sul solo spazio e sui supplementi, la conservazione
+dell’importo concordato, le differenze con le tariffe attuali, la riapertura
+della bozza, le richieste email con dati incompleti e il blocco di importi negativi
+o validità incoerenti. La stampa viene aperta in un popup reale e viene generato
+un PDF con Chromium, verificando che non contenga note interne o script eseguibili.
+I controlli confermano che prenotazioni, incassi e richieste non vengano modificati.
+Per conservare gli artefatti della prova impostare `SALA_QUOTE_PDF` e, per la vista
+mobile, `SALA_QUOTE_SCREENSHOT` a percorsi locali.
