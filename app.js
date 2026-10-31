@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.71";
+const VERSIONE = "2026-11-01.72";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1560,7 +1560,15 @@ function renderBilancio() {
   const catU = [...raggruppa(list.filter((r) => r.uscite), "categoria").entries()].map(([nome, rs]) => ({ nome, v: sommaU(rs) })).filter((c) => c.v > 0).sort((a, b) => b.v - a.v);
   const catE = [...raggruppa(list.filter((r) => r.entrate), "categoria").entries()].map(([nome, rs]) => ({ nome, v: sommaE(rs) })).sort((a, b) => b.v - a.v);
   // eventi
-  const spettEvento = (ev) => { const ne = normT(ev); return c1Anno.filter((c) => { const nt = normT(c.titolo); return nt.length >= 4 && (ne.includes(nt) || nt.includes(ne)); }).reduce((s, c) => s + c.spettatori, 0); };
+  // spettatori di un evento: prima dalla prima nota («STM 171 Biglietti…», «biglietti 46», «presenze 87» nelle righe degli incassi),
+  // altrimenti dai C1 con lo stesso titolo nei giorni dei suoi movimenti (una settimana prima o dopo)
+  const bigliettiRiga = (r) => { const m = `${r.note || ""} ${r.descrizione || ""}`.match(/(\d{1,4})\s*(?:biglietti|presenze|spettatori)|(?:biglietti|presenze|spettatori)\s*(\d{1,4})\b/i); return m ? +(m[1] || m[2]) : 0; };
+  const spettEvento = (ev, rs) => {
+    const daPn = rs.filter((r) => r.entrate > 0).reduce((s, r) => s + bigliettiRiga(r), 0);
+    if (daPn) return daPn;
+    const ne = normT(String(ev).replace(/\(.*?\)/g, " ")), giorni = rs.map((r) => r.data).sort(), dal = addDays(giorni[0], -7), al = addDays(giorni[giorni.length - 1], 7);
+    return c1Anno.filter((c) => { const nt = normT(c.titolo); return c.data >= dal && c.data <= al && nt.length >= 6 && ne.length >= 6 && (ne.includes(nt) || nt.includes(ne)); }).reduce((s, c) => s + c.spettatori, 0);
+  };
   // un evento che deve ancora svolgersi ha già i costi (es. il noleggio pagato in anticipo) ma non ancora gli incassi:
   // non è «in perdita». La data si cerca nel nome («(08/11)»), poi nelle proiezioni e nelle prenotazioni con lo stesso titolo;
   // senza la data nel nome, se ci sono già spettatori nei C1 con quel titolo l'evento è cominciato.
@@ -1574,7 +1582,7 @@ function renderBilancio() {
     if (date.length) return { data: date[0] }; // la prima data: se è già passata, l'evento è iniziato
     return { data: rs.every((r) => /previst/i.test(r.tipo_movimento)) ? "9999-12-31" : "" };
   };
-  const eventi = [...raggruppa(list.filter((r) => r.evento), "evento").entries()].map(([nome, rs]) => { const e = sommaE(rs), u = sommaU(rs), sp = spettEvento(nome), q = quandoEvento(nome, rs), quando = q.data;
+  const eventi = [...raggruppa(list.filter((r) => r.evento), "evento").entries()].map(([nome, rs]) => { const e = sommaE(rs), u = sommaU(rs), sp = spettEvento(nome, rs), q = quandoEvento(nome, rs), quando = q.data;
     return { nome, settore: rs[0].settore, e, u, m: r2(e - u), sp, data: rs[0].data, quando, futuro: !!quando && quando >= TODAY && (q.certa || !sp) }; }).sort((a, b) => a.futuro - b.futuro || b.m - a.m);
   const fatti = eventi.filter((x) => !x.futuro), daFare = eventi.length - fatti.length;
   const inPerdita = fatti.filter((x) => x.m < 0);
