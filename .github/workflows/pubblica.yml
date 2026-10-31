@@ -34,7 +34,7 @@ jobs:
           mkdir _site
           rsync -a \
             --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'node_modules' \
-            --exclude 'supabase' --exclude 'google-apps-script' \
+            --exclude 'supabase' --exclude 'google-apps-script' --exclude 'tests' \
             --exclude '*.md' --exclude 'LICENSE' --exclude '.gitignore' --exclude '.DS_Store' \
             ./ _site/
 
