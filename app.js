@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.66";
+const VERSIONE = "2026-11-01.67";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1585,7 +1585,8 @@ function renderBilancio() {
     incCinema > 0 && `<div class="insight"><span class="k">Cinema</span>Il noleggio dei film pesa il <b>${pct(noleggio / incCinema)}</b> degli incassi del cinema; SIAE e commissioni POS e online il <b>${pct((siae + comm) / (Ebig || 1))}</b> della biglietteria.</div>`,
     spett > 0 && margSpett > 0 && struttMese > 0 && `<div class="insight"><span class="k">Punto di pareggio</span>Ogni spettatore lascia in media <b>${money(r2(margSpett))}</b> di margine: per coprire da soli i costi della struttura servirebbero circa <b>${Math.round(struttMese / margSpett)}</b> spettatori al mese (oggi ${Math.round(spett / mesiTrascorsi)}).</div>`,
     cumul[minI] < 0 && `<div class="insight"><span class="k">Liquidità</span>Il saldo cumulato tocca il minimo a <b>${esc(parse(mesi[minI].k + "-01").toLocaleDateString("it-IT", { month: "long" }))}</b> (${money(cumul[minI])}): conviene tenere una riserva per quel periodo.</div>`,
-    inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${fatti.length} già svolti chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.${daFare ? ` ${daFare === 1 ? "Non conto l'evento che deve ancora svolgersi: ha già dei costi ma non ancora gli incassi." : `Non conto i ${daFare} eventi che devono ancora svolgersi: hanno già dei costi ma non ancora gli incassi.`}` : ""}</div>`,
+    inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${fatti.length} già svolti chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.${daFare ? ` ${daFare === 1 ? "Non conto l'evento che deve ancora svolgersi: ha già dei costi ma non ancora gli incassi." : `Non conto i ${daFare} eventi che devono ancora svolgersi: hanno già dei costi ma non ancora gli incassi.`}` : ""}
+      <details class="perdite"><summary>Vedi quali sono</summary><ul>${inPerdita.slice().reverse().map((x) => `<li><span>${esc(x.nome)}${x.settore ? ` <small>${esc(x.settore)}</small>` : ""}</span><b class="neg">${money(x.m)}</b></li>`).join("")}</ul></details></div>`,
   ].filter(Boolean).join("");
 
   const settori = [...new Set(list.map((r) => r.settore))].sort();

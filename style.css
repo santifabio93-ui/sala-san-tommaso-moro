@@ -798,3 +798,6 @@ nav.tabs { position: relative }
 .rb-scheda { display: grid; gap: 6px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--sunk); font-size: .92rem }
 .rb-scheda > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px } .rb-scheda span { color: var(--muted); font-weight: 600 } .rb-scheda > div > div { overflow-wrap: anywhere }
 @media (max-width: 480px) { .rb-scheda > div { grid-template-columns: minmax(0, 1fr); gap: 0 } }
+.perdite { margin-top: 8px } .perdite summary { cursor: pointer; font-weight: 700; color: var(--accent) }
+.perdite ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px }
+.perdite li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line) } .perdite li small { color: var(--muted); margin-left: 4px } .perdite li b { white-space: nowrap }
