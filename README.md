@@ -377,6 +377,15 @@ nel riquadro e in Oggi. «Rinnova il link» lo cambia se gira troppo. In alto il
 e gli addetti alle pulizie (dal loro link); chi le compra tocca «Preso ✓». Le scorte da comprare compaiono in Oggi. Serve lo script `024_pulizie.sql`. I nomi dei
 referenti, i telefoni e gli incassi non compaiono.
 
+## Info per i social
+
+Un link solo per chi cura i social (`modulo/social.html`, senza account): per ogni film, spettacolo, evento della Sala
+e serata del Comune dei prossimi due mesi mostra date e orari, ingresso (dal prezzo di Cinebot o scritto a mano),
+regista (anche dalle richieste al SAS), collaborazioni, descrizione, note, distributore, locandina, link dei biglietti
+e cartella dei materiali, con il bottone «Copia tutte le info». Gli affitti privati non compaiono. Il link si manda dal
+riquadro «Info per i social» nella pagina Sito web, dove si completano anche le informazioni di ogni evento («Completa»
+mostra cosa manca). «Rinnova il link» lo cambia se gira troppo. Serve lo script `033_info_social.sql`.
+
 ## Film e altri spettacoli
 
 Su Cinebot si vendono anche teatro, danza, concerti e incontri: non tutto è un film. Lo script Google porta da Cinebot

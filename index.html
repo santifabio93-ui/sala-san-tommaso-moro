@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.51">
+<link rel="stylesheet" href="style.css?v=2026-11-01.52">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -388,6 +388,23 @@
   </form>
 </dialog>
 
+<dialog id="dlg-social">
+  <form class="dlg" id="social-form" novalidate>
+    <div class="dlg-head"><h2 id="soc-head">Info per i social</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" id="soc-sotto" style="margin:0"></p>
+    <div class="form">
+      <div class="field h"><label for="soc-regista">Regista</label><input id="soc-regista" maxlength="200"></div>
+      <div class="field h"><label for="soc-collaborazioni">In collaborazione con</label><input id="soc-collaborazioni" maxlength="300" placeholder="Es. associazione, scuola, Comune, sponsor da taggare"></div>
+      <div class="field h"><label for="soc-ingresso">Ingresso</label><input id="soc-ingresso" maxlength="200"></div>
+      <div class="field"><label for="soc-descrizione">Descrizione</label><textarea id="soc-descrizione" maxlength="3000" placeholder="Due righe sull'evento, da usare nel post"></textarea></div>
+      <div class="field"><label for="soc-note">Note per i social</label><textarea id="soc-note" maxlength="1500" placeholder="Es. ospiti da taggare, hashtag, cose da dire o da non dire, quando pubblicare"></textarea></div>
+      <div class="field h"><label for="soc-materiali">Cartella dei materiali</label><input id="soc-materiali" type="url" inputmode="url" maxlength="500" placeholder="https://drive.google.com/… (locandina, trailer, foto)"></div>
+    </div>
+    <div id="soc-error"></div>
+    <div class="dlg-foot"><span class="hint">Lo vedono subito nel loro link.</span><div class="right"><button class="btn" type="button" data-close>Annulla</button><button class="btn primary" type="submit">Salva</button></div></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-copy">
   <div class="dlg">
     <div class="dlg-head"><h2>Testo da condividere</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
@@ -681,7 +698,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.51"></script>
-<script type="module" src="app.js?v=2026-11-01.51"></script>
+<script src="config.js?v=2026-11-01.52"></script>
+<script type="module" src="app.js?v=2026-11-01.52"></script>
 </body>
 </html>

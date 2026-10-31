@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.51";
+const VERSIONE = "2026-11-01.52";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -70,7 +70,7 @@ const S = {
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
   sopralluoghi: [], sopFilter: "prossimi", editingSop: null, sopFromRequest: null,
   films: [], proiezioni: [], filmFilter: "prossimi", editingFilm: null, draftPr: [],
-  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], catalogo: [], richiesteFilm: [], sasEmail: [], programmazione: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, sitoNascosti: false, sitoSel: {},
+  c1: [], c1Year: new Date().getFullYear(), c1Mode: "serate", c1Open: null, stPeriod: "12m", primaNota: [], pnYear: new Date().getFullYear(), pnComp: "competenza", pnSett: "", pnQ: "", pnTutti: false, donatori: [], dnYear: new Date().getFullYear(), dnQ: "", editingDon: null, conv: { inizio: null, serate: 25, anni: 20 }, cmAnno: 0, volontari: [], catalogo: [], richiesteFilm: [], sasEmail: [], programmazione: [], schede: [], scFilter: "attive", editingScheda: null, sito: { stato: "mai", voci: [], pagine: 0, letto: null, err: "" }, sitoCfg: null, eventiInfo: {}, social: null, sitoNascosti: false, sitoSel: {},
   view: "calendario", month: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
@@ -207,6 +207,9 @@ async function loadAll() {
     // scambi di turno aperti (aggiornamento 32)
     const tc = S.staff ? await sb.from("turni_cambi").select("*").eq("stato", "aperta") : { data: null };
     S.cambi = tc.data || [];
+    // informazioni degli eventi per chi cura i social (aggiornamento 33)
+    const ei = S.staff ? await sb.from("eventi_info").select("*") : { data: null };
+    S.eventiInfo = Object.fromEntries((ei.data || []).map((r) => [r.chiave, r]));
     S.loadErr2.cambi = tc.error && (tc.error.message || "errore");
     // scorte che mancano (aggiornamento 24): le vedono e le segnano tutti i volontari
     const sc = ["admin", "coordinatore", "segreteria", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
@@ -245,6 +248,7 @@ async function loadAll() {
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
       S.foglietto = "foglietto_attivo" in st.data ? { attivo: st.data.foglietto_attivo, email: st.data.foglietto_email || "", nome: st.data.foglietto_nome || "don Giorgio", firma: st.data.foglietto_firma || "", note: st.data.foglietto_note || "", inviato: st.data.foglietto_inviato } : null; // aggiornamento 29
+      S.social = "social_token" in st.data ? { token: st.data.social_token } : null; // aggiornamento 33
       S.pulizie = "pulizie_token" in st.data ? { token: st.data.pulizie_token, giorno: st.data.pulizie_giorno ?? 2, referenti: Array.isArray(st.data.pulizie_referenti) ? st.data.pulizie_referenti : null } : null; // aggiornamento 24
       S.sitoCfg = "sito_ignora" in st.data ? { nome: st.data.sito_nome || "", cell: st.data.sito_cellulare || "", avvisati: st.data.sito_avvisati || [], avvisatoIl: st.data.sito_avvisato_il, ignora: st.data.sito_ignora || [] } : null;
     }
@@ -275,7 +279,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -2750,6 +2754,8 @@ function renderSito() {
       try { await run(sb.rpc("sito_segna", { p_avvisati: [...new Set([...[...avvisate].filter((k) => attuali.has(k)), ...scelte.map((v) => v.chiave)])] })); } catch (e) { toast(errText(e)); }
     }
   };
+  el.insertAdjacentHTML("beforeend", pannelloSocial());
+  collegaSocial(el);
   el.insertAdjacentHTML("beforeend", pannelloFoglietto());
   collegaFoglietto(el);
 }
@@ -3330,6 +3336,88 @@ function collegaFoglietto(root) {
   };
   root.querySelector("#fg-copia").onclick = () => { const t = testoFoglietto({ ...S.foglietto, nome: $("#fg-nome").value.trim(), firma: $("#fg-firma").value.trim(), note: $("#fg-note").value.trim() }); openCopyText(`${t.oggetto}\n\n${t.testo}`); };
 }
+
+/* ---------- info per i social: un link per chi cura i social, con tutte le informazioni di ogni evento ---------- */
+const linkSocial = () => new URL("modulo/social.html?t=" + S.social.token, location.href.split("#")[0]).href;
+const INFO_CAMPI = ["regista", "collaborazioni", "ingresso", "descrizione", "note", "materiali"];
+// regista già noto all'app (richieste e catalogo del SAS)
+const registaSas = (titolo) => { const t = String(titolo || "").toLowerCase(); return ((S.richiesteFilm || []).find((r) => r.regista && String(r.titolo || "").toLowerCase() === t) || (S.catalogo || []).find((r) => r.regista && String(r.titolo || "").toLowerCase() === t) || {}).regista || ""; };
+// gli stessi eventi del link: film e spettacoli dei prossimi 60 giorni (uno per titolo), eventi della Sala e del Comune
+function eventiSocial() {
+  const al = addDays(TODAY, 60), out = [];
+  for (const f of S.films) {
+    const orari = S.proiezioni.filter((p) => p.film_id === f.id && p.data >= TODAY && p.data <= al).sort((x, y) => (x.data + x.ora).localeCompare(y.data + y.ora));
+    if (!orari.length) continue;
+    const t = tipoSpettacolo(f);
+    out.push({ chiave: "f:" + f.id, titolo: f.titolo, tipo: t === "film" ? "Cinema" : t === "altro" ? "Spettacolo" : TIPI_SPETT[t], prima: orari[0].data, n: orari.length, film: t === "film",
+      locandina: f.locandina_url, prezzo: (f.cinebot_info || {}).prezzo, regista: registaSas(f.titolo) });
+  }
+  for (const b of S.bookings) {
+    if (b.stato !== "confermata" || b.data < TODAY || b.data > al || !(b.comune || b.della_sala)) continue;
+    if (/cinema|proiezion|cineforum/i.test(b.titolo) && S.proiezioni.some((p) => p.data === b.data)) continue;
+    out.push({ chiave: "b:" + b.id, titolo: b.titolo, tipo: b.comune ? "Con il Comune" : "Evento della Sala", prima: b.data, n: 1, film: false, locandina: "", prezzo: null, regista: "" });
+  }
+  return out.sort((a, b) => a.prima.localeCompare(b.prima));
+}
+// cosa manca perché chi fa i post non debba chiedere niente
+function mancaSocial(e) {
+  const i = S.eventiInfo[e.chiave] || {}, m = [];
+  if (!i.descrizione) m.push("descrizione");
+  if (!i.ingresso && e.prezzo == null) m.push("ingresso");
+  if (e.film && !i.regista && !e.regista) m.push("regista");
+  if (!i.materiali && !e.locandina) m.push("materiali");
+  return m;
+}
+function pannelloSocial() {
+  if (!S.social) return `<div class="panel"><h3>Info per i social</h3><p class="hint">Per il link con le informazioni di ogni evento per chi cura i social esegui in Supabase lo script <b>033_info_social.sql</b> e ricarica la pagina.</p></div>`;
+  const ev = eventiSocial(), daFare = ev.filter((e) => mancaSocial(e).length).length;
+  return `<div class="panel" id="social-panel"><div class="section-head"><h3>Info per i social</h3><span class="hint">Un link per chi cura i social: date, orari, ingresso, regista, collaborazioni, locandina e materiali di ogni evento dei prossimi due mesi. Gli affitti privati non compaiono.</span></div>
+    <div class="actions" style="margin:4px 0 10px"><button class="btn primary sm" type="button" data-soc="manda">Manda il link</button><a class="btn sm" href="${esc(linkSocial())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
+      ${S.isAdmin ? `<button class="btn ghost sm" type="button" data-soc="rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
+    ${ev.length ? `<p class="hint" style="margin:0 0 4px">${daFare ? `${daFare} ${daFare === 1 ? "evento ha" : "eventi hanno"} ancora qualcosa da completare: tocca «Completa».` : "Tutti gli eventi hanno le informazioni principali. ✓"}</p>
+      ${ev.map((e) => { const m = mancaSocial(e);
+        return `<div class="todo-riga"><div><b>${esc(e.titolo)}</b> <span class="hint">${esc(e.tipo)} · ${esc(fmtShort(e.prima))}${e.n > 1 ? ` · ${e.n} date` : ""}</span>
+          <div class="hint">${m.length ? `manca: ${esc(m.join(", "))}` : "completo ✓"}</div></div>
+          <div class="az"><button class="btn${m.length ? "" : " ghost"} sm" type="button" data-soc-ev="${esc(e.chiave)}">${m.length ? "Completa" : "Modifica"}</button></div></div>`; }).join("")}`
+      : `<p class="hint">Nei prossimi due mesi non ci sono film né eventi della Sala.</p>`}</div>`;
+}
+const testoSocial = () => [`Ciao! 📣 Ecco il link con tutte le informazioni degli eventi della Sala San Tommaso Moro per i social.`,
+  `Per ogni evento trovate date, orari, ingresso, regista, collaborazioni, descrizione, locandina e la cartella dei materiali, con il bottone «Copia tutte le info».`,
+  linkSocial(), `Salvatelo, si aggiorna da solo. Grazie! 🙏`].join("\n");
+function collegaSocial(root) {
+  const q = (k) => root.querySelector(`[data-soc="${k}"]`);
+  if (!q("manda")) return;
+  q("manda").onclick = () => openCopyText(testoSocial());
+  const r = q("rinnova"); if (r) r.onclick = async () => {
+    if (!confirm("Il link vecchio smetterà di funzionare: dovrai mandare quello nuovo. Rinnovare?")) return;
+    try { await run(sb.from("settings").update({ social_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo a chi cura i social"); } catch (x) { toast(errText(x)); }
+  };
+  root.querySelectorAll("[data-soc-ev]").forEach((b) => (b.onclick = () => apriInfoSocial(b.dataset.socEv)));
+}
+const dlgSoc = $("#dlg-social");
+function apriInfoSocial(chiave) {
+  const e = eventiSocial().find((x) => x.chiave === chiave); if (!e) return;
+  const i = S.eventiInfo[chiave] || {};
+  S.editingSocial = chiave;
+  $("#soc-head").textContent = e.titolo;
+  $("#soc-sotto").textContent = `${e.tipo} · ${fmtShort(e.prima)}${e.n > 1 ? ` · ${e.n} date` : ""}. Date, orari${e.locandina ? ", locandina" : ""}${e.prezzo != null ? " e prezzo" : ""} li prende l'app da sola.`;
+  for (const k of INFO_CAMPI) $("#soc-" + k).value = i[k] || "";
+  if (!i.regista && e.regista) $("#soc-regista").value = e.regista;
+  $("#soc-ingresso").placeholder = e.prezzo === 0 ? "Ingresso libero (da Cinebot)" : e.prezzo != null ? `${String(e.prezzo).replace(".", ",")} € (da Cinebot)` : "Es. ingresso libero, 7 € intero e 5 € ridotto";
+  $("#soc-regista").closest(".field").querySelector("label").textContent = e.film ? "Regista" : "Chi lo presenta / regia";
+  $("#soc-error").innerHTML = "";
+  dlgSoc.showModal();
+}
+$("#social-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const rec = { chiave: S.editingSocial, aggiornato: new Date().toISOString() };
+  for (const k of INFO_CAMPI) rec[k] = $("#soc-" + k).value.trim();
+  if (rec.materiali && !/^https?:\/\//i.test(rec.materiali)) { $("#soc-error").innerHTML = `<div class="warn">Il link dei materiali deve iniziare con https:// (es. il link della cartella di Google Drive).</div>`; return; }
+  const btn = ev.submitter || $("#social-form button[type=submit]"); btn.disabled = true;
+  try { await run(sb.from("eventi_info").upsert(rec, { onConflict: "chiave" }), "Informazioni salvate: le vedono subito"); dlgSoc.close(); }
+  catch (x) { $("#soc-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+  btn.disabled = false;
+});
 
 /* ---------- gruppo pulizie: un link per tutti con l'uso della sala dall'ultima pulizia ---------- */
 const GIORNI_SETT = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
@@ -4015,6 +4103,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento", k.has("social_token")],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
     ["031_turni_oltre.sql", "Ci si può segnare anche nelle fasce al completo", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],
