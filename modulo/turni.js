@@ -187,7 +187,7 @@ function disegna() {
           <div class="f-ora"><b>${esc(f.inizio)}</b><span>${esc(f.fine)}</span></div>
           <div class="f-c"><div class="f-n">${esc(f.fascia)}</div><div class="avs">${posti(f)}</div>
             ${(() => { const c = cambioDi(f, false); return c && !c.gia_dentro ? `<div class="f-cambio">🔁 ${esc(c.da_nome)} cerca un sostituto · <button type="button" data-prendi="${esc(c.id)}">Lo prendo io</button></div>` : ""; })()}
-            <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : `Completo ✓${f.presi > f.posti ? ` · +${f.presi - f.posti} di aiuto` : f.mio ? "" : " · puoi aggiungerti come aiuto"}`}</div></div>
+            <div class="f-s ${manca(f) ? "manca" : "ok"}">${manca(f) ? (manca(f) === 1 ? "manca 1 persona" : `mancano ${manca(f)} persone`) : `Completo ✓${f.presi > f.posti ? ` · +${f.presi - f.posti} di aiuto` : f.mio ? " · altri possono aggiungersi come aiuto" : " · puoi aggiungerti come aiuto"}`}</div></div>
           <div class="f-a">${azione(f)}</div></div>`).join("")}
       </article>`).join("")}</section>`).join("")
       : `<div class="vuoto-t">${filtro === "servo" ? "In questo momento non servono persone: grazie! Tocca «Tutti» per vedere tutti i turni." : "Al momento non ci sono turni nei prossimi 30 giorni."}</div>`}`);
