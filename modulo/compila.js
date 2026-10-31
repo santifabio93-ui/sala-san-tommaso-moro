@@ -103,10 +103,8 @@ function modulo(d, info) {
       <div class="campo full"><label for="f-altro">Altre richieste o esigenze</label><textarea id="f-altro" name="altro">${esc(d.altro)}</textarea></div>
     </div></section>
 
-  <section class="sez"><h2><span class="n">6</span>SIAE e diritti d'autore</h2>
-    ${info.siae_sala ? `<span class="hint">L'evento è <b>co-organizzato con la Sala San Tommaso Moro</b>: il permesso SIAE lo fa <b>la sala</b>. Non dovete allegare niente; ci serve solo sapere se userete musica, film o altre opere protette e quali.</span>
-    <div class="campo"><span class="lbl obbl">L'evento usa musica, film o altre opere protette da diritto d'autore?</span>${scelta("siae", [["si", "sì"], ["no", "no, nessuna opera protetta"]], d.siae)}</div>
-    <div class="cond" data-se="siae=si"><div class="campo full" style="margin-top:10px"><label for="f-siae_opere">Cosa userete (brani, autori, film, spettacolo…)</label><textarea id="f-siae_opere" name="siae_opere">${esc(d.siae_opere)}</textarea></div></div>` : `<span class="hint">Il permesso SIAE e i diritti d'autore sono <b>a carico dell'organizzatore</b>. Servono quando nell'evento si usano musica (dal vivo o registrata), film, spettacoli o altre opere protette.</span>
+  ${info.siae_sala ? "" : `<section class="sez"><h2><span class="n">6</span>SIAE e diritti d'autore</h2>
+    <span class="hint">Il permesso SIAE e i diritti d'autore sono <b>a carico dell'organizzatore</b>. Servono quando nell'evento si usano musica (dal vivo o registrata), film, spettacoli o altre opere protette.</span>
     <div class="campo"><span class="lbl obbl">L'evento usa musica, film o altre opere protette da diritto d'autore?</span>${scelta("siae", [["si", "sì"], ["no", "no, nessuna opera protetta"]], d.siae)}</div>
     <div class="cond" data-se="siae=si">
       <div class="campo" style="margin-top:10px"><label for="f-siae-file">Allegate il permesso SIAE (PDF o foto, massimo 10 MB)</label>
@@ -114,16 +112,15 @@ function modulo(d, info) {
         <div id="siae-caricati" class="hint">${(d.siae_file || []).map((f) => `✓ ${esc(f.nome)} allegato`).join("<br>")}</div></div>
       <label class="voce" style="margin-top:8px"><input type="checkbox" name="siae_dopo"${d.siae_dopo ? " checked" : ""}> Il permesso non l'abbiamo ancora: lo mandiamo a salatommasomoro@gmail.com prima dell'evento</label>
     </div>
-  `}
-  </section>
+  </section>`}
 
-  <section class="sez"><h2><span class="n">7</span>Regole della sala e dichiarazione</h2>
+  <section class="sez"><h2><span class="n">${info.siae_sala ? 6 : 7}</span>Regole della sala e dichiarazione</h2>
     <div class="regole">
       <h3>Sicurezza</h3><ul><li>Non sono ammessi fiamme libere, candele, petardi, fuochi d'artificio, fumogeni, bombolette di gas e materiali infiammabili.</li><li>Uscite di emergenza e percorsi d'esodo sempre liberi; le uscite di emergenza si usano solo in caso di pericolo; l'ascensore è riservato alle persone con disabilità.</li><li>Il numero di persone non può superare la capienza indicata (massimo 472). Non sono ammessi oggetti atti a offendere.</li></ul>
       <h3>Impianti</h3><ul><li>Impianti, regia, quadri elettrici, termostati e riscaldamento si usano solo con il personale della sala.</li><li>Le attrezzature esterne si collegano solo dove indica il responsabile della sala: niente prese multiple né cavi lungo pareti e vie d'esodo. Niente lavorazioni che producono scintille, polveri o fumi.</li></ul>
       <h3>In sala</h3><ul><li>Vietato fumare, anche sigarette elettroniche. Cibo e bevande non sono ammessi in sala.</li><li>Non sono ammessi animali, tranne i cani guida e di assistenza. Non sono ammessi in sala passeggini e carrozzine per bambini; sono ammesse le carrozzine per persone con disabilità.</li></ul>
       <h3>Palco e riconsegna</h3><ul><li>Si portano solo i materiali dichiarati; scenografie e tessuti ignifughi (classe 1).</li><li>A fine evento palco libero e sala riconsegnata come trovata, entro l'orario di sgombero. La sala non custodisce materiali dell'organizzatore.</li></ul>
-      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>${info.siae_sala ? "Provvede alle autorizzazioni per l'evento diverse dalla SIAE, che fa la sala (evento co-organizzato), e comunica alla sala le opere protette che userà." : "Provvede a proprie spese al permesso SIAE e ai diritti d'autore, se previsti, e alle altre autorizzazioni per l'evento, e consegna alla sala copia del permesso SIAE."}</li></ol>
+      <h3>Dichiarazione</h3><ol><li>L'organizzatore solleva la Parrocchia di San Biagio e il gestore della Sala San Tommaso Moro da ogni danno a persone o cose dovuto a un uso improprio della sala e delle attrezzature o al mancato rispetto delle norme di sicurezza per i locali di pubblico spettacolo.</li><li>Si fa carico dei danni ad arredi e attrezzature causati da organizzatori, artisti o pubblico dell'evento.</li><li>Solleva la Parrocchia e il gestore da ogni responsabilità per furti o danni a materiali e attrezzature dell'organizzatore lasciati nella sala, e per l'annullamento dell'evento per cause non dipendenti dalla sala.</li><li>${info.siae_sala ? "Provvede alle altre autorizzazioni per l'evento; la SIAE la fa la sala (evento co-organizzato)." : "Provvede a proprie spese al permesso SIAE e ai diritti d'autore, se previsti, e alle altre autorizzazioni per l'evento, e consegna alla sala copia del permesso SIAE."}</li></ol>
     </div>
     <label class="accetta"><input type="checkbox" name="ok_regole"${d.ok_regole ? " checked" : ""}> <span class="obbl">Abbiamo letto le regole della sala e ci impegniamo a farle rispettare</span></label>
     <label class="accetta"><input type="checkbox" name="ok_dichiarazione"${d.ok_dichiarazione ? " checked" : ""}> <span class="obbl">Accetto la dichiarazione dell'organizzatore</span></label>
@@ -175,7 +172,7 @@ function controlla(d) {
   if (!d.tipo) segna('[data-campo="tipo"]', "tipo di evento");
   if (d.tipo && !SPETTACOLI.includes(d.tipo) && !d.fascia) segna('[data-campo="fascia"]', "spazio (galleria o platea)");
   if (!d.orari.length || !d.orari[0].data || !d.orari[0].inizio) segna('.riga-orari', "data e ora di inizio");
-  if (!d.siae) segna('[data-campo="siae"]', "risposta sulla SIAE");
+  if (!d.siae && !siaeSala) segna('[data-campo="siae"]', "risposta sulla SIAE");
   else if (d.siae === "si" && !siaeSala && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
   if (!d.ok_regole || !d.ok_dichiarazione || !d.ok_privacy) segna('.accetta', "accettazione di regole, dichiarazione e privacy");
   if (!d.firma || d.firma.length < 3) segna('[name="firma"]', "nome e cognome di chi compila");
