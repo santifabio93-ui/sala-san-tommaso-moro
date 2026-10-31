@@ -125,6 +125,26 @@ non disponibili non vengono presentati come controlli superati. Aggiungere mater
 a un affitto privato non lo pubblica sul sito o nel programma dei social.
 La scheda usa le tabelle esistenti, senza nuovi aggiornamenti SQL.
 
+## Preventivo per chi chiede la sala
+
+Nella **Scheda evento → Prepara preventivo**, oppure in **Affitti → Richieste →
+Prepara preventivo**, si prepara un documento con destinatario, evento, data e
+orari. Lo spazio e i supplementi già scelti vengono riproposti; le tariffe sono
+quelle attuali della sala, a giornata, con l’IVA applicata come nelle impostazioni.
+Se l’importo della prenotazione è diverso, viene proposto l’importo concordato:
+si può scegliere di usare invece il dettaglio delle tariffe attuali. Le differenze
+vengono segnalate e non modificano il prezzo della prenotazione.
+
+Le condizioni iniziali riprendono le regole e la scheda tecnica previste dalla
+scheda di richiesta; si possono modificare. Validità e note per il cliente si
+compilano prima di stampare.
+**Stampa / Salva PDF** apre il documento per la stampa del browser: scegliere
+«Salva come PDF» per scaricarlo. Le note interne e gli incassi non vengono copiati.
+Il documento non viene inviato automaticamente e non conferma una prenotazione.
+La bozza resta disponibile nella pagina aperta, ma non viene salvata nel database
+e si perde ricaricando o chiudendo la pagina. Nessun nuovo SQL da eseguire.
+Il preventivo al cliente è distinto dal preventivo annuale di Economia.
+
 ## La serata
 La pagina **La serata** mostra su un'unica schermata, anche dal telefono, la serata di oggi o la prossima con qualcosa
 in sala (con ‹ › per le altre): eventi e orari, capienza, chi è di turno e chi manca, i film con supporto, dove si

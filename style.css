@@ -830,3 +830,21 @@ nav.tabs { position: relative }
   .evento-prossime li .btn { max-width: 100%; white-space: normal }
   .evento-totali dd { font-size: 1.15rem }
 }
+
+/* Preventivo al cliente: editor separato dalla prenotazione e documento stampabile. */
+#dlg-preventivo-affitto { width: min(940px, calc(100% - 24px)); max-width: 940px }
+.quote-dialog { max-width: none }
+.quote-supplementi { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px }
+.quote-document { background: white; color: #17212a; border: 1px solid #d9e0e4; border-radius: 8px; padding: 24px; margin-top: 12px; overflow-wrap: anywhere }
+.quote-document h1 { font-size: 1.6rem; margin: 12px 0 }
+.quote-document h2 { font-size: 1rem; margin: 18px 0 6px }
+.quote-document .quote-brand { color: #163e3b; font-size: 1.1rem; font-weight: 700 }
+.quote-document header { border-bottom: 2px solid #163e3b; padding-bottom: 12px }
+.quote-document table { width: 100%; border-collapse: collapse; margin: 20px 0 }
+.quote-document th, .quote-document td { background: white; color: #17212a; padding: 10px 6px; border-bottom: 1px solid #d9e0e4; text-align: left }
+.quote-document th:last-child, .quote-document td:last-child { text-align: right; white-space: nowrap }
+.quote-document tfoot { font-weight: 700; font-size: 1.2rem }
+.quote-document .quote-lines { white-space: pre-wrap }
+.quote-document .quote-small, .quote-document footer { font-size: .8rem; color: #555 }
+.quote-document footer { margin-top: 24px; border-top: 1px solid #d9e0e4; padding-top: 12px }
+@media (max-width: 600px) { .quote-document { padding: 14px } .quote-document h1 { font-size: 1.3rem } #dlg-preventivo-affitto .dlg-foot { flex-wrap: wrap } }

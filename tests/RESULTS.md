@@ -1,5 +1,17 @@
 # Esiti della validazione
 
+## Preventivo affitti: 16 test eseguiti, 16 superati
+
+Verificati tariffa a giornata, supplementi e IVA nelle due configurazioni,
+importi concordati e differenze rispetto alla prenotazione, bozze riaperte dopo
+un cambio del prezzo, dati incompleti delle richieste email e importi/validità
+non ammessi. La stampa apre un documento separato e Chromium genera un PDF
+reale; il testo estratto dal PDF conferma destinatario, totale e condizioni,
+senza le note interne della prenotazione. I testi vengono mostrati come testo,
+senza eseguire markup inserito dall’utente. Verificata anche la vista mobile.
+La generazione non modifica prenotazioni, incassi o richieste. Nessun nuovo SQL.
+Le bozze sono conservate solo nella memoria della pagina aperta.
+
 ## Scheda evento: 12 test eseguiti, 12 superati
 
 La suite estesa verifica l’apertura della scheda dalla prenotazione, la
