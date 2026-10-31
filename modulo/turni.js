@@ -239,7 +239,7 @@ async function segna(f, si, annulla) {
   conferma = null; disegna();
   if (navigator.vibrate) navigator.vibrate(si ? 25 : [12, 40, 12]);
   const { error } = await sb.rpc("turni_segna", { p_token: token, p_booking: f.booking_id, p_slot: f.slot_id, p_si: si });
-  if (error) { Object.assign(f, prima); disegna(); toast(error.message); return; }
+  if (error) { Object.assign(f, prima); disegna(); toast(/già al completo/.test(error.message || "") ? "Per ora non ci si può aggiungere come aiuto: avvisa chi organizza i turni (deve aggiornare il database con lo script 031)." : error.message); return; }
   if (!annulla) toastAnnulla(si ? (aiuto ? "Grazie, ci sei come aiuto! 🙌" : "Grazie, sei in turno! 🎉") : "Ti sei tolto dal turno", () => segna(f, !si, true));
   setTimeout(carica, 600);
 }
