@@ -1,15 +1,15 @@
-import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.95";
-import { creaPreparazione } from "./preparazione.js?v=2026-11-01.95";
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.95";
+import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.96";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.96";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.96";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.95";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.95";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.95";
-import { schedaEvento } from "./evento.js?v=2026-11-01.95";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.96";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.96";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.96";
+import { schedaEvento } from "./evento.js?v=2026-11-01.96";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.95";
+const VERSIONE = "2026-11-01.96";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
