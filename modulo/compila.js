@@ -60,9 +60,11 @@ function modulo(d, info) {
       <div class="campo full"><span class="lbl">Ingresso</span>${scelta("ingresso", [["libero", "libero"], ["offerta", "a offerta"], ["pagamento", "a pagamento"]], d.ingresso)}
         <div class="cond" data-se="ingresso=pagamento"><div class="griglia">${campo("prezzo", "Prezzo del biglietto (€)", d.prezzo, "inputmode=\"decimal\"")}
           <div class="campo"><span class="lbl">Biglietti gestiti da</span>${scelta("biglietti", [["sala", "la sala (Cinebot)"], ["organizzatore", "voi"]], d.biglietti)}</div></div></div></div>
-      <div class="campo full"><span class="lbl obbl">Pubblico previsto</span>${scelta("fascia", [["galleria", "fino a 134 (solo galleria)"], ["platea", "fino a 338 (platea)"], ["tutta", "oltre 338, massimo 472 (platea e galleria)"]], d.fascia)}</div>
+      <div class="cond campo full" data-se-in="tipo=teatro,concerto,danza,cinema"><span class="hint">Spettacoli, concerti, danza e proiezioni si fanno in <b>platea</b>, che ha il palco (fino a 338 persone).</span>
+        <label class="voce" style="margin-top:6px"><input type="checkbox" name="galleria_anche"${d.galleria_anche || d.fascia === "tutta" ? " checked" : ""}> Serve anche la galleria (più di 338 persone, fino a 472)</label></div>
+      <div class="cond campo full" data-se-in="tipo=conferenza,scuola,altro"><span class="lbl obbl">Spazio</span>${scelta("fascia", [["galleria", "galleria, fino a 134 persone (conferenze e incontri)"], ["platea", "platea con il palco, fino a 338"], ["tutta", "platea e galleria, fino a 472"]], d.fascia)}</div>
       <div class="campo full"><div class="scelte">
-        <label>Numero indicativo <input class="num" type="number" min="0" max="472" name="pubblico_n" value="${esc(d.pubblico_n ?? "")}"></label>
+        <label>Persone previste <input class="num" type="number" min="0" max="472" name="pubblico_n" value="${esc(d.pubblico_n ?? "")}"></label>
         <label>di cui bambini <input class="num" type="number" min="0" name="bambini_n" value="${esc(d.bambini_n ?? "")}"></label>
         <label>persone in carrozzina <input class="num" type="number" min="0" name="carrozzina_n" value="${esc(d.carrozzina_n ?? "")}"></label>
         <label>persone sul palco <input class="num" type="number" min="0" name="palco_n" value="${esc(d.palco_n ?? "")}"></label></div>
@@ -147,6 +149,9 @@ function leggi() {
     else if (el.value.trim()) d[el.name] = el.value.trim();
   }
   d.siae_file = allegati.slice();
+  // spettacoli, concerti, danza e proiezioni: platea (con il palco), più la galleria se serve
+  if (SPETTACOLI.includes(d.tipo)) d.fascia = d.galleria_anche ? "tutta" : "platea";
+  else delete d.galleria_anche;
   d.orari = [...document.querySelectorAll(".riga-orari")].map((r) => {
     const v = (n) => r.querySelector(`[name="o_${n}"]`).value;
     return { data: v("data"), all_da: v("all_da"), all_a: v("all_a"), porte: v("porte"), inizio: v("inizio"), fine: v("fine"), sgombero: v("sgombero") };
@@ -156,6 +161,7 @@ function leggi() {
 function aggiornaCondizioni() {
   const d = leggi();
   document.querySelectorAll("[data-se]").forEach((el) => { const [k, v] = el.dataset.se.split("="); el.hidden = d[k] !== v; });
+  document.querySelectorAll("[data-se-in]").forEach((el) => { const [k, v] = el.dataset.seIn.split("="); el.hidden = !v.split(",").includes(d[k]); });
 }
 function salvaBozza() { try { localStorage.setItem(BOZZA, JSON.stringify(leggi())); } catch (e) {} }
 function controlla(d) {
@@ -167,7 +173,7 @@ function controlla(d) {
   if (!d.cellulare) segna('[name="cellulare"]', "cellulare");
   if (!d.titolo) segna('[name="titolo"]', "titolo dell'evento");
   if (!d.tipo) segna('[data-campo="tipo"]', "tipo di evento");
-  if (!d.fascia) segna('[data-campo="fascia"]', "pubblico previsto");
+  if (d.tipo && !SPETTACOLI.includes(d.tipo) && !d.fascia) segna('[data-campo="fascia"]', "spazio (galleria o platea)");
   if (!d.orari.length || !d.orari[0].data || !d.orari[0].inizio) segna('.riga-orari', "data e ora di inizio");
   if (!d.siae) segna('[data-campo="siae"]', "risposta sulla SIAE");
   else if (d.siae === "si" && !siaeSala && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
@@ -178,6 +184,7 @@ function controlla(d) {
 
 // --- allegati (permesso SIAE): caricati nella cartella della scheda, visibili solo alla sala ---
 let allegati = [], siaeSala = false;
+const SPETTACOLI = ["teatro", "concerto", "danza", "cinema"];
 async function caricaAllegato(file) {
   const out = $("#siae-caricati");
   if (file.size > 10 * 1024 * 1024) { toast("Il file supera i 10 MB: provate con una foto o un PDF più leggero"); return; }
