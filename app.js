@@ -1,8 +1,9 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
+import { schedaEvento } from "./evento.js?v=2026-11-01.81";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.80";
+const VERSIONE = "2026-11-01.81";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -26,6 +27,7 @@ const VIEWS = {
   breve: { label: "In breve", roles: ["parroco"] },
   oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario", "segreteria", "parroco"] },
+  evento: { label: "Scheda evento", roles: ["admin", "coordinatore", "segreteria", "volontario"] },
   serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
   prenotazioni: { label: "Prenotazioni", roles: ["admin", "coordinatore", "segreteria"] },
   richieste: { label: "Richieste", roles: ["admin", "coordinatore", "segreteria"] },
@@ -210,6 +212,7 @@ async function loadAll() {
     S.cambi = tc.data || [];
     // informazioni degli eventi per chi cura i social (aggiornamento 33)
     const ei = S.staff ? await sb.from("eventi_info").select("*") : { data: null };
+    S.loadErr2.eventiInfo = ei.error && ei.error.message;
     S.eventiInfo = Object.fromEntries((ei.data || []).map((r) => [r.chiave, r]));
     // rubrica (aggiornamento 34)
     const rb = S.canWrite ? await sb.from("rubrica").select("*") : { data: null };
@@ -242,7 +245,7 @@ async function loadAll() {
     const err = [b, s, e, st, p, rq, inv, so, ca, fi, pj, pn, dn, sch, c1r].find((r) => r && r.error);
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
-    S.loadErr = { prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message,
+    S.loadErr = { bookings: b.error && b.error.message, signups: s.error && s.error.message, prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message,
       cassa: ca.error && ca.error.message, sopralluoghi: so.error && so.error.message, films: fi.error && fi.error.message, richieste: rq.error && rq.error.message };
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
@@ -275,6 +278,7 @@ async function loadAll() {
     if (pn.data) S.primaNota = pn.data.map((r) => ({ ...r, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
     if (c1r.data) S.c1 = c1r.data.map((r) => ({ ...r, ora: hm(r.ora), lordo: Number(r.lordo) || 0, iva: Number(r.iva) || 0, imponibile_iva: Number(r.imponibile_iva) || 0, righe: r.righe || [] }));
     if (so.data) S.sopralluoghi = so.data.map((r) => ({ ...r, ora: hm(r.ora), esigenze: r.esigenze || [] }));
+    S.datiCaricati = true;
     render();
     // le email del SAS si leggono con il modulo a parte: lo carico la prima volta e ridisegno
     if (S.canWrite && (S.sasEmail.length || S.programmazione.length || S.richiesteFilm.length)) {
@@ -383,8 +387,8 @@ function renderTabs() {
     if (!kids.length) return "";
     const groupBadge = (ks) => (ks.includes("richieste") ? badge(nReq + schedeDaVerificare()) : "") + (ks.includes("cinema") && !S.isParroco ? badge(filmsToFix()) : "");
     if (kids.length === 1) return `<a href="#${kids[0]}"${cur(S.view === kids[0])}>${VIEWS[kids[0]].label}${groupBadge(kids)}</a>`;
-    const inside = kids.includes(S.view);
-    if (inside) { sub = kids; S.lastSub = S.view; }
+    const inside = kids.includes(S.view) || (S.view === "evento" && kids.includes("prenotazioni"));
+    if (inside) { sub = kids; S.lastSub = S.view === "evento" ? "prenotazioni" : S.view; }
     const target = kids.includes(S.lastSub) ? S.lastSub : kids[0];
     return `<a href="#${target}"${cur(inside)}>${m.label}${groupBadge(kids)}</a>`;
   }).join("");
@@ -404,6 +408,7 @@ function render() {
   $("#btn-loc").hidden = !S.canWrite;
   renderKpis();
   if (S.view === "calendario") { renderCalendar(); renderDay(); }
+  if (S.view === "evento") renderEvento();
   if (S.view === "prenotazioni") renderList();
   if (S.view === "richieste") renderRequests();
   if (S.view === "turni") renderShifts();
@@ -519,7 +524,7 @@ function bookingCard(b, showDate) {
 function wireCards(root) {
   root.querySelectorAll("[data-b]").forEach((el) => (el.onclick = () => {
     const b = S.bookings.find((x) => x.id === el.dataset.b);
-    if (S.canWrite) openBooking(b);
+    if (canSee("evento")) location.hash = "evento/" + b.id;
     else if (S.isParroco) return;
     else { S.shiftFilter = b.data >= TODAY ? "prossimi" : "passati"; location.hash = "turni"; }
   }));
@@ -569,6 +574,27 @@ function renderList() {
   for (const b of list) { const k = b.data.slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(b); }
   el.innerHTML = [...groups].map(([k, items]) => `<div class="month-group"><span class="eyebrow">${esc(parse(k + "-01").toLocaleDateString("it-IT", { month: "long", year: "numeric" }))}</span><div class="blist">${items.map((b) => bookingCard(b, true)).join("")}</div></div>`).join("");
   wireCards(el);
+}
+
+function renderEvento() {
+  const root = $("#evento-body"), b = S.bookings.find((x) => x.id === S.eventoId);
+  if (!b) {
+    const errore = S.loadErr?.bookings;
+    root.innerHTML = `<div class="panel"><h2 id="evento-titolo" tabindex="-1">${errore ? "Impossibile leggere l’evento" : S.datiCaricati ? "Evento non disponibile" : "Caricamento evento…"}</h2><p>${errore ? "I dati non sono disponibili. Controlla la connessione e riprova." : S.datiCaricati ? "La prenotazione non esiste più oppure non è accessibile con il tuo ruolo." : "Sto leggendo le informazioni della prenotazione."}</p>${errore ? '<button class="btn" id="evento-riprova" type="button">Riprova</button> ' : ""}<a href="#calendario">Torna al calendario</a></div>`;
+    if (errore) $("#evento-riprova").onclick = () => loadAll();
+    return;
+  }
+  root.innerHTML = schedaEvento(S, b, { esc, money, fmtDay, orario, coverage, turni, signupsFor, schedaDi, siaeStato, residuo, isRecurring });
+  root.querySelectorAll("[data-event-action]").forEach((button) => { button.onclick = () => {
+    const action = button.dataset.eventAction;
+    if (["edit", "payment"].includes(action) && S.canWrite) { openBooking(b); if (action === "payment") $("#b-incassato").focus(); }
+    else if (action === "document" && S.canWrite) { const s = schedaDi(b); if (s) apriScheda(s.id); }
+    else if (action === "send-document" && S.canWrite) inviaScheda(b.id, schedaDi(b)?.id);
+    else if (action === "shifts") location.hash = "turni/" + b.id;
+    else if (action === "serata") { S.serataData = b.data; location.hash = "serata"; }
+    else if (action === "social" && S.staff) apriInfoSocial("b:" + b.id, true);
+    else if (action.startsWith("sop-") && S.canWrite) { const sop = S.sopralluoghi.find((x) => x.id === action.slice(4)); if (sop) openSop(sop); }
+  }; });
 }
 
 /* ---------- economia ---------- */
@@ -742,7 +768,7 @@ function renderRequests() {
   const setState = async (id, stato, msg) => { try { await run(sb.from("richieste").update({ stato }).eq("id", id), msg); } catch (e) { toast(errText(e)); } };
   el.querySelectorAll("[data-skip]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.skip, "scartata", "Richiesta scartata"); }));
   el.querySelectorAll("[data-back]").forEach((b) => (b.onclick = () => { b.disabled = true; setState(b.dataset.back, "nuova", "Richiesta rimessa tra quelle da gestire"); }));
-  el.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openBooking(S.bookings.find((x) => x.id === b.dataset.open))));
+  el.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => { location.hash = "evento/" + b.dataset.open; }));
   el.querySelectorAll("[data-sopr]").forEach((b) => (b.onclick = () => {
     const r = S.requests.find((x) => x.id === b.dataset.sopr);
     openSop(null, { nome: r.mittente, email: r.mittente_email, evento: r.oggetto.replace(/^(re|fwd?|i|r):\s*/i, "").slice(0, 120), data_evento: r.data_proposta || "", richiesta_id: r.id });
@@ -951,21 +977,21 @@ const SHIFT_FILTERS = [
 function renderShifts() {
   const base = S.bookings.filter((b) => active(b) && turni(b).length);
   $("#shift-filters").innerHTML = SHIFT_FILTERS.map(([k, l, f]) => `<button type="button" data-f="${k}" aria-pressed="${S.shiftFilter === k}">${l}<span class="c">${base.filter(f).length}</span></button>`).join("");
-  $("#shift-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.shiftFilter = b.dataset.f; S.openSignup = null; renderShifts(); }));
+  $("#shift-filters").querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => { S.turniEvento = null; if (location.hash.includes("/")) history.replaceState(null, "", "#turni"); S.shiftFilter = b.dataset.f; S.openSignup = null; renderShifts(); }));
   renderPromemoria();
   renderSenzaTurni();
   renderVolontari();
   $("#btn-sondaggio").hidden = !S.canWrite;
   $("#btn-sondaggio").onclick = () => { const t = testoSondaggio(14); if (t) openCopyText(t); else toast("Nei prossimi 14 giorni non ci sono posti scoperti nei turni"); };
   $("#shift-hint").textContent = S.canWrite ? "Puoi aggiungere anche i nomi arrivati su WhatsApp" : `Ti segni come «${S.me.nome || S.me.email}»`;
-  const list = base.filter(SHIFT_FILTERS.find((x) => x[0] === S.shiftFilter)[2]).sort(byWhen);
+  const list = base.filter((b) => S.turniEvento ? b.id === S.turniEvento : SHIFT_FILTERS.find((x) => x[0] === S.shiftFilter)[2](b)).sort(byWhen);
   if (S.shiftFilter === "passati") list.reverse();
   const el = $("#shifts");
   if (!list.length) {
     el.innerHTML = `<div class="empty">${base.length ? "Nessun evento in questo elenco." : S.canWrite ? "Nessun evento ha ancora dei turni. Apri una prenotazione e aggiungi le fasce orarie nella sezione «Turni volontari»." : "Non ci sono ancora turni in programma."}</div>`;
     return;
   }
-  el.innerHTML = `<div class="shift-list">${list.map(shiftEvent).join("")}</div>`;
+  el.innerHTML = `${S.turniEvento ? `<p><a href="#evento/${esc(S.turniEvento)}">← Scheda evento</a> · <a href="#turni">Tutti i turni</a></p>` : ""}<div class="shift-list">${list.map(shiftEvent).join("")}</div>`;
   el.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openBooking(S.bookings.find((x) => x.id === b.dataset.edit))));
   el.querySelectorAll("[data-wa]").forEach((b) => (b.onclick = () => openCopy(S.bookings.find((x) => x.id === b.dataset.wa))));
   el.querySelectorAll("[data-cal]").forEach((x) => (x.onclick = () => { const [bid, sid] = x.dataset.cal.split("|"), b = S.bookings.find((y) => y.id === bid); turnoCal(b, turni(b).find((t) => t.id === sid)); }));
@@ -1048,7 +1074,7 @@ function shiftEvent(b) {
       <div class="btns"><span class="pill ${c.have >= c.need ? "saldato" : "acconto"}">${c.have >= c.need ? "Turni coperti" : `Mancano ${c.need - c.have}`}</span>
         ${S.canWrite && b.data >= TODAY && senzaAddettoAntincendio(b) ? `<span class="pill dapagare">🧯 Nessun addetto antincendio</span>` : ""}
         <button class="btn sm" type="button" data-wa="${esc(b.id)}">Testo per WhatsApp</button>
-        ${S.canWrite ? `<button class="btn sm" type="button" data-edit="${esc(b.id)}">Modifica turni</button>` : ""}</div></header>
+        ${canSee("evento") ? `<a class="btn sm" href="#evento/${esc(b.id)}">Scheda evento</a>` : ""}${S.canWrite ? `<button class="btn sm" type="button" data-edit="${esc(b.id)}">Modifica turni</button>` : ""}</div></header>
     ${slots}
   </article>`;
 }
@@ -3721,8 +3747,9 @@ function collegaSocial(root) {
   }));
 }
 const dlgSoc = $("#dlg-social");
-function apriInfoSocial(chiave) {
-  const e = eventiSocial().find((x) => x.chiave === chiave); if (!e) return;
+function apriInfoSocial(chiave, daPrenotazione = false) {
+  const b = daPrenotazione && S.staff && chiave.startsWith("b:") ? S.bookings.find((x) => "b:" + x.id === chiave) : null;
+  const e = eventiSocial().find((x) => x.chiave === chiave) || (b ? { titolo: b.titolo, tipo: "Prenotazione", prima: b.data, n: 1, film: false, prezzo: null, locandina: "" } : null); if (!e) return;
   const i = S.eventiInfo[chiave] || {};
   S.editingSocial = chiave;
   $("#soc-head").textContent = e.titolo;
@@ -3758,7 +3785,7 @@ $("#social-form").addEventListener("submit", async (ev) => {
   for (const k of INFO_CAMPI) rec[k] = $("#soc-" + k).value.trim();
   if (rec.materiali && !/^https?:\/\//i.test(rec.materiali)) { $("#soc-error").innerHTML = `<div class="warn">Il link dei materiali deve iniziare con https:// (es. il link della cartella di Google Drive).</div>`; return; }
   const btn = ev.submitter || $("#social-form button[type=submit]"); btn.disabled = true;
-  try { await run(sb.from("eventi_info").upsert(rec, { onConflict: "chiave" }), "Informazioni salvate: le vedono subito"); dlgSoc.close(); }
+  try { await run(sb.from("eventi_info").upsert(rec, { onConflict: "chiave" }), "Informazioni salvate"); dlgSoc.close(); }
   catch (x) { $("#soc-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
   btn.disabled = false;
 });
@@ -3830,6 +3857,7 @@ function renderSerata() {
     const daIncassare = S.canWrite ? residuo(b) : 0;
     return `<article class="panel sr-evento">
       <div class="section-head"><h3>${esc(b.titolo)}</h3><span class="pill ${b.stato}">${STATI[b.stato]}</span></div>
+      <div class="actions"><a class="btn sm" href="#evento/${esc(b.id)}">Scheda evento</a></div>
       <div class="sr-ora">${esc(orario(b))}${b.tipo ? ` · ${esc(b.tipo)}` : ""}${pub ? ` · ${esc(PUBBLICO[pub].split(" (")[0].toLowerCase())}` : ""}</div>
       ${riga("Capienza", spazio && CAPIENZA[spazio] ? esc(CAPIENZA[spazio]) + (dd.pubblico_n ? ` · attesi circa ${esc(dd.pubblico_n)}` : "") : dd.pubblico_n ? `attesi circa ${esc(dd.pubblico_n)}` : "")}
       ${S.canWrite ? riga("Organizzatore", [esc(dd.ente || b.referente), b.referente && dd.ente ? esc(b.referente) : "", tel(dd.cellulare || b.telefono)].filter(Boolean).join(" · ")) : ""}
@@ -4395,9 +4423,9 @@ function coseDiOggi() {
   if (nReq) add("warn", `${nReq} ${nReq === 1 ? "nuova richiesta" : "nuove richieste"} di sala da leggere`, "#richieste");
   const daVer = schedeDaVerificare();
   if (daVer) add("warn", `${daVer} ${daVer === 1 ? "scheda compilata" : "schede compilate"} da verificare e approvare`, "#schede");
-  righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, "#schede", { entro: r.data, quando: quando(r.data) }));
-  S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati, s) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, "#schede", { entro: d, quando: quando(d) }); });
-  S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#prenotazioni"));
+  righeSchede().filter((r) => r.urgente).forEach((r) => add("ko", `Manca la scheda di «${(r.b && r.b.titolo) || (r.s && r.s.titolo)}» (${fmtShort(r.data)})`, r.b ? "#evento/" + r.b.id : "#schede", { entro: r.data, quando: quando(r.data) }));
+  S.schede.filter((s) => s.stato !== "non_serve" && siaeStato(s.dati, s) === "da_ricevere").forEach((s) => { const b = S.bookings.find((x) => x.id === s.booking_id), d = (b && b.data) || s.data_evento; if (d && d >= TODAY && d <= tra(10)) add("warn", `Permesso SIAE da ricevere per «${(b && b.titolo) || s.titolo}» (${fmtShort(d)})`, b ? "#evento/" + b.id : "#schede", { entro: d, quando: quando(d) }); });
+  S.bookings.filter((b) => b.stato === "confermata" && b.data < TODAY && b.data >= tra(-90) && residuo(b) > 0).forEach((b) => add("warn", `Da incassare ${money(residuo(b))} da ${b.referente || b.titolo} (${fmtShort(b.data)})`, "#evento/" + b.id));
   // scambi di turno: chi cerca un sostituto (finché nessuno lo prende, il turno resta suo)
   (S.cambi || []).forEach((c) => { const b = S.bookings.find((x) => x.id === c.booking_id), t = b && turni(b).find((x) => x.id === c.slot_id);
     if (b && t && b.data >= TODAY && S.signups.some((s) => s.bookingId === b.id && s.slotId === t.id && s.volontarioId === c.da_volontario))
@@ -4435,7 +4463,7 @@ function coseDiOggi() {
   return out.sort((a, b) => ordine[a.liv] - ordine[b.liv] || (a.entro || "9").localeCompare(b.entro || "9"));
 }
 function renderOggi() {
-  const el = $("#oggi-body"), cose = coseDiOggi().filter((c) => !c.link || canSee(c.link.slice(1)));
+  const el = $("#oggi-body"), cose = coseDiOggi().filter((c) => !c.link || canSee(c.link.slice(1).split("/")[0]));
   const prossimi = [...S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= addDays(TODAY, 2)).map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, t: b.titolo })),
     ...S.proiezioni.filter((p) => p.data >= TODAY && p.data <= addDays(TODAY, 2)).map((p) => ({ data: p.data, ora: p.ora, t: (S.films.find((f) => f.id === p.film_id) || {}).titolo || "Film" }))].sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
   const ciao = new Date().getHours() < 13 ? "Buongiorno" : new Date().getHours() < 18 ? "Buon pomeriggio" : "Buonasera";
@@ -4698,9 +4726,12 @@ function renderBreve() {
 }
 
 function route() {
-  const h = location.hash.slice(1);
+  const [h, id] = location.hash.slice(1).split("/");
+  S.eventoId = h === "evento" ? id : null;
+  S.turniEvento = h === "turni" ? id : null;
   S.view = VIEWS[h] && canSee(h) ? h : S.postazione ? "cassa" : canSee("oggi") ? "oggi" : canSee("breve") ? "breve" : "calendario";
   render();
+  if (S.view === "evento") { $("#evento-titolo")?.focus({ preventScroll: true }); window.scrollTo(0, 0); }
 }
 addEventListener("hashchange", route);
 

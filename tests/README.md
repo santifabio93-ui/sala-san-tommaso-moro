@@ -62,3 +62,13 @@ Nel SQL Editor del progetto Supabase eseguire
 dopo gli aggiornamenti precedenti. Non serve modificare `config.js` o ripubblicare
 il frontend per questa correzione. Il file può essere rieseguito senza problemi.
 La modifica è stata applicata solo al database locale durante questi test.
+
+## Scheda evento
+
+La suite verifica anche l’apertura dalla prenotazione, la persistenza del link
+all’evento, il pagamento aggiornato dalla scheda, i turni filtrati per evento,
+i documenti e i materiali di un affitto privato, l’assenza di dati riservati nella
+vista volontario, eventi annullati o inesistenti e servizi temporaneamente non
+disponibili. La vista mobile è controllata a 390 px per evitare scorrimento
+orizzontale. Per salvare uno screenshot di prova, impostare `SALA_SCREENSHOT`
+a un percorso locale durante l’esecuzione.

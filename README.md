@@ -111,6 +111,20 @@ SIAE da ricevere, affitti da incassare, sopralluoghi, correzioni al sito e setto
 porta alla pagina giusta; le cose dei film si segnano «Fatto» da lì. I volontari vedono i propri turni e i posti
 scoperti. A destra, cosa c'è in sala oggi e nei due giorni successivi.
 
+## Scheda evento
+
+Dal calendario o dall’elenco prenotazioni, tocca un evento per aprire la sua scheda:
+prossime azioni, scheda di richiesta e SIAE, turni con persone e posti liberi,
+pagamenti, contatti, materiali, richiesta originale e sopralluoghi collegati.
+I pulsanti aprono direttamente la prenotazione, le risposte della scheda o i turni
+di quell’evento. L’indirizzo `#evento/<id>` si può riaprire o condividere: l’accesso
+resta soggetto al ruolo e ai permessi del database.
+
+I volontari vedono soltanto le informazioni pubbliche e i turni. I dati mancanti o
+non disponibili non vengono presentati come controlli superati. Aggiungere materiali
+a un affitto privato non lo pubblica sul sito o nel programma dei social.
+La scheda usa le tabelle esistenti, senza nuovi aggiornamenti SQL.
+
 ## La serata
 La pagina **La serata** mostra su un'unica schermata, anche dal telefono, la serata di oggi o la prossima con qualcosa
 in sala (con ‹ › per le altre): eventi e orari, capienza, chi è di turno e chi manca, i film con supporto, dove si

@@ -1,5 +1,17 @@
 # Esiti della validazione
 
+## Scheda evento: 12 test eseguiti, 12 superati
+
+La suite estesa verifica l’apertura della scheda dalla prenotazione, la
+persistenza del collegamento, i pagamenti, i turni filtrati per evento, documenti
+e materiali, i limiti della vista volontario, gli eventi annullati o mancanti e
+le risposte di errore dei servizi. I controlli precedenti rimangono attivi.
+Verificata la vista mobile a 390 px, senza scorrimento orizzontale, e ispezionato
+uno screenshot. Anche la compressione di app.js ed evento.js con Terser 5.49.2
+è riuscita. Nessun nuovo aggiornamento SQL; verifiche eseguite su dati locali.
+
+## Baseline precedente
+
 Validazione locale sul codice presente il 31 ottobre 2026, con Supabase CLI
 2.122.0, PostgreSQL 17 e Chromium, su dati esclusivamente fittizi.
 
