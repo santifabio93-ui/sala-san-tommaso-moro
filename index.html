@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.61">
+<link rel="stylesheet" href="style.css?v=2026-11-01.63">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -168,6 +168,10 @@
 
   <main id="view-sito" hidden>
     <div id="sito-body"></div>
+  </main>
+
+  <main id="view-rubrica" hidden>
+    <div id="rubrica-body"></div>
   </main>
 
   <main id="view-cinema" hidden>
@@ -386,6 +390,25 @@
         <button class="btn primary" type="submit">Salva</button>
       </div>
     </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-rubrica">
+  <form class="dlg" id="rubrica-form" novalidate>
+    <div class="dlg-head"><h2 id="rb-head">Contatto</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
+    <p class="hint" id="rb-trovato" style="margin:0"></p>
+    <div class="form">
+      <div class="field h"><label for="rb-nome">Nome</label><input id="rb-nome" maxlength="120" autocomplete="off"></div>
+      <div class="field h"><label for="rb-ente">Ente o associazione</label><input id="rb-ente" maxlength="160" autocomplete="off"></div>
+      <div class="field h"><label for="rb-cat-sel">Categoria</label><select id="rb-cat-sel"></select></div>
+      <div class="field h"><label for="rb-telefono">Telefono</label><input id="rb-telefono" type="tel" inputmode="tel" maxlength="60"></div>
+      <div class="field h"><label for="rb-email">Email</label><input id="rb-email" type="email" maxlength="160"></div>
+      <div class="field"><label for="rb-note">Note</label><textarea id="rb-note" maxlength="2000" placeholder="Es. referente del coro, preferisce WhatsApp, ha le chiavi del magazzino…"></textarea></div>
+    </div>
+    <div id="rb-storia"></div>
+    <div id="rb-error"></div>
+    <div class="dlg-foot"><div><button class="btn ghost sm" type="button" id="rb-nascondi">Nascondi dalla rubrica</button></div>
+      <div class="right"><button class="btn" type="button" id="rb-prenota">Nuova prenotazione</button><button class="btn primary" type="submit">Salva</button></div></div>
   </form>
 </dialog>
 
@@ -701,7 +724,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.61"></script>
-<script type="module" src="app.js?v=2026-11-01.61"></script>
+<script src="config.js?v=2026-11-01.63"></script>
+<script type="module" src="app.js?v=2026-11-01.63"></script>
 </body>
 </html>

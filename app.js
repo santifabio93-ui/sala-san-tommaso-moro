@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.61";
+const VERSIONE = "2026-11-01.63";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -34,6 +34,7 @@ const VIEWS = {
   schede: { label: "Schede", roles: ["admin", "coordinatore", "segreteria"] },
   cinema: { label: "Cinema", roles: ["admin", "coordinatore", "volontario", "parroco"] },
   sito: { label: "Sito web", roles: ["admin", "coordinatore"] },
+  rubrica: { label: "Rubrica", roles: ["admin", "coordinatore", "segreteria"] },
   c1: { label: "Incassi C1", roles: ["admin", "coordinatore"] },
   stats: { label: "Statistiche", roles: ["admin", "coordinatore"] },
   sas: { label: "Richieste al SAS", roles: ["admin", "coordinatore"] },
@@ -58,7 +59,7 @@ if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || cfg.supabaseUrl.includes("INSERI
 const MENU = [
   { k: "breve" }, { k: "oggi" }, { k: "calendario" }, { k: "serata" },
   { label: "Affitti", children: ["prenotazioni", "richieste", "sopralluoghi", "schede", "comune"] },
-  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { label: "Turni", children: ["turni", "volontari"] }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
+  { label: "Cinema", children: ["cinema", "sas", "c1", "stats"] }, { k: "sito" }, { k: "rubrica" }, { label: "Turni", children: ["turni", "volontari"] }, { k: "cassa" }, { label: "Economia", children: ["resoconto", "bilancio", "donazioni", "economia"] }, { k: "utenti" }, { k: "stato" },
 ];
 const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluoghi: "Sopralluoghi", comune: "Serate del Comune", schede: "Schede di richiesta", cinema: "Programmazione", sas: "Richieste al SAS", c1: "Incassi C1", stats: "Statistiche", bilancio: "Bilancio (prima nota)", donazioni: "Donazioni", economia: "Spese e tariffe", resoconto: "Resoconto del mese", turni: "Turni", volontari: "Volontari" };
 const canSee = (k) => (S.postazione ? k === "cassa" : k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
@@ -210,6 +211,10 @@ async function loadAll() {
     // informazioni degli eventi per chi cura i social (aggiornamento 33)
     const ei = S.staff ? await sb.from("eventi_info").select("*") : { data: null };
     S.eventiInfo = Object.fromEntries((ei.data || []).map((r) => [r.chiave, r]));
+    // rubrica (aggiornamento 34)
+    const rb = S.canWrite ? await sb.from("rubrica").select("*") : { data: null };
+    S.rubrica = rb.data || [];
+    S.loadErr2.rubrica = rb.error && (rb.error.message || "errore");
     const sd = S.staff ? await sb.from("social_domande").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
     S.socialDomande = sd.data || [];
     S.loadErr2.socialDomande = sd.error && (sd.error.message || "errore");
@@ -282,7 +287,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -417,6 +422,7 @@ function render() {
   if (S.view === "breve") renderBreve();
   if (S.view === "sas") renderSas();
   if (S.view === "sito") renderSito();
+  if (S.view === "rubrica") renderRubrica();
   if (S.view === "utenti") { renderUsers(); renderInvites(); }
 }
 
@@ -3357,6 +3363,144 @@ function collegaFoglietto(root) {
   root.querySelector("#fg-copia").onclick = () => { const t = testoFoglietto({ ...S.foglietto, nome: $("#fg-nome").value.trim(), firma: $("#fg-firma").value.trim(), note: $("#fg-note").value.trim() }); openCopyText(`${t.oggetto}\n\n${t.testo}`); };
 }
 
+/* ---------- rubrica: i contatti di chi ha avuto a che fare con la sala ---------- */
+const CATEGORIE = ["Organizzatore", "Associazione", "Scuola", "Comune ed enti", "Parrocchia", "Artista", "Tecnico", "Fornitore", "Distributore", "Volontario", "Richiesta di informazioni", "Altro"];
+const soloCifre = (t) => { let d = String(t || "").replace(/\D/g, "").replace(/^00/, ""); if (/^39\d{9,10}$/.test(d)) d = d.slice(2); return d.length >= 6 ? d : ""; };
+const mailPulita = (m) => { const x = String(m || "").trim().toLowerCase(); return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x) ? x : ""; };
+const nomePulito = (n) => String(n || "").trim().replace(/\s+/g, " ").toLowerCase();
+// tutti i contatti, uniti per telefono, email o (se non c'è altro) nome; le correzioni salvate in «rubrica» vincono
+function contattiSala() {
+  const out = [], perChiave = new Map();
+  const add = (x) => {
+    const tel = soloCifre(x.telefono), mail = mailPulita(x.email), nome = String(x.nome || "").trim().replace(/\s+/g, " ");
+    if (!tel && !mail && !nome) return;
+    const chiavi = [tel && "tel:" + tel, mail && "mail:" + mail, !tel && !mail && nome && "nome:" + nomePulito(nome) + "|" + nomePulito(x.ente)].filter(Boolean);
+    let c = chiavi.map((k) => perChiave.get(k)).find(Boolean);
+    if (!c) { c = { chiave: chiavi[0], nome: "", ente: "", telefoni: [], email: [], ruoli: new Set(), storia: [], ultimo: "" }; out.push(c); }
+    chiavi.forEach((k) => perChiave.set(k, c));
+    if (nome && (!c.nome || c.nome === c.nome.toUpperCase())) c.nome = nome;
+    if (x.ente && !c.ente) c.ente = String(x.ente).trim();
+    if (x.telefono && tel && !c.telefoni.some((t) => soloCifre(t) === tel)) c.telefoni.push(String(x.telefono).trim());
+    if (mail && !c.email.includes(mail)) c.email.push(mail);
+    if (x.ruolo) c.ruoli.add(x.ruolo);
+    if (x.storia) { if (!c.storia.some((s) => s.k === x.storia.k)) c.storia.push(x.storia); if (x.storia.data > c.ultimo) c.ultimo = x.storia.data; }
+  };
+  for (const b of S.bookings) {
+    if (b.della_sala) continue;
+    add({ nome: b.referente, telefono: b.telefono, email: b.email, ruolo: b.comune ? "Comune ed enti" : "Organizzatore", storia: { k: "b:" + b.id, data: b.data, testo: b.titolo + (b.stato === "annullata" ? " (annullato)" : ""), b: b.id } });
+  }
+  for (const s of S.schede || []) {
+    const d = s.dati || {}, b = S.bookings.find((x) => x.id === s.booking_id), st = { k: "b:" + (s.booking_id || s.id), data: (b && b.data) || String(s.creato || "").slice(0, 10), testo: (b && b.titolo) || s.titolo || "Scheda di richiesta", b: s.booking_id };
+    if (d.referente || d.ente || d.cellulare || d.email) add({ nome: d.referente || d.ente, ente: d.referente ? d.ente : "", telefono: d.cellulare, email: d.email, ruolo: "Organizzatore", storia: st });
+    if (d.resp_sera) add({ nome: d.resp_sera, ente: d.ente, telefono: d.resp_cell, ruolo: "Responsabile in sala", storia: st });
+    if (d.tecnico_nome || d.tecnico_cell) add({ nome: d.tecnico_nome || "Tecnico", ente: d.ente, telefono: d.tecnico_cell, ruolo: "Tecnico", storia: st });
+  }
+  for (const r of S.requests || []) add({ nome: r.mittente, email: r.mittente_email, ruolo: "Richiesta di informazioni", storia: { k: "r:" + r.id, data: String(r.ricevuta || "").slice(0, 10), testo: "Email: " + (r.oggetto || "richiesta"), b: r.booking_id } });
+  for (const x of S.sopralluoghi || []) add({ nome: x.nome, ente: x.ente, telefono: x.telefono, email: x.email, ruolo: "Richiesta di informazioni", storia: { k: "s:" + x.id, data: x.data, testo: `Sopralluogo${x.evento ? ": " + x.evento : ""}`, b: x.booking_id } });
+  for (const v of S.volontari || []) add({ nome: v.nome, telefono: v.cellulare, ruolo: "Volontario" });
+  for (const c of S.sasContatti || []) add({ nome: c.nome, email: c.email, ente: "SAS", ruolo: "Distributore" });
+  // correzioni e contatti a mano
+  // ogni riga salvata si ritrova per chiave, telefono o email (così un contatto aggiunto a mano si unisce a quello trovato)
+  const salvati = new Map((S.rubrica || []).map((r) => [r.chiave, r])), indice = new Map();
+  for (const r of salvati.values()) [r.chiave, soloCifre(r.telefono) && "tel:" + soloCifre(r.telefono), mailPulita(r.email) && "mail:" + mailPulita(r.email)].filter(Boolean).forEach((k) => indice.has(k) || indice.set(k, r));
+  for (const c of out) {
+    const r = [c.chiave, ...c.telefoni.map((t) => "tel:" + soloCifre(t)), ...c.email.map((m) => "mail:" + m)].map((k) => indice.get(k)).find((x) => x && salvati.has(x.chiave));
+    c.ruoli = [...c.ruoli];
+    c.categoria = c.ruoli.includes("Volontario") ? "Volontario" : c.ruoli.includes("Comune ed enti") ? "Comune ed enti" : c.ruoli.includes("Organizzatore") ? "Organizzatore" : c.ruoli[0] || "Altro";
+    c.note = "";
+    if (r) { salvati.delete(r.chiave); c.chiave = r.chiave; c.salvato = r; ["nome", "ente", "categoria", "note"].forEach((k) => r[k] && (c[k] = r[k])); if (r.telefono && !c.telefoni.length) c.telefoni = [r.telefono]; if (r.email && !c.email.length) c.email = [mailPulita(r.email)]; c.nascosto = r.nascosto; }
+  }
+  for (const r of salvati.values()) out.push({ chiave: r.chiave, nome: r.nome, ente: r.ente, categoria: r.categoria || "Altro", note: r.note, telefoni: r.telefono ? [r.telefono] : [], email: r.email ? [r.email] : [], ruoli: [], storia: [], ultimo: String(r.creato || "").slice(0, 10), salvato: r, nascosto: r.nascosto, aMano: true });
+  out.forEach((c) => c.storia.sort((a, b) => b.data.localeCompare(a.data)));
+  return out;
+}
+const telWa = (t) => { const d = soloCifre(t); return d ? (/^3\d{8,9}$/.test(d) ? "39" + d : d) : ""; };
+function renderRubrica() {
+  const el = $("#rubrica-body");
+  if (S.loadErr2?.rubrica) { el.innerHTML = `<div class="panel"><div class="warn">Per la rubrica esegui in Supabase lo script <b>034_rubrica.sql</b> e ricarica la pagina. Intanto qui sotto vedi i contatti trovati dall'app, senza poterli modificare.</div></div>`; }
+  const tutti = contattiSala(), q = (S.rbQ || "").trim().toLowerCase(), cat = S.rbCat || "";
+  const visibili = tutti.filter((c) => (S.rbNascosti ? c.nascosto : !c.nascosto));
+  const lista = visibili.filter((c) => (!cat || c.categoria === cat) && (!q || [c.nome, c.ente, c.note, c.categoria, ...c.telefoni, ...c.email, ...c.storia.map((s) => s.testo)].join(" ").toLowerCase().includes(q)))
+    .sort(S.rbOrd === "nome" ? (a, b) => (a.nome || a.ente).localeCompare(b.nome || b.ente, "it") : (a, b) => (b.ultimo || "").localeCompare(a.ultimo || "") || (a.nome || "").localeCompare(b.nome || "", "it"));
+  const conta = (k) => visibili.filter((c) => c.categoria === k).length;
+  const mostrati = lista.slice(0, S.rbTanti ? 2000 : 80);
+  el.innerHTML = (S.loadErr2?.rubrica ? el.innerHTML : "") + `
+    <div class="toolbar"><div><h2>Rubrica della sala</h2><span class="hint">${visibili.length} contatti: chi ha prenotato, scritto, fatto un sopralluogo o compilato una scheda, i volontari e quelli aggiunti a mano</span></div>
+      <div class="actions"><button class="btn primary" type="button" id="rb-nuovo"${S.loadErr2?.rubrica ? " disabled" : ""}>+ Nuovo contatto</button><button class="btn" type="button" id="rb-csv">Esporta (Excel)</button></div></div>
+    <div class="rb-barra"><input type="search" id="rb-q" placeholder="Cerca nome, associazione, telefono, evento…" value="${esc(S.rbQ || "")}" aria-label="Cerca nella rubrica">
+      <select id="rb-cat" aria-label="Categoria"><option value="">Tutte le categorie</option>${CATEGORIE.filter(conta).map((k) => `<option${k === cat ? " selected" : ""}>${esc(k)}</option>`).join("")}</select>
+      <select id="rb-ord" aria-label="Ordine"><option value="recenti">Più recenti</option><option value="nome"${S.rbOrd === "nome" ? " selected" : ""}>Per nome</option></select></div>
+    ${mostrati.length ? `<div class="rb-lista">${mostrati.map((c) => { const t = c.telefoni[0], m = c.email[0], ult = c.storia[0];
+      return `<div class="rb-card"><button type="button" class="rb-apri" data-rb="${esc(c.chiave)}"><b>${esc(c.nome || c.ente || "(senza nome)")}</b>${c.nome && c.ente ? `<span class="hint">${esc(c.ente)}</span>` : ""}
+          <span class="rb-meta"><span class="pill">${esc(c.categoria)}</span>${ult ? `<span class="hint">${esc(fmtShort(ult.data))} · ${esc(ult.testo)}${c.storia.length > 1 ? ` · +${c.storia.length - 1}` : ""}</span>` : ""}</span></button>
+        <div class="rb-az">${t ? `<a class="btn sm" href="tel:${esc(String(t).replace(/[^\d+]/g, ""))}" aria-label="Chiama ${esc(c.nome)}">📞</a><a class="btn sm" href="https://wa.me/${telWa(t)}" target="_blank" rel="noopener" aria-label="WhatsApp a ${esc(c.nome)}">💬</a>` : ""}${m ? `<a class="btn sm" href="mailto:${esc(m)}" aria-label="Email a ${esc(c.nome)}">✉️</a>` : ""}</div></div>`; }).join("")}</div>
+      ${lista.length > mostrati.length ? `<p style="text-align:center"><button class="btn" type="button" id="rb-tutti">Mostra tutti (${lista.length})</button></p>` : ""}`
+      : `<div class="empty">${q || cat ? "Nessun contatto con questa ricerca." : "Ancora nessun contatto."}</div>`}
+    <p class="hint" style="margin-top:12px">${S.rbNascosti ? `<button class="linkbtn" type="button" id="rb-nasc">← Torna alla rubrica</button>` : tutti.some((c) => c.nascosto) ? `<button class="linkbtn" type="button" id="rb-nasc">Contatti nascosti (${tutti.filter((c) => c.nascosto).length})</button>` : ""}
+      I contatti si aggiornano da soli con le nuove prenotazioni, schede, email e sopralluoghi. Sono dati personali: usali solo per le attività della sala.</p>`;
+  const q1 = $("#rb-q"); q1.oninput = () => { S.rbQ = q1.value; S.rbTanti = false; const pos = q1.selectionStart; renderRubrica(); const n = $("#rb-q"); n.focus(); n.setSelectionRange(pos, pos); };
+  $("#rb-cat").onchange = (e) => { S.rbCat = e.target.value; renderRubrica(); };
+  $("#rb-ord").onchange = (e) => { S.rbOrd = e.target.value; renderRubrica(); };
+  const tt = $("#rb-tutti"); if (tt) tt.onclick = () => { S.rbTanti = true; renderRubrica(); };
+  const nn = $("#rb-nasc"); if (nn) nn.onclick = () => { S.rbNascosti = !S.rbNascosti; renderRubrica(); };
+  $("#rb-nuovo").onclick = () => apriContatto(null);
+  $("#rb-csv").onclick = () => esportaRubrica(lista);
+  el.querySelectorAll("[data-rb]").forEach((b) => (b.onclick = () => apriContatto(tutti.find((c) => c.chiave === b.dataset.rb))));
+}
+function esportaRubrica(lista) {
+  const cella = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const righe = [["Nome", "Ente o associazione", "Categoria", "Telefono", "Email", "Ultimo contatto", "Eventi e contatti", "Note"],
+    ...lista.map((c) => [c.nome, c.ente, c.categoria, c.telefoni.join(" / "), c.email.join(" / "), c.ultimo, c.storia.map((s) => `${s.data} ${s.testo}`).join(" | "), c.note])];
+  const blob = new Blob(["﻿" + righe.map((r) => r.map(cella).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `rubrica-sala-${TODAY}.csv` });
+  document.body.appendChild(a); a.click(); a.remove();
+}
+const dlgRb = $("#dlg-rubrica");
+function apriContatto(c) {
+  S.rbEdit = c;
+  $("#rb-head").textContent = c ? c.nome || c.ente || "Contatto" : "Nuovo contatto";
+  $("#rb-cat-sel").innerHTML = CATEGORIE.map((k) => `<option${c && k === c.categoria ? " selected" : ""}>${esc(k)}</option>`).join("");
+  if (!c) $("#rb-cat-sel").value = "Organizzatore";
+  const v = { nome: c ? c.nome : "", ente: c ? c.ente : "", telefono: c ? c.telefoni.join(" / ") : "", email: c ? c.email.join(" / ") : "", note: c ? c.note : "" };
+  for (const k of Object.keys(v)) $("#rb-" + k).value = v[k] || "";
+  // telefono ed email trovati dall'app si correggono dove sono nati (prenotazione, scheda…); quelli a mano si cambiano qui
+  const trovato = c && !c.aMano;
+  $("#rb-telefono").readOnly = $("#rb-email").readOnly = !!(trovato && (c.telefoni.length || c.email.length));
+  $("#rb-trovato").textContent = trovato ? `Trovato dall'app: ${c.ruoli.join(", ").toLowerCase() || "contatto"}. Nome, ente, categoria e note si possono correggere qui.` : "";
+  $("#rb-storia").innerHTML = c && c.storia.length ? `<h4 style="margin:12px 0 4px">Con la sala (${c.storia.length})</h4>${c.storia.map((s) => `<div class="todo-riga"><div><b>${esc(fmtShort(s.data))}</b> ${esc(s.testo)}</div>${s.b && S.bookings.some((x) => x.id === s.b) ? `<div class="az"><button class="btn ghost sm" type="button" data-rb-b="${esc(s.b)}">Apri</button></div>` : ""}</div>`).join("")}` : "";
+  $("#rb-storia").querySelectorAll("[data-rb-b]").forEach((b) => (b.onclick = () => { dlgRb.close(); openBooking(S.bookings.find((x) => x.id === b.dataset.rbB)); }));
+  $("#rb-nascondi").hidden = !c; $("#rb-nascondi").textContent = c && c.nascosto ? "Rimetti nella rubrica" : c && c.aMano ? "Elimina" : "Nascondi dalla rubrica";
+  $("#rb-prenota").hidden = !c;
+  $("#rb-error").innerHTML = "";
+  dlgRb.showModal();
+}
+async function salvaContatto(extra = {}) {
+  const c = S.rbEdit, g = (k) => $("#rb-" + k).value.trim();
+  const rec = { chiave: c ? c.chiave : "man:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), nome: g("nome"), ente: g("ente"), categoria: $("#rb-cat-sel").value, note: g("note"), aggiornato: new Date().toISOString(), ...extra };
+  if (!c || c.aMano) { rec.telefono = g("telefono"); rec.email = g("email"); }
+  else { rec.telefono = c.telefoni[0] || ""; rec.email = c.email[0] || ""; } // per ritrovarlo anche se cambia il nome
+  if (!rec.nome && !rec.ente) { $("#rb-error").innerHTML = `<div class="warn">Scrivi almeno il nome o l'ente.</div>`; return false; }
+  await run(sb.from("rubrica").upsert(rec, { onConflict: "chiave" }), extra.nascosto === true ? "Contatto nascosto" : extra.nascosto === false ? "Contatto di nuovo in rubrica" : "Contatto salvato");
+  return true;
+}
+$("#rubrica-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try { if (await salvaContatto()) dlgRb.close(); } catch (x) { $("#rb-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+});
+$("#rb-nascondi").onclick = async () => {
+  const c = S.rbEdit; if (!c) return;
+  try {
+    if (c.aMano && !c.nascosto) { if (!confirm(`Eliminare ${c.nome || c.ente} dalla rubrica?`)) return; await run(sb.from("rubrica").delete().eq("chiave", c.chiave), "Contatto eliminato"); }
+    else await salvaContatto({ nascosto: !c.nascosto });
+    dlgRb.close();
+  } catch (x) { $("#rb-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
+};
+$("#rb-prenota").onclick = () => {
+  const c = S.rbEdit; dlgRb.close();
+  S.fromRequest = null;
+  openBooking(null, TODAY, { referente: c.nome || c.ente, telefono: c.telefoni[0] || "", email: c.email[0] || "", titolo: "" });
+};
+
 /* ---------- locandine: si caricano (spazio file «locandine») e Claude ne legge le informazioni (funzione leggi-locandina) ---------- */
 async function preparaImmagine(file, lato = 1600) {
   const bmp = await createImageBitmap(file).catch(() => null);
@@ -4206,6 +4350,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["034_rubrica.sql", "Rubrica della sala", !manca(e2.rubrica)],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
     ["functions/leggi-locandina", "Lettura delle locandine con Claude (funzione Supabase + chiave di Anthropic)", undefined, "Facoltativa: istruzioni nel README, sezione «Locandine lette da Claude». Senza, le locandine si caricano lo stesso", true],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
