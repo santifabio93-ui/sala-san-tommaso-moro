@@ -4,7 +4,7 @@
 -- e le correzioni a quelli trovati dall'app: categoria, ente, note, oppure «nascondi».
 -- La vedono amministratori, coordinatori e segreteria.
 -- Con «+rubrica» nella MODALITA dello script Google (account della sala) entrano anche le persone con cui la sala
--- ha scambiato email: nome, indirizzo, telefono trovato nella firma, ultima email.
+-- ha scambiato email: nome, indirizzo, e dalla firma telefono, ente, ruolo e sito; le ultime conversazioni.
 -- Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run. Si può rieseguire senza problemi.
 
 create table if not exists public.rubrica (
@@ -43,6 +43,10 @@ create table if not exists public.rubrica_mail (
   ultimo timestamptz,
   aggiornato timestamptz not null default now()
 );
+alter table public.rubrica_mail add column if not exists ente text not null default '';
+alter table public.rubrica_mail add column if not exists ruolo text not null default '';
+alter table public.rubrica_mail add column if not exists sito text not null default '';
+alter table public.rubrica_mail add column if not exists conversazioni jsonb not null default '[]'::jsonb;  -- [{data, oggetto, link}], le ultime 12
 alter table public.rubrica_mail enable row level security;
 drop policy if exists "rubrica mail: staff e segreteria leggono" on public.rubrica_mail;
 create policy "rubrica mail: staff e segreteria leggono" on public.rubrica_mail
@@ -59,10 +63,12 @@ declare
   n int;
 begin
   perform public.sync_check(p_token);
-  insert into public.rubrica_mail as r (email, nome, telefono, oggetto, link, primo, ultimo)
+  insert into public.rubrica_mail as r (email, nome, telefono, oggetto, link, primo, ultimo, ente, ruolo, sito, conversazioni)
   select distinct on (lower(btrim(x->>'email')))
          lower(btrim(x->>'email')), left(coalesce(x->>'nome', ''), 120), left(coalesce(x->>'telefono', ''), 40),
-         left(coalesce(x->>'oggetto', ''), 200), left(coalesce(x->>'link', ''), 300), (x->>'primo')::timestamptz, (x->>'ultimo')::timestamptz
+         left(coalesce(x->>'oggetto', ''), 200), left(coalesce(x->>'link', ''), 300), (x->>'primo')::timestamptz, (x->>'ultimo')::timestamptz,
+         left(coalesce(x->>'ente', ''), 120), left(coalesce(x->>'ruolo', ''), 120), left(coalesce(x->>'sito', ''), 200),
+         case when jsonb_typeof(x->'conversazioni') = 'array' then x->'conversazioni' else '[]'::jsonb end
   from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) x
   where coalesce(x->>'email', '') ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
   order by lower(btrim(x->>'email')), (x->>'ultimo') desc
@@ -73,6 +79,14 @@ begin
     link = case when excluded.ultimo >= coalesce(r.ultimo, excluded.ultimo) then excluded.link else r.link end,
     primo = least(r.primo, excluded.primo),
     ultimo = greatest(r.ultimo, excluded.ultimo),
+    ente = case when excluded.ente <> '' then excluded.ente else r.ente end,
+    ruolo = case when excluded.ruolo <> '' then excluded.ruolo else r.ruolo end,
+    sito = case when excluded.sito <> '' then excluded.sito else r.sito end,
+    -- le conversazioni: unione senza doppioni (per link), le 12 più recenti
+    conversazioni = (select coalesce(jsonb_agg(c order by c->>'data' desc), '[]'::jsonb) from (
+        select c from (select distinct on (c->>'link') c from jsonb_array_elements(r.conversazioni || excluded.conversazioni) c
+                       order by c->>'link', c->>'data' desc) d
+        order by c->>'data' desc limit 12) z),
     aggiornato = now();
   get diagnostics n = row_count;
   update public.settings set sync_rubrica = now() where id = 1;

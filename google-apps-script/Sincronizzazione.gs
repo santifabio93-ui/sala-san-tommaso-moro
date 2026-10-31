@@ -47,7 +47,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-03.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-03.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -1030,14 +1030,15 @@ function leggiRubrica(cfg, mem, primaVolta) {
     let m; while ((m = re.exec(String(t || "")))) out.push({ nome: (m[1] || m[2] || "").trim().replace(/^'+|'+$/g, ""), email: m[3].toLowerCase() });
     return out;
   };
-  const aggiungi = (a, quando, oggetto, link, telefono) => {
+  const aggiungi = (a, quando, oggetto, link, f) => {
     if (!a.email || mie.indexOf(a.email) !== -1 || NON_PERSONE.test(a.email)) return;
     const nome = a.nome && a.nome.indexOf("@") === -1 ? a.nome : "";
-    const p = persone[a.email] || (persone[a.email] = { email: a.email, nome: "", telefono: "", oggetto: "", link: "", primo: quando, ultimo: quando });
+    const p = persone[a.email] || (persone[a.email] = { email: a.email, nome: "", telefono: "", ente: "", ruolo: "", sito: "", oggetto: "", link: "", primo: quando, ultimo: quando, conv: {} });
     if (nome && (!p.nome || quando >= p.ultimo)) p.nome = nome;
-    if (telefono && (!p.telefono || quando >= p.ultimo)) p.telefono = telefono;
+    ["telefono", "ente", "ruolo", "sito"].forEach((k) => { if (f && f[k] && (!p[k] || quando >= p.ultimo)) p[k] = f[k]; });
     if (quando <= p.primo) p.primo = quando;
     if (quando >= p.ultimo) { p.ultimo = quando; p.oggetto = oggetto; p.link = link; }
+    if (!p.conv[link] || quando > p.conv[link].data) p.conv[link] = { data: quando, oggetto: oggetto, link: link };
   };
   (lista.threads || []).forEach((t) => {
     let th;
@@ -1047,11 +1048,14 @@ function leggiRubrica(cfg, mem, primaVolta) {
       const h = (nome) => ((msg.payload.headers || []).find((x) => x.name.toLowerCase() === nome) || {}).value || "";
       const quando = new Date(Number(msg.internalDate)).toISOString(), oggetto = h("subject").slice(0, 200);
       const da = indirizzi(h("from"))[0];
-      if (da && mie.indexOf(da.email) !== -1) indirizzi(h("to") + "," + h("cc")).forEach((a) => aggiungi(a, quando, oggetto, link, ""));
-      else if (da) aggiungi(da, quando, oggetto, link, telefonoFirma(corpoTesto(msg.payload) || msg.snippet || ""));
+      if (da && mie.indexOf(da.email) !== -1) indirizzi(h("to") + "," + h("cc")).forEach((a) => aggiungi(a, quando, oggetto, link, null));
+      else if (da) aggiungi(da, quando, oggetto, link, firma(corpoTesto(msg.payload) || msg.snippet || "", da));
     });
   });
-  const items = Object.keys(persone).map((k) => persone[k]);
+  const items = Object.keys(persone).map((k) => {
+    const p = persone[k], conv = Object.keys(p.conv).map((l) => p.conv[l]).sort((a, b) => (a.data < b.data ? 1 : -1)).slice(0, 12);
+    delete p.conv; p.conversazioni = conv; return p;
+  });
   for (let i = 0; i < items.length; i += 100) rpc(cfg, "sync_rubrica_push", { p_items: items.slice(i, i + 100) });
   if (primaVolta) {
     if (lista.nextPageToken) mem.setProperty("RUBRICA_PAGINA", lista.nextPageToken);
@@ -1060,21 +1064,46 @@ function leggiRubrica(cfg, mem, primaVolta) {
   mem.setProperty("RUBRICA_ULTIMA", String(Date.now()));
   Logger.log("Rubrica: " + (lista.threads || []).length + " conversazioni lette, " + items.length + " contatti mandati all'app" + (primaVolta ? (lista.nextPageToken ? " (prima lettura: continua al prossimo giro)" : " (prima lettura finita)") : ""));
 }
-// il primo cellulare (o un fisso con «tel») nella parte nuova dell'email, senza il testo citato delle risposte
-function telefonoFirma(testo) {
-  const nuovo = String(testo).split(/\n\s*(?:Il .{3,120}ha scritto:|On .{3,120}wrote:|-{2,}\s*(?:Messaggio originale|Original Message)|Da:\s|From:\s)/i)[0]
+// la parte nuova dell'email, senza il testo citato delle risposte
+function parteNuova(testo) {
+  return String(testo).split(/\n\s*(?:Il .{3,120}ha scritto:|On .{3,120}wrote:|-{2,}\s*(?:Messaggio originale|Original Message)|Da:\s|From:\s|Inviato da\s)/i)[0]
     .split("\n").filter((r) => !/^\s*>/.test(r)).join("\n");
+}
+// il primo cellulare (o un fisso con «tel») nella parte nuova dell'email
+function telefonoFirma(testo) {
+  const nuovo = parteNuova(testo);
   const cell = nuovo.match(/(?:\+39[\s.]?)?\b3\d{2}[\s.\/-]?\d{3}[\s.-]?\d{3,4}\b/);
   if (cell) return cell[0].trim();
   const fisso = nuovo.match(/\b(?:tel|telefono|tel\.)\s*[:.]?\s*((?:\+39[\s.]?)?0\d{1,3}[\s.\/-]?\d{5,8})\b/i);
   return fisso ? fisso[1].trim() : "";
+}
+// dalla firma (le ultime righe della parte nuova): telefono, ente o associazione, ruolo, sito
+const ENTE_RE = /\b(associazion[ei]|a\.?p\.?s\.?|o\.?d\.?v\.?|a\.?s\.?d\.?|coro|corale|banda|pro ?loco|comune di|unione dei comuni|regione|provincia|istituto|scuola|liceo|universit|parrocchia|diocesi|oratorio|gruppo|compagnia|teatro|cooperativa|fondazione|circolo|club|polisportiva|comitato|consulta|biblioteca|s\.?r\.?l\.?s?|s\.?n\.?c\.?|s\.?a\.?s\.?|s\.?p\.?a\.?|studio|agenzia|ufficio|accademia|onlus|aps|ets)\b/i;
+const RUOLO_RE = /\b(president[ea]|vicepresident[ea]|segretari[oa]|tesorier[ea]|direttor[ea]|direttivo|responsabile|referente|coordinat(?:ore|rice)|dirigente|maestr[oa]|parroco|sindac[oa]|assessore|consiglier[ea]|insegnante|docente|organizzat(?:ore|rice)|titolare|amministrat(?:ore|rice)|ufficio stampa)\b/i;
+function firma(testo, da) {
+  const nuovo = parteNuova(testo);
+  const righe = nuovo.replace(/\s[|•·]\s/g, "\n").split("\n").map((r) => r.replace(/[*_|]+/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+  // la firma: dalle formule di saluto in giù, altrimenti le ultime 8 righe
+  let i = -1;
+  righe.forEach((r, k) => { if (/^(?:cordiali saluti|distinti saluti|saluti|un saluto|grazie|grazie mille|buona giornata|buona serata|a presto|ciao)\b/i.test(r)) i = k; });
+  const fine = righe.slice(i >= 0 ? i + 1 : Math.max(0, righe.length - 8)).filter((r) => r.length <= 90);
+  const ente = fine.filter((r) => ENTE_RE.test(r) && !/@/.test(r) && !/https?:|www\./i.test(r) && !RUOLO_RE.test(r)).slice(0, 2).map((r) => r.replace(/^[-–—\s]+/, "")).join(" · ");
+  const ruolo = (fine.find((r) => RUOLO_RE.test(r) && r !== ente && r.length <= 60) || "");
+  const sito = ((nuovo.match(/\b(?:https?:\/\/|www\.)[^\s<>()"']+/gi) || []).find((u) => !/google\.|goo\.gl|facebook\.com\/sharer|mailtrack|unsubscribe|aka\.ms|outlook|apple\.com/i.test(u)) || "").replace(/[.,;]+$/, "");
+  return { telefono: telefonoFirma(testo), ente: ente.slice(0, 120), ruolo: ruolo.slice(0, 120), sito: sito.slice(0, 200) };
+}
+// da eseguire a mano una volta dopo un aggiornamento: rilegge da capo tutta la posta inviata (a blocchi, come la prima volta)
+function rileggiRubrica() {
+  const mem = PropertiesService.getUserProperties();
+  ["RUBRICA_FINE", "RUBRICA_PAGINA", "RUBRICA_ULTIMA"].forEach((k) => mem.deleteProperty(k));
+  provaRubrica();
 }
 // da eseguire a mano: legge subito un blocco di posta (la prima volta riparte dall'inizio) e scrive nel log cosa trova
 function provaRubrica() {
   const cfg = leggiImpostazioni(), mem = PropertiesService.getUserProperties();
   Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("rubrica") === -1 ? "  ← manca «+rubrica»: la lettura automatica non partirà" : ""));
   leggiRubrica(cfg, mem, !mem.getProperty("RUBRICA_FINE"));
-  Logger.log(JSON.stringify(["Mario Rossi\nCoro San Biagio\ncell. 347 123 4567", "Grazie!\n\nIl giorno lun 3 nov, Sala ha scritto:\n> 333 0000000", "Tel. 049 9365111"].map(telefonoFirma)));
+  Logger.log(JSON.stringify(firma("Buongiorno, vi confermo la data.\n\nCordiali saluti\nMario Rossi\nPresidente\nCoro San Biagio APS\ncell. 347 123 4567\nwww.corosanbiagio.it\n\nIl giorno lun 3 nov, Sala ha scritto:\n> 333 0000000")));
 }
 
 /* ---------------- prova manuale ---------------- */

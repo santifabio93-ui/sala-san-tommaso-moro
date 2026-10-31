@@ -399,7 +399,11 @@ Si aggiungono contatti a mano (fornitori, tecnici, enti…), si correggono nome,
 quelli inutili. «Esporta (Excel)» scarica l'elenco filtrato. Serve lo script `034_rubrica.sql`. Con «+rubrica» nella MODALITA dello script Google
 dell'account della sala entrano anche le persone con cui la sala ha scambiato email (solo le conversazioni in cui la sala
 ha scritto o risposto: niente pubblicità né newsletter), con il telefono trovato nella firma e il link all'ultima email.
-La prima volta lo script legge tutta la posta inviata a blocchi (40 conversazioni ogni 15 minuti), poi ogni 6 ore. Sono dati personali:
+La prima volta lo script legge tutta la posta inviata a blocchi (40 conversazioni ogni 15 minuti), poi ogni 6 ore. Dalla firma
+delle email ricava anche ente o associazione, ruolo e sito; la rubrica aggiunge da sola il telefono scritto nelle email di
+richiesta, indirizzo e codice fiscale dalle schede, gli eventi fatti e in programma, quanto ha pagato in totale (solo
+amministratore) e indovina la categoria dall'ente o dall'indirizzo email. Dopo un aggiornamento dello script, eseguire una
+volta `rileggiRubrica` per rileggere tutta la posta con le informazioni nuove. Sono dati personali:
 restano nel database e si usano solo per le attività della sala.
 
 ## Locandine lette da Claude
