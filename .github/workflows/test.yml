@@ -1,0 +1,33 @@
+name: Test di regressione
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix "$RUNNER_TEMP/sala-tools" supabase@2.122.0
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Ricostruisci database locale
+        env:
+          SUPABASE_CLI: ${{ runner.temp }}/sala-tools/node_modules/.bin/supabase
+        run: python tests/prepare.py
+      - name: Test API e browser
+        run: python -m unittest discover -s tests -v
+      - name: Ferma servizi di test
+        if: always()
+        run: '"$RUNNER_TEMP/sala-tools/node_modules/.bin/supabase" --workdir tests/.runtime stop --no-backup'

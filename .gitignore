@@ -1,2 +1,5 @@
 .DS_Store
 node_modules/
+tests/.runtime/
+tests/__pycache__/
+test-results/
