@@ -50,7 +50,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-04.1"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-04.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -1143,7 +1143,9 @@ function corpoTesto(parte) {
   const plain = trova(parte, "text/plain");
   if (plain) return plain;
   return trova(parte, "text/html").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<br\s*\/?>|<\/p>/gi, "\n").replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/[ \t]{2,}/g, " ");
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
+    .replace(/&euro;/gi, "€").replace(/&nbsp;/g, " ").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&([aeiou])grave;/gi, (_, v) => ({ a: "à", e: "è", i: "ì", o: "ò", u: "ù" })[v.toLowerCase()]).replace(/&eacute;/gi, "é").replace(/&amp;/g, "&").replace(/[ \t]{2,}/g, " ");
 }
 
 const MESI = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };

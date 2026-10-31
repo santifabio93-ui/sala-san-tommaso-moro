@@ -8,8 +8,12 @@ const numero = (s) => Number(String(s || "").replace(/\s/g, "").replace(/\.(?=\d
 export const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 // testo leggibile: niente asterischi del grassetto, tabelle, citazioni e righe vuote doppie
+const ENTITA = { euro: "€", nbsp: " ", amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", agrave: "à", egrave: "è", eacute: "é", igrave: "ì", ograve: "ò", ugrave: "ù", deg: "°", laquo: "«", raquo: "»", rsquo: "'", lsquo: "'", ndash: "–", mdash: "—", hellip: "…" };
+// le email che arrivano solo in HTML hanno «&euro;» al posto di «€»: si decodificano le entità
+export const entita = (t) => String(t || "").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+  .replace(/&([a-z]+);/gi, (x, n) => ENTITA[n.toLowerCase()] ?? x);
 export function pulisci(testo) {
-  return String(testo || "").replace(/\r/g, "").replace(/\*/g, "").replace(/\|/g, " ").replace(/\[\]\(#\)/g, "").replace(/[ \t ]+/g, " ");
+  return entita(testo).replace(/\r/g, "").replace(/\*/g, "").replace(/\|/g, " ").replace(/\[\]\(#\)/g, "").replace(/[ \t ]+/g, " ");
 }
 // solo il messaggio nuovo, senza la parte citata della risposta
 export function senzaCitazione(testo) {
