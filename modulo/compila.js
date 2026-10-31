@@ -64,10 +64,8 @@ function modulo(d, info) {
         <label class="voce" style="margin-top:6px"><input type="checkbox" name="galleria_anche"${d.galleria_anche || d.fascia === "tutta" ? " checked" : ""}> Serve anche la galleria (più di 338 persone, fino a 472)</label></div>
       <div class="cond campo full" data-se-in="tipo=conferenza,scuola,altro"><span class="lbl obbl">Spazio</span>${scelta("fascia", [["galleria", "galleria, fino a 134 persone (conferenze e incontri)"], ["platea", "platea con il palco, fino a 338"], ["tutta", "platea e galleria, fino a 472"]], d.fascia)}</div>
       <div class="campo full"><div class="scelte">
-        <label>Persone previste <input class="num" type="number" min="0" max="472" name="pubblico_n" value="${esc(d.pubblico_n ?? "")}"></label>
-        <label>di cui bambini <input class="num" type="number" min="0" name="bambini_n" value="${esc(d.bambini_n ?? "")}"></label>
-        <label>persone in carrozzina <input class="num" type="number" min="0" name="carrozzina_n" value="${esc(d.carrozzina_n ?? "")}"></label>
-        <label>persone sul palco <input class="num" type="number" min="0" name="palco_n" value="${esc(d.palco_n ?? "")}"></label></div>
+        <label>Persone in carrozzina <input class="num" type="number" min="0" name="carrozzina_n" value="${esc(d.carrozzina_n ?? "")}"></label>
+        <label>Persone sul palco <input class="num" type="number" min="0" name="palco_n" value="${esc(d.palco_n ?? "")}"></label></div>
         <span class="hint">Se vengono bambini piccoli, avvisate le famiglie: i passeggini non sono ammessi in sala.</span></div>
     </div></section>
 
