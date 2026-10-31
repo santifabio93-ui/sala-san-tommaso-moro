@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.58">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.59">
 <style>
 .wrap { max-width: 760px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -34,6 +34,16 @@ dl.info dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere }
 .manca { color: var(--muted); font-style: italic }
 .az { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px }
 .nuovo { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #C9A227; color: #13262A; font-size: .7rem; font-weight: 800; vertical-align: middle }
+.manca { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; font-style: italic; text-decoration: underline dotted }
+.domande { margin-top: 12px; display: grid; gap: 8px }
+.dom { padding: 10px 12px; border-radius: 12px; background: var(--sunk); font-size: .9rem; overflow-wrap: anywhere }
+.risp { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font-weight: 600 }
+.chiedi { margin-top: 12px; display: grid; gap: 8px }
+.chiedi textarea, .chiedi input { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--surface); color: inherit; font: inherit }
+.chiedi textarea { min-height: 80px; resize: vertical }
+.risposte { margin-bottom: 18px; padding: 14px 16px; border-radius: var(--r); background: var(--accent-soft); display: grid; gap: 8px }
+.risposte h3 { margin: 0 } .risposte .dom { background: var(--surface) } .risposte .btn { justify-self: start }
+.generale { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 8px } .generale h3 { margin: 0 } .generale .btn { justify-self: start }
 .vuoto { text-align: center; padding: 26px 10px; color: var(--muted) }
 @media (max-width: 480px) { .ev { grid-template-columns: 76px minmax(0, 1fr); gap: 10px } .ev .loc { width: 76px } dl.info { grid-template-columns: minmax(0, 1fr) } dl.info dt { margin-top: 4px } }
 </style>
@@ -47,7 +57,7 @@ dl.info dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere }
   <div id="app"><p class="muted">Caricamento degli eventi…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.58"></script>
-<script type="module" src="social.js?v=2026-11-01.58"></script>
+<script src="../config.js?v=2026-11-01.59"></script>
+<script type="module" src="social.js?v=2026-11-01.59"></script>
 </body>
 </html>

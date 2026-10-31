@@ -2,6 +2,7 @@
 -- Un link solo per loro (senza account): film, spettacoli ed eventi della Sala dei prossimi due mesi con date, orari,
 -- ingresso, regista, collaborazioni, distributore, descrizione, note, biglietti, locandina e cartella dei materiali.
 -- Quello che l'app sa lo riempie da sola; il resto si completa nell'app (Sito web → Info per i social).
+-- Dal link possono fare domande su un evento: si risponde dall'app e la risposta compare nel loro link.
 -- Gli affitti privati non compaiono. Da eseguire in Supabase: SQL Editor → New query → incolla tutto → Run.
 -- Si può rieseguire senza problemi.
 
@@ -26,6 +27,29 @@ do $$
 begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'eventi_info') then
     alter publication supabase_realtime add table public.eventi_info;
+  end if;
+exception when undefined_object then null;
+end $$;
+
+-- le domande di chi cura i social, con la risposta data dall'app
+create table if not exists public.social_domande (
+  id uuid primary key default gen_random_uuid(),
+  chiave text not null,
+  titolo text not null default '',
+  testo text not null,
+  chi text not null default '',
+  creato timestamptz not null default now(),
+  risposta text not null default '',
+  risposto_il timestamptz
+);
+alter table public.social_domande enable row level security;
+drop policy if exists "domande social: staff" on public.social_domande;
+create policy "domande social: staff" on public.social_domande
+  for all using (public.my_role() in ('admin', 'coordinatore')) with check (public.my_role() in ('admin', 'coordinatore'));
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'social_domande') then
+    alter publication supabase_realtime add table public.social_domande;
   end if;
 exception when undefined_object then null;
 end $$;
@@ -89,11 +113,30 @@ begin
       where b.data between dal and al and b.stato = 'confermata'
         and (b.comune or coalesce((to_jsonb(b)->>'della_sala')::boolean, false))
         and not (b.titolo ~* '(cinema|proiezion|cineforum)' and exists (select 1 from public.proiezioni p where p.data = b.data))
-  ) x), '[]'::jsonb));
+  ) x), '[]'::jsonb),
+    'domande', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'chiave', d.chiave, 'titolo', d.titolo, 'testo', d.testo, 'chi', d.chi,
+        'creato', d.creato, 'risposta', d.risposta, 'risposto_il', d.risposto_il) order by d.creato desc)
+      from public.social_domande d where d.creato > now() - interval '60 days'), '[]'::jsonb));
 end $$;
 revoke all on function public.social_apri(uuid) from public;
 grant execute on function public.social_apri(uuid) to anon, authenticated;
 
+-- una domanda a chi organizza
+create or replace function public.social_chiedi(p_token uuid, p_chiave text, p_titolo text, p_testo text, p_nome text)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.settings where id = 1 and social_token = p_token) then raise exception 'Link non valido: chiedi quello nuovo'; end if;
+  if coalesce(btrim(p_testo), '') = '' then raise exception 'Scrivi la domanda'; end if;
+  if (select count(*) from public.social_domande where creato > now() - interval '1 hour') >= 30 then raise exception 'Troppe domande in poco tempo: riprova più tardi'; end if;
+  insert into public.social_domande (chiave, titolo, testo, chi)
+    values (left(coalesce(p_chiave, ''), 40), left(coalesce(p_titolo, ''), 200), left(btrim(p_testo), 1000), left(btrim(coalesce(p_nome, '')), 40));
+  return jsonb_build_object('ok', true);
+end $$;
+
+revoke all on function public.social_chiedi(uuid, text, text, text, text) from public;
+grant execute on function public.social_chiedi(uuid, text, text, text, text) to anon, authenticated;
+
 notify pgrst, 'reload schema';
 
-select exists (select 1 from pg_proc where proname = 'social_apri') as info_per_i_social;
+select exists (select 1 from pg_proc where proname = 'social_chiedi') and to_regclass('public.social_domande') is not null as info_per_i_social;

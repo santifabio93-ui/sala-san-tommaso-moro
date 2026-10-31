@@ -2,7 +2,7 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.58";
+const VERSIONE = "2026-11-01.59";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -210,6 +210,9 @@ async function loadAll() {
     // informazioni degli eventi per chi cura i social (aggiornamento 33)
     const ei = S.staff ? await sb.from("eventi_info").select("*") : { data: null };
     S.eventiInfo = Object.fromEntries((ei.data || []).map((r) => [r.chiave, r]));
+    const sd = S.staff ? await sb.from("social_domande").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
+    S.socialDomande = sd.data || [];
+    S.loadErr2.socialDomande = sd.error && (sd.error.message || "errore");
     S.loadErr2.cambi = tc.error && (tc.error.message || "errore");
     // scorte che mancano (aggiornamento 24): le vedono e le segnano tutti i volontari
     const sc = ["admin", "coordinatore", "segreteria", "volontario"].includes(S.role) ? await sb.from("scorte").select("*").order("creato", { ascending: false }).limit(200) : { data: null };
@@ -279,7 +282,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -3371,9 +3374,17 @@ function mancaSocial(e) {
 function pannelloSocial() {
   if (!S.social) return `<div class="panel"><h3>Info per i social</h3><p class="hint">Per il link con le informazioni di ogni evento per chi cura i social esegui in Supabase lo script <b>033_info_social.sql</b> e ricarica la pagina.</p></div>`;
   const ev = eventiSocial(), daFare = ev.filter((e) => mancaSocial(e).length).length;
+  const aperte = (S.socialDomande || []).filter((d) => !d.risposta), recenti = (S.socialDomande || []).filter((d) => d.risposta).slice(0, 3);
+  const domande = aperte.length || recenti.length ? `<div style="margin:6px 0 12px"><h4 style="margin:0 0 4px">${aperte.length ? `❓ ${aperte.length === 1 ? "Una domanda aspetta" : `${aperte.length} domande aspettano`} la tua risposta` : "Ultime domande"}</h4>
+    ${aperte.map((d) => `<div class="todo-riga"><div><b>${esc(d.titolo || "Domanda generale")}</b> <span class="hint">${esc(d.chi || "")} · ${esc(ago(d.creato))}</span><div>${esc(d.testo)}</div>
+        <form class="sito-contatto" data-soc-risp="${esc(d.id)}" style="margin-top:6px" novalidate><input placeholder="Rispondi…" aria-label="Risposta" maxlength="1000" style="flex:1;min-width:0;width:auto"><button class="btn primary sm" type="submit">Rispondi</button></form></div>
+        <div class="az">${S.eventiInfo && /^[fb]:/.test(d.chiave) && eventiSocial().some((e) => e.chiave === d.chiave) ? `<button class="btn sm" type="button" data-soc-ev="${esc(d.chiave)}">Completa l'evento</button>` : ""}</div></div>`).join("")}
+    ${recenti.map((d) => `<div class="todo-riga"><div><span class="hint">${esc(d.titolo || "Domanda generale")} · ${esc(d.chi || "")}</span><div>${esc(d.testo)}</div><div><b>${esc(d.risposta)}</b></div></div></div>`).join("")}</div>`
+    : S.loadErr2?.socialDomande ? `<p class="hint">Per ricevere le domande dal link riesegui in Supabase lo script <b>033_info_social.sql</b>.</p>` : "";
   return `<div class="panel" id="social-panel"><div class="section-head"><h3>Info per i social</h3><span class="hint">Un link per chi cura i social: date, orari, ingresso, regista, collaborazioni, locandina e materiali di ogni evento dei prossimi due mesi. Gli affitti privati non compaiono.</span></div>
     <div class="actions" style="margin:4px 0 10px"><button class="btn primary sm" type="button" data-soc="manda">Manda il link</button><a class="btn sm" href="${esc(linkSocial())}" target="_blank" rel="noopener">Guarda cosa vedono</a>
       ${S.isAdmin ? `<button class="btn ghost sm" type="button" data-soc="rinnova" title="Il link vecchio smette di funzionare">Rinnova il link</button>` : ""}</div>
+    ${domande}
     ${ev.length ? `<p class="hint" style="margin:0 0 4px">${daFare ? `${daFare} ${daFare === 1 ? "evento ha" : "eventi hanno"} ancora qualcosa da completare: tocca «Completa».` : "Tutti gli eventi hanno le informazioni principali. ✓"}</p>
       ${ev.map((e) => { const m = mancaSocial(e);
         return `<div class="todo-riga"><div><b>${esc(e.titolo)}</b> <span class="hint">${esc(e.tipo)} · ${esc(fmtShort(e.prima))}${e.n > 1 ? ` · ${e.n} date` : ""}</span>
@@ -3393,6 +3404,14 @@ function collegaSocial(root) {
     try { await run(sb.from("settings").update({ social_token: crypto.randomUUID() }).eq("id", 1), "Link rinnovato: mandalo a chi cura i social"); } catch (x) { toast(errText(x)); }
   };
   root.querySelectorAll("[data-soc-ev]").forEach((b) => (b.onclick = () => apriInfoSocial(b.dataset.socEv)));
+  root.querySelectorAll("[data-soc-risp]").forEach((f) => (f.onsubmit = async (e) => {
+    e.preventDefault();
+    const inp = f.querySelector("input"), risposta = inp.value.trim();
+    if (!risposta) { inp.focus(); return; }
+    f.querySelector("button").disabled = true;
+    try { await run(sb.from("social_domande").update({ risposta, risposto_il: new Date().toISOString() }).eq("id", f.dataset.socRisp), "Risposta inviata: la vedono nel loro link"); }
+    catch (x) { toast(errText(x)); f.querySelector("button").disabled = false; }
+  }));
 }
 const dlgSoc = $("#dlg-social");
 function apriInfoSocial(chiave) {
@@ -4034,6 +4053,7 @@ function coseDiOggi() {
   // scorte da comprare
   if ((S.scorte || []).length) add("info", `Scorte da comprare: ${S.scorte.map((x) => x.cosa.toLowerCase()).join(", ")}`, "#serata");
   // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
+  (S.socialDomande || []).filter((d) => !d.risposta).forEach((d) => add("warn", `Domanda dai social${d.titolo ? ` su «${d.titolo}»` : ""}${d.chi ? ` (${d.chi})` : ""}: «${d.testo}»`, "#sito"));
   (S.pulizieFatte || []).filter((f) => f.creato.slice(0, 10) >= tra(-3)).forEach((f) => add(f.note ? "warn" : "info", `Pulizie fatte da ${f.nome}${f.note ? `: «${f.note}»` : ""}`, "#volontari"));
   // volontari: compleanni di oggi e domani, attestati antincendio da rinnovare
   S.volontari.filter((v) => v.attivo).forEach((v) => {
@@ -4103,7 +4123,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
-    ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento", k.has("social_token")],
+    ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
     ["032_turni_cambi.sql", "Scambio di turno tra volontari", !manca(e2.cambi), "Senza questo script, «Chiedi il cambio» nel link dei turni non funziona"],
     ["031_turni_oltre.sql", "Nelle fasce al completo ci si aggiunge come aiuto", undefined, "Senza questo script, dal link personale le fasce piene rifiutano chi si vuole aggiungere"],
     ["030_badge.sql", "Badge dei volontari (QR e codice a barre) per la cassa", undefined, "Serve solo se usi la postazione cassa", true],

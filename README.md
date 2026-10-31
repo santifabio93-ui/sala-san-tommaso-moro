@@ -385,6 +385,9 @@ regista (anche dalle richieste al SAS), collaborazioni, descrizione, note, distr
 e cartella dei materiali, con il bottone «Copia tutte le info». Gli affitti privati non compaiono. Il link si manda dal
 riquadro «Info per i social» nella pagina Sito web, dove si completano anche le informazioni di ogni evento («Completa»
 mostra cosa manca). «Rinnova il link» lo cambia se gira troppo. Serve lo script `033_info_social.sql`.
+Gli eventi nuovi o cambiati dall'ultima visita (date, orari, informazioni) hanno un'etichetta per 3 giorni e un filtro
+«Novità». Con «❓ Chiedi» (o toccando «da chiedere») fanno una domanda: arriva in Oggi e nel riquadro, si risponde da lì
+e la risposta compare nel loro link.
 
 ## Film e altri spettacoli
 
