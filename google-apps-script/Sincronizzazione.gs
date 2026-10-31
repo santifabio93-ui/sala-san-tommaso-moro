@@ -50,7 +50,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-04.2"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-04.3"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -738,6 +738,7 @@ function provaC1() {
 /* ---------------- Prima nota (file Excel .xlsx su Drive) ---------------- */
 
 const PRIMA_NOTA_CARTELLA = "14D2sZWpTAGwkIJi27V22NpWvVDkUkTF-"; // cartella "PRIMA NOTA" su Drive della sala
+const PRIMA_NOTA_ORDINATA = "1ujeA7vmJt6kFyzF04oVOCgHKAGSDPOIX"; // Contabilita_STM_2026.xlsx: le righe sistemate a mano (proprietà PRIMA_NOTA_ORDINATA per cambiarlo)
 
 // legge la prima nota solo quando il file è cambiato (o sempre, con forza = true)
 function leggiPrimaNota(cfg, forza) {
@@ -750,7 +751,7 @@ function leggiPrimaNota(cfg, forza) {
   if (!righe.length) throw new Error("Prima nota: nel file «" + f.fonte.getName() + "» non trovo i movimenti (fogli «Prima nota 26», «Prima nota 2025»… oppure «Prima nota»)");
   righe.forEach((r) => delete r.daRegole);
   const regole = primaNotaDaXlsx.regole || 0;
-  const esito = rpc(cfg, "sync_prima_nota_push", { p_file: f.fonte.getName(), p_rows: righe });
+  const esito = rpc(cfg, "sync_prima_nota_push", { p_file: f.fonte.getName() + (f.arricchimento ? " + " + f.arricchimento.getName() : ""), p_rows: righe });
   props.setProperty("PN_ULTIMO", chiave);
   const e = righe.reduce((s, r) => s + (r.entrate || 0), 0), u = righe.reduce((s, r) => s + (r.uscite || 0), 0);
   Logger.log("Prima nota «" + f.fonte.getName() + "»" + (f.arricchimento ? " (con le correzioni di «" + f.arricchimento.getName() + "»)" : "") + ": " + righe.length + " movimenti, entrate " + e.toFixed(2) + ", uscite " + u.toFixed(2)
@@ -783,7 +784,14 @@ function filePrimaNota(cfg) {
   let fonte = cfg.primaNotaFile ? DriveApp.getFileById(cfg.primaNotaFile) : null;
   if (fonte && !(fonte.getId() in tipi)) { try { tipi[fonte.getId()] = tipoPrimaNota(fogliXlsx(fonte.getBlob())); } catch (e) { tipi[fonte.getId()] = ""; } }
   if (!fonte || tipi[fonte.getId()] !== "registro") fonte = xlsx.find((f) => tipi[f.getId()] === "registro") || fonte || xlsx.find((f) => tipi[f.getId()] === "ordinato") || null;
-  const arricchimento = fonte && tipi[fonte.getId()] === "registro" ? xlsx.find((f) => tipi[f.getId()] === "ordinato") || null : null;
+  // il file ordinato: quello indicato (di solito Contabilita_STM_2026.xlsx), altrimenti quello trovato nella cartella
+  let arricchimento = null;
+  if (fonte && tipi[fonte.getId()] === "registro") {
+    const id = PropertiesService.getScriptProperties().getProperty("PRIMA_NOTA_ORDINATA") || PRIMA_NOTA_ORDINATA;
+    try { arricchimento = DriveApp.getFileById(id); } catch (e) { Logger.log("Prima nota: il file ordinato " + id + " non si apre (" + e.message + "): cerco nella cartella"); }
+    if (!arricchimento) arricchimento = xlsx.find((f) => tipi[f.getId()] === "ordinato") || null;
+    if (!arricchimento) Logger.log("Prima nota: ATTENZIONE, nessun file ordinato: tutte le righe vengono classificate in automatico");
+  }
   return { fonte: fonte, arricchimento: arricchimento };
 }
 const normPn = (s) => String(s == null ? "" : s).toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
@@ -1013,8 +1021,8 @@ function primaNotaRegistro(fogli, ordinati) {
       });
     });
   });
-  // i movimenti aggiunti a mano nel file ordinato (da documenti) che nel registro non ci sono
-  ordinati.filter((o) => !o.riga && /aggiunt/i.test(o.tipo_movimento)).forEach((o) => {
+  // i movimenti scritti solo nel file ordinato (aggiunti da documenti, previsti…) che nel registro non ci sono
+  ordinati.filter((o) => !o.riga).forEach((o) => {
     if (!out.some((x) => x.data === o.data && Math.abs(x.entrate - o.entrate) < 0.01 && Math.abs(x.uscite - o.uscite) < 0.01)) { const c = Object.assign({}, o); delete c.riga; out.push(c); }
   });
   out.sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : 0));
