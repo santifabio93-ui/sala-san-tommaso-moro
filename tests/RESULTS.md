@@ -1,5 +1,28 @@
 # Esiti della validazione
 
+## Scheda danza condizionale: 42 test superati
+
+Suite completa su Supabase locale reale e Chromium terminata con OK: 42 test
+in circa 108 secondi. Database ricostruito da zero da 42 file SQL e migrazione
+042 rieseguita senza errori. Verificate sintassi e compressione Terser 5.49.2.
+
+Sei test dedicati verificano apertura della sezione selezionando Saggio di danza,
+chiusura scegliendo un altro tipo ed esclusione dei dati nascosti dall’invio,
+bozze e riapertura dopo l’invio, prove e repliche, minori, pavimento, cambi
+costume, audio e luci. Controllata la vista a 390 px senza scorrimento orizzontale.
+
+Verificati controlli server su quantità, capienza, orari e sovrapposizioni,
+necessità di aggiornare le richieste danza precedenti ancora da approvare,
+verifiche della Sala obbligatorie prima dell’approvazione e loro azzeramento
+al nuovo invio. Una revisione obsoleta non può approvare risposte cambiate.
+Il riepilogo è visibile al gestore e nel link personale approvato, senza note
+o verifiche interne; i volontari non accedono ai dettagli riservati.
+
+Prezzi, orari della prenotazione e calendario non vengono modificati dall’invio
+o dall’approvazione. Gli altri tipi di richiesta e il percorso parrocchiale
+sono coperti dalla suite completa. Nessuna modifica al database reale e nessuna
+pubblicazione: per l’attivazione applicare 042 dopo 041.
+
 ## Importazione modificabile dei collegamenti: 36 test superati
 
 Suite completa su Supabase locale reale e Chromium terminata con OK: 36 test

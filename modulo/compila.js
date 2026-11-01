@@ -1,5 +1,6 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.85";
+import { sezioneDanza, erroriDanza, riepilogoDanza } from "../danza.js?v=2026-11-01.89";
+import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.89";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Scheda di richiesta online: l'organizzatore la apre dal link personale (?t=codice), senza account.
@@ -22,7 +23,8 @@ const voce = (nome, etichetta, d, num = null) => `<label class="voce"><input typ
 
 function rigaOrari(r, i) {
   return `<div class="riga-orari" data-riga="${i}">
-    <div class="campo"><label class="${i === 0 ? "obbl" : ""}">Data</label><input type="date" name="o_data" value="${esc(r.data)}"></div>
+    <div class="campo cond danza-utilizzo" data-se="tipo=danza" hidden><label>Utilizzo</label><select name="o_utilizzo"><option value="saggio"${r.utilizzo!=="prove"?" selected":""}>Saggio / replica</option><option value="prove"${r.utilizzo==="prove"?" selected":""}>Prova</option></select></div>
+    <div class="campo orario-data"><label class="${i === 0 ? "obbl" : ""}">Data</label><input type="date" name="o_data" value="${esc(r.data)}"></div>
     <div class="campo"><label>Allestim. dalle</label><input type="time" name="o_all_da" value="${esc(r.all_da)}"></div>
     <div class="campo"><label>alle</label><input type="time" name="o_all_a" value="${esc(r.all_a)}"></div>
     <div class="campo"><label>Porte</label><input type="time" name="o_porte" value="${esc(r.porte)}"></div>
@@ -57,7 +59,7 @@ function modulo(d, info) {
   <section class="sez"><h2><span class="n">2</span>L'evento</h2>
     <div class="griglia">
       ${campo("titolo", "Titolo", d.titolo ?? info.titolo, "", true, "full")}
-      <div class="campo full"><span class="lbl obbl">Tipo di evento</span>${scelta("tipo", [["teatro", "teatro"], ["concerto", "concerto"], ["danza", "danza / saggio"], ["cinema", "cinema / proiezione"], ["conferenza", "conferenza / incontro"], ["scuola", "scuola"], ["altro", "altro"]], d.tipo)}</div>
+      <div class="campo full"><span class="lbl obbl">Tipo di evento</span>${scelta("tipo", [["teatro", "teatro"], ["concerto", "concerto"], ["danza", "Saggio di danza"], ["cinema", "cinema / proiezione"], ["conferenza", "conferenza / incontro"], ["scuola", "scuola"], ["altro", "altro"]], d.tipo)}</div>
       <div class="campo full"><label for="f-descrizione">In breve, cosa succede</label><textarea id="f-descrizione" name="descrizione">${esc(d.descrizione)}</textarea></div>
       <div class="campo full"><span class="lbl">Ingresso</span>${scelta("ingresso", [["libero", "libero"], ["offerta", "a offerta"], ["pagamento", "a pagamento"]], d.ingresso)}
         <div class="cond" data-se="ingresso=pagamento"><div class="griglia">${campo("prezzo", "Prezzo del biglietto (€)", d.prezzo, "inputmode=\"decimal\"")}
@@ -67,11 +69,13 @@ function modulo(d, info) {
       <div class="cond campo full" data-se-in="tipo=conferenza,scuola,altro"><span class="lbl obbl">Spazio</span>${scelta("fascia", [["galleria", "galleria, fino a 134 persone (conferenze e incontri)"], ["platea", "platea con il palco, fino a 338"], ["tutta", "platea e galleria, fino a 472"]], d.fascia)}</div>
       <div class="campo full"><div class="scelte">
         <label>Persone in carrozzina <input class="num" type="number" min="0" name="carrozzina_n" value="${esc(d.carrozzina_n ?? "")}"></label>
-        <label>Persone sul palco <input class="num" type="number" min="0" name="palco_n" value="${esc(d.palco_n ?? "")}"></label></div>
+        <label><span data-palco-label>Persone sul palco</span> <input class="num" type="number" min="0" name="palco_n" value="${esc(d.palco_n ?? "")}"></label></div>
         <span class="hint">Se vengono bambini piccoli, avvisate le famiglie: i passeggini non sono ammessi in sala.</span></div>
     </div></section>
 
-  <section class="sez"><h2><span class="n">3</span>Date e orari</h2><span class="hint">Una riga per ogni giorno. La sala va lasciata libera entro l'orario di sgombero.</span>
+  ${sezioneDanza(d, {campo,scelta,esc})}
+
+  <section class="sez"><h2><span class="n">3</span>Date e orari</h2><span class="hint" id="orari-info">Una riga per ogni giorno. La sala va lasciata libera entro l'orario di sgombero.</span>
     <div id="orari">${orari.map(rigaOrari).join("")}</div>
     <button class="btn sm no-print" type="button" id="aggiungi-giorno" style="margin-top:8px">+ Aggiungi un giorno</button></section>
 
@@ -134,10 +138,10 @@ function modulo(d, info) {
 }
 
 // --- lettura del modulo ---
-function leggi() {
+function leggi(includiNascosti = false) {
   const f = $("#scheda"), d = {};
   for (const el of f.elements) {
-    if (!el.name || el.name.startsWith("o_")) continue;
+    if (!el.name || el.name.startsWith("o_") || (!includiNascosti && el.closest("[hidden]"))) continue;
     if (el.type === "radio") { if (el.checked) d[el.name] = el.value; }
     else if (el.type === "checkbox") {
       if (el.closest('.scelte[data-campo]')) { (d[el.name] = d[el.name] || []); if (el.checked) d[el.name].push(el.value); }
@@ -151,16 +155,25 @@ function leggi() {
   else delete d.galleria_anche;
   d.orari = [...document.querySelectorAll(".riga-orari")].map((r) => {
     const v = (n) => r.querySelector(`[name="o_${n}"]`).value;
-    return { data: v("data"), all_da: v("all_da"), all_a: v("all_a"), porte: v("porte"), inizio: v("inizio"), fine: v("fine"), sgombero: v("sgombero") };
+    return { data: v("data"), all_da: v("all_da"), all_a: v("all_a"), porte: v("porte"), inizio: v("inizio"), fine: v("fine"), sgombero: v("sgombero"), ...(d.tipo === "danza" ? {utilizzo: v("utilizzo")} : {}) };
   }).filter((o) => o.data || o.inizio);
+  if (d.tipo === "danza") d.danza_versione = 1;
   return d;
 }
 function aggiornaCondizioni() {
-  const d = leggi();
+  const d = leggi(true);
   document.querySelectorAll("[data-se]").forEach((el) => { const [k, v] = el.dataset.se.split("="); el.hidden = d[k] !== v; });
   document.querySelectorAll("[data-se-in]").forEach((el) => { const [k, v] = el.dataset.seIn.split("="); el.hidden = !v.split(",").includes(d[k]); });
+  document.querySelectorAll('[data-se-minori]').forEach(el => el.hidden = !(d.tipo === 'danza' && d.danza_minori_n > 0));
+  const palco = document.querySelector('[data-palco-label]'); if (palco) palco.textContent = d.tipo === 'danza' ? 'Massimo di ballerini contemporaneamente sul palco' : 'Persone sul palco';
+  if (palco) palco.closest('label').classList.toggle('obbl', d.tipo === 'danza');
+  if ($('#orari-info')) $('#orari-info').textContent = d.tipo === 'danza' ? 'Una riga per ogni prova o replica, anche nello stesso giorno. Includete preparazione e sgombero; le date aggiuntive vanno concordate con la Sala.' : 'Una riga per ogni giorno. La sala va lasciata libera entro l’orario di sgombero.';
+  $('#aggiungi-giorno').textContent = d.tipo === 'danza' ? '+ Aggiungi una prova o una replica' : '+ Aggiungi un giorno';
+  if (document.getElementById('modulo-percorso')) document.getElementById('modulo-percorso').textContent = d.tipo === 'danza' ? 'Utilizzatori esterni · Saggio di danza' : 'Percorso utilizzatori esterni';
+
 }
-function salvaBozza() { try { localStorage.setItem(BOZZA, JSON.stringify(leggi())); } catch (e) {} }
+let compilataServer = null;
+function salvaBozza() { try { localStorage.setItem(BOZZA, JSON.stringify({...leggi(), _bozza_compilata_il: compilataServer})); } catch (e) {} }
 function controlla(d) {
   const mancano = [];
   const segna = (sel, testo) => { mancano.push(testo); const el = document.querySelector(sel); if (el) el.classList.add("errore-campo"); };
@@ -176,6 +189,7 @@ function controlla(d) {
   else if (d.siae === "si" && !siaeSala && !(d.siae_file || []).length && !d.siae_dopo) segna('#f-siae-file', "permesso SIAE (allegatelo o spuntate che lo manderete)");
   if (!d.ok_regole || !d.ok_dichiarazione || !d.ok_privacy) segna('.accetta', "accettazione di regole, dichiarazione e privacy");
   if (!d.firma || d.firma.length < 3) segna('[name="firma"]', "nome e cognome di chi compila");
+  for (const errore of erroriDanza(d)) segna(errore.campo === 'orari' ? '#orari' : `[name="${errore.campo}"]`, errore.msg);
   return mancano;
 }
 
@@ -205,15 +219,17 @@ async function avvia() {
   if (!percorso) {
     // Compatibilità con una pagina HTML precedente ancora nella cache.
     const versione = document.createElement('p'); versione.className = 'hint no-print';
-    versione.append('Versione modulo 2026-11-01.85 · ');
+    versione.append('Versione modulo 2026-11-01.89 · ');
     percorso = document.createElement('span'); percorso.id = 'modulo-percorso'; versione.append(percorso);
     document.getElementById('app').before(versione);
   }
   percorso.textContent = info.percorso === 'parrocchia' ? 'Percorso Parrocchia' : 'Percorso utilizzatori esterni';
   if (info.percorso === 'parrocchia') { avviaParrocchia({ info, token, sb, esc, fmtData, mostra, BOZZA, rigaOrari }); return; }
+  if (info.chiusa && info.dati?.tipo === 'danza') { mostra(`<div class="esito"><h2>Scheda danza approvata</h2><p><b>${esc(info.dati.titolo || info.titolo)}</b><br>${esc(info.dati.ente)} · ${esc(info.dati.referente)}</p><p>Per modifiche alle esigenze contattate la Sala.</p></div>${riepilogoDanza(info.dati, esc)}`); return; }
   if (info.chiusa) { mostra(`<div class="esito"><h2>Scheda già approvata</h2><p>La sala ha già approvato la scheda${info.titolo ? ` per <b>${esc(info.titolo)}</b>` : ""}. Per modifiche contattate la sala: salatommasomoro@gmail.com</p></div>`); return; }
+  compilataServer = info.compilata_il || null;
   let d = info.dati || {};
-  try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0)) d = { ...d, ...b }; } catch (e) {}
+  try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0 || b._bozza_compilata_il === info.compilata_il)) d = { ...d, ...b }; } catch (e) {}
   allegati = Array.isArray(d.siae_file) ? d.siae_file.slice() : [];
   siaeSala = !!info.siae_sala;
   mostra(modulo(d, info));
@@ -222,7 +238,7 @@ async function avvia() {
   aggiornaCondizioni();
   f.addEventListener("input", (e) => { e.target.closest(".errore-campo")?.classList.remove("errore-campo"); aggiornaCondizioni(); salvaBozza(); });
   f.addEventListener("change", () => { aggiornaCondizioni(); salvaBozza(); });
-  $("#aggiungi-giorno").onclick = () => { const n = document.querySelectorAll(".riga-orari").length; $("#orari").insertAdjacentHTML("beforeend", rigaOrari({}, n)); salvaBozza(); };
+  $("#aggiungi-giorno").onclick = () => { const n = document.querySelectorAll(".riga-orari").length; $("#orari").insertAdjacentHTML("beforeend", rigaOrari({}, n)); aggiornaCondizioni(); salvaBozza(); };
   $("#orari").addEventListener("click", (e) => { const b = e.target.closest("[data-togli]"); if (b) { b.closest(".riga-orari").remove(); salvaBozza(); } });
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -239,7 +255,7 @@ async function avvia() {
     try { localStorage.removeItem(BOZZA); } catch (e2) {}
     window.scrollTo(0, 0);
     mostra(`<div class="esito"><h2>Grazie, scheda inviata!</h2><p>La sala ha ricevuto la scheda per <b>${esc(dati.titolo)}</b>. Vi contatteremo se servono chiarimenti; se volete correggere qualcosa, riaprite lo stesso link.</p>
-      <p class="no-print"><button class="btn" type="button" onclick="window.print()">Stampa o salva una copia</button></p></div>` + `<div class="regole" style="margin-top:10px"><b>Riepilogo</b><br>${esc(dati.ente)} · ${esc(dati.referente)} · ${esc(dati.cellulare)}<br>${dati.orari.map((o) => `${esc(fmtData(o.data))}, inizio ${esc(o.inizio)}${o.fine ? ` – fine ${esc(o.fine)}` : ""}`).join("<br>")}<br>Firmato da ${esc(dati.firma)} il ${new Date().toLocaleDateString("it-IT")}</div>`);
+      <p class="no-print"><button class="btn" type="button" onclick="window.print()">Stampa o salva una copia</button></p></div>` + `<div class="regole" style="margin-top:10px"><b>Riepilogo</b><br>${esc(dati.ente)} · ${esc(dati.referente)} · ${esc(dati.cellulare)}<br>${dati.orari.map((o) => `${esc(fmtData(o.data))}, inizio ${esc(o.inizio)}${o.fine ? ` – fine ${esc(o.fine)}` : ""}`).join("<br>")}<br>Firmato da ${esc(dati.firma)} il ${new Date().toLocaleDateString("it-IT")}</div>` + riepilogoDanza(dati, esc));
   });
 }
 avvia();

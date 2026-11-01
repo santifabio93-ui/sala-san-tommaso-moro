@@ -1,3 +1,4 @@
+import { riepilogoDanza } from "./danza.js?v=2026-11-01.89";
 // Scheda unica di una prenotazione: usa soltanto i dati già caricati e i permessi della vista.
 export function schedaEvento(S, b, h) {
   const { esc, money, fmtDay, orario, coverage, turni, signupsFor, schedaDi, siaeStato, residuo, isRecurring } = h;
@@ -51,6 +52,7 @@ export function schedaEvento(S, b, h) {
       ];
       programma = panel('programma', 'Attività, sala ed esigenze', `<dl class="evento-info">${righe.filter(([, valore]) => valore).map(([label, valore]) => `<dt>${esc(label)}</dt><dd class="evento-note">${esc(valore)}</dd>`).join('')}</dl><p class="hint">Dotazioni, allestimenti e assistenza sono le richieste del gruppo: verificare quanto concordato prima dell’apertura.</p>`);
     }
+    if (d.tipo === 'danza') programma = panel('programma', 'Saggio di danza', riepilogoDanza(d, esc));
     const prezzo = Number(b.prezzo) || 0, incassato = Number(b.incassato) || 0;
     if (prezzo > 0 && residuo(b) > 0) next(`Restano ${money(residuo(b))} da incassare.`, 'payment', 'Registra incasso');
     pagamenti = panel('pagamenti', 'Pagamenti', `<dl class="evento-totali"><div><dt>Importo previsto</dt><dd>${money(prezzo)}</dd></div><div><dt>Incassato</dt><dd>${money(incassato)}</dd></div><div><dt>Da incassare</dt><dd>${money(residuo(b))}</dd></div></dl>
