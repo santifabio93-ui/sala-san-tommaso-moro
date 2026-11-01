@@ -59,7 +59,7 @@ export function creaPreventivi({ getState, calcolaTariffa, esc, iso, fmtDay }) {
     w.document.close(); w.focus(); w.print();
   }
   return function apri(source, key = source.id) {
-    if (!getState().canWrite) return;
+    if (!getState().canWrite || source.scheda_parrocchia_id) return;
     chiave = key;
     const S = getState(), scheda = S.schede.filter((s) => s.booking_id === source.id).sort((a, b) => b.creato.localeCompare(a.creato))[0];
     const tariffa = source.tariffa || {}, spazio = tariffa.spazio || scheda?.dati?.fascia || '';

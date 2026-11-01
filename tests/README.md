@@ -83,3 +83,14 @@ un PDF con Chromium, verificando che non contenga note interne o script eseguibi
 I controlli confermano che prenotazioni, incassi e richieste non vengano modificati.
 Per conservare gli artefatti della prova impostare `SALA_QUOTE_PDF` e, per la vista
 mobile, `SALA_QUOTE_SCREENSHOT` a percorsi locali.
+
+## Richieste parrocchiali
+
+La migrazione 037 viene applicata automaticamente da `prepare.py`. I test
+verificano il percorso completo gestore → link → invio → approvazione → incontri
+gratuiti, la riapprovazione senza duplicati, il collegamento delle risposte a
+più incontri, il blocco di sovrapposizioni senza inserimenti parziali, i tempi
+di preparazione/riordino, i permessi di assegnazione e approvazione, la gratuità
+anche contro modifiche API e la validazione di attività, capienza e opere protette.
+Le richieste di prova e tutti gli incontri generati vengono eliminati dal solo
+Supabase locale a fine test. Nessuna credenziale reale necessaria.

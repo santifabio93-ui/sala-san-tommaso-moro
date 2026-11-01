@@ -1,5 +1,25 @@
 # Esiti della validazione
 
+## Percorso parrocchiale: 21 test eseguiti, 21 superati
+
+Verificato il flusso dal gestore che predispone il link all’invio del referente,
+alla verifica e approvazione e alla creazione di più incontri gratuiti.
+Controllati blocco delle sovrapposizioni con rollback dell’intera richiesta,
+riapprovazione senza duplicati, tempi di preparazione/riordino, dati del gruppo,
+capienza, attività ammesse e gestione delle opere protette. Gli utenti esterni
+non possono assegnarsi il percorso o approvarsi; anche la segreteria non può
+assegnare il percorso o cambiare le date degli incontri parrocchiali.
+Prezzi/incassi diversi da zero, distacco dalla richiesta e date non approvate
+vengono bloccati nel database. Il riepilogo del richiedente riflette gli incontri
+correnti dopo le modifiche del gestore.
+
+Le 37 migrazioni sono state ricostruite da zero; l’ultima versione di 037 è stata
+anche rieseguita incrementalmente senza errori, poi l’intera suite ha terminato
+con OK (21 test, circa 64 secondi). Verificata la vista a 390 px, senza scorrimento
+orizzontale, e ispezionato uno screenshot. Il modulo cartaceo mantiene 2 pagine.
+Verificata la compressione con Terser 5.49.2. Nessuna operazione sul database reale.
+Per l’attivazione online è necessario applicare 037 prima della pubblicazione.
+
 ## Preventivo affitti: 16 test eseguiti, 16 superati
 
 Verificati tariffa a giornata, supplementi e IVA nelle due configurazioni,

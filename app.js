@@ -1,10 +1,10 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.82";
-import { schedaEvento } from "./evento.js?v=2026-11-01.82";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.83";
+import { schedaEvento } from "./evento.js?v=2026-11-01.83";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.82";
+const VERSIONE = "2026-11-01.83";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -807,7 +807,7 @@ function openBooking(b, date, prefill) {
   $("#b-head").textContent = b ? "Prenotazione" : "Nuova prenotazione";
   for (const k of ["titolo", "referente", "tipo", "telefono", "email", "data", "inizio", "fine", "prezzo", "incassato", "stato", "note"]) $("#b-" + k).value = v[k] ?? "";
   // tariffa: quella salvata, altrimenti lo spazio dedotto dal pubblico previsto nella scheda dell'organizzatore
-  const sk = b && S.schede.filter((x) => x.booking_id === b.id && x.dati && x.dati.fascia).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+  const sk = b && S.schede.filter((x) => (x.booking_id === b.id || x.id === b.scheda_parrocchia_id) && x.dati && x.dati.fascia).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
   const tar = v.tariffa || (sk ? { spazio: sk.dati.fascia, dallaScheda: true } : {});
   $("#b-spazio").value = SPAZI[tar.spazio] ? tar.spazio : "";
   for (const k of Object.keys(SUPPLEMENTI)) $("#b-t-" + k).checked = !!tar[k];
@@ -816,6 +816,9 @@ function openBooking(b, date, prefill) {
   $("#b-pubblico").value = (v.tariffa && PUBBLICO[v.tariffa.pubblico]) ? v.tariffa.pubblico : "";
   if (!b && !v.prezzo) applicaTariffa();
   aggiornaTariffa(tar.dallaScheda && !v.tariffa);
+  for (const id of ["b-prezzo", "b-incassato"]) { $("#" + id).closest(".field").hidden = !!b?.scheda_parrocchia_id; $("#" + id).disabled = !!b?.scheda_parrocchia_id; }
+  $("#b-sala").disabled = !!b?.scheda_parrocchia_id;
+  $("#b-comune").disabled = !!b?.scheda_parrocchia_id;
   S.draftTurni = turni(v).map((t) => ({ ...t }));
   renderSlotEditor();
   $("#b-giornata").checked = !!v.giornata_intera;
@@ -946,6 +949,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
   try {
     if (S.editing) {
       const prev = S.bookings.find((x) => x.id === S.editing);
+      if (prev?.scheda_parrocchia_id) { rec.prezzo = 0; rec.incassato = 0; rec.tariffa = $("#b-pubblico").value ? { pubblico: $("#b-pubblico").value } : null; rec.della_sala = true; rec.comune = false; }
       if (fromCalendar(prev)) {
         // evento del calendario: se cambiano titolo, data, orario o stato, da qui in avanti vale la versione dell'app
         const campi = ["titolo", "data", "inizio", "fine", "giornata_intera", "stato"];
@@ -1795,7 +1799,7 @@ function diagnosiPrimaNota(dove) {
 const SCHEDA_GIORNI = 30, SCHEDA_URGENTE = 14; // da compilare 30 giorni prima; sotto i 14 è urgente
 const giorniA = (d) => Math.round((parse(d) - parse(TODAY)) / 864e5);
 const linkScheda = (s) => new URL("modulo/compila.html?t=" + s.token, location.href.split("#")[0]).href;
-const schedaDi = (b) => S.schede.filter((s) => s.booking_id === b.id).sort((a, c) => c.creato.localeCompare(a.creato))[0];
+const schedaDi = (b) => S.schede.filter((s) => s.booking_id === b.id || s.id === b.scheda_parrocchia_id).sort((a, c) => c.creato.localeCompare(a.creato))[0];
 const schedeDaVerificare = () => S.schede.filter((s) => s.stato === "compilata").length;
 // eventi per cui di solito serve la scheda: in arrivo, non ricorrenti, non del cinema della sala
 const serveScheda = (b) => active(b) && !b.della_sala && b.data >= TODAY && giorniA(b.data) <= 120 && !isRecurring(b) && !/cinema|proiezion|cineforum/i.test((b.tipo || "") + " " + b.titolo);
@@ -1829,6 +1833,7 @@ const SC_FILTRI = [
   ["tutte", "Tutte", (r) => r.st !== "non_serve" || true],
 ];
 function renderSchede() {
+  $("#sc-parrocchia").hidden = !S.staff;
   if (S.loadErr?.schede) { $("#sc-list").innerHTML = `<div class="warn">In Supabase manca lo script <b>010_schede.sql</b>: eseguilo nel SQL Editor e ricarica la pagina. (${esc(S.loadErr.schede)})</div>`; $("#sc-kpis").innerHTML = ""; return; }
   const righe = righeSchede();
   const n = (f) => righe.filter(f).length;
@@ -1858,13 +1863,13 @@ function renderSchede() {
     if (!s || ["da_inviare"].includes(s.stato)) az.push(`<button class="btn primary sm" type="button" data-invia="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Invia il link</button>`);
     if (s && ["inviata", "aperta", "respinta"].includes(s.stato)) az.push(`<button class="btn sm" type="button" data-sollecita="${esc(s.id)}">Sollecita</button>`, `<button class="btn ghost sm" type="button" data-link="${esc(s.id)}">Copia link</button>`);
     if (s && ["compilata", "approvata", "respinta"].includes(s.stato)) az.push(`<button class="btn ${s.stato === "compilata" ? "primary" : ""} sm" type="button" data-vedi="${esc(s.id)}">${s.stato === "compilata" ? "Verifica" : "Vedi risposte"}</button>`);
-    if (!s || !["approvata", "non_serve", "compilata"].includes(s.stato)) az.push(`<button class="btn ghost sm" type="button" data-nonserve="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">Non serve</button>`);
+    if (!s || !["approvata", "non_serve", "compilata"].includes(s.stato)) az.push(`<button class="btn ghost sm" type="button" data-nonserve="${esc(b ? b.id : "")}" data-sid="${esc(s ? s.id : "")}">${s?.percorso === "parrocchia" ? "Archivia richiesta" : "Non serve"}</button>`);
     if (s && s.stato === "non_serve") az.push(`<button class="btn ghost sm" type="button" data-riattiva="${esc(s.id)}">Serve</button>`);
     if (s && s.stato !== "non_serve" && "siae_sala" in s && !(b && b.della_sala)) az.push(`<button class="btn ghost sm" type="button" data-siaesala="${esc(s.id)}" title="Evento co-organizzato: il permesso SIAE lo fa la sala">${s.siae_sala ? "SIAE: la fa l'organizzatore" : "SIAE: la fa la sala"}</button>`);
     if (b && !s && dellaSalaAttivo()) az.push(`<button class="btn ghost sm" type="button" data-dellasala="${esc(b.id)}" title="Evento organizzato dalla Sala: non serve la scheda">È della Sala</button>`);
     return `<article class="panel sc-row ${r.urgente ? "sc-urgente" : ""}">
       <div class="quando">${r.data ? `<b>${esc(fmtShort(r.data))}</b><span class="tra ${r.urgente ? "urg" : ""}">${r.gg === 0 ? "oggi" : r.gg > 0 ? `tra ${r.gg} giorni` : `${-r.gg} giorni fa`}</span>` : `<span>data da definire</span>`}</div>
-      <div><div class="t">${esc(titolo)}</div><div class="m">${esc([chi, s && s.firma_nome ? `firmata da ${s.firma_nome}` : "", s && s.sicurezza ? { compatibile: "sicurezza: compatibile", condizioni: "sicurezza: con condizioni", non_compatibile: "sicurezza: non compatibile" }[s.sicurezza] : ""].filter(Boolean).join(" · "))}</div><div class="tappe">${tappe}</div></div>
+      <div><div class="t">${esc(titolo)}</div><div class="m">${esc([chi, s && s.firma_nome ? `firmata da ${s.firma_nome}` : "", s && s.sicurezza ? { compatibile: "sicurezza: compatibile", condizioni: "sicurezza: con condizioni", non_compatibile: "sicurezza: non compatibile" }[s.sicurezza] : ""].filter(Boolean).join(" · "))}</div><div class="tappe">${s?.percorso === "parrocchia" ? '<span class="tappa on">Parrocchia · gratuita · approvazione obbligatoria</span>' : ""}${tappe}</div></div>
       <div class="az">${az.join("")}</div>
     </article>`;
   }).join("")}</div>`;
@@ -1891,6 +1896,8 @@ function renderSchede() {
   L.querySelectorAll("[data-riattiva]").forEach((x) => (x.onclick = async () => { try { await run(sb.from("schede").update({ stato: "da_inviare" }).eq("id", x.dataset.riattiva), "La scheda torna da inviare"); } catch (e) { toast(errText(e)); } }));
 }
 function messaggioScheda(s, b, sollecito) {
+  if (s.percorso === "parrocchia") return `Richiesta per attività della Parrocchia di San Biagio: ${linkScheda(s)}\nL’utilizzo è gratuito. Compilate date, responsabili ed esigenze: gli incontri saranno prenotati solo dopo l’approvazione di chi gestisce la sala.`;
+
   const chi = ((b && b.referente) || s.destinatario || "").split(" ")[0];
   const titolo = (b && b.titolo) || s.titolo, data = (b && b.data) || s.data_evento;
   const firma = (S.me.nome || "").split(" ")[0];
@@ -1923,7 +1930,7 @@ async function sollecitaScheda(id) {
   openCopyText(messaggioScheda(s, b, true));
   try { await run(sb.from("schede").update({ sollecitata_il: new Date().toISOString() }).eq("id", id)); } catch (e) { toast(errText(e)); }
 }
-const ETICHETTE = {
+const ETICHETTE = { gruppo: "Gruppo parrocchiale", attivita_parrocchiale: "Attività parrocchiale", minori: "Presenza di minori", accessibilita: "Esigenze di accessibilità", altre_esigenze: "Altre esigenze",
   ente: "Organizzatore", a_titolo: "Richiede come", cf: "CF / P. IVA", indirizzo: "Indirizzo", referente: "Referente", cellulare: "Cellulare", email: "Email", resp_sera: "Responsabile la sera", resp_cell: "Suo cellulare",
   titolo: "Titolo", tipo: "Tipo", descrizione: "Descrizione", ingresso: "Ingresso", prezzo: "Prezzo €", biglietti: "Biglietti gestiti da", fascia: "Spazio", galleria_anche: "Serve anche la galleria", pubblico_n: "Persone previste", bambini_n: "di cui bambini", carrozzina_n: "Persone in carrozzina", palco_n: "Persone sul palco",
   luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
@@ -1932,7 +1939,7 @@ const ETICHETTE = {
   siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", siae_dopo: "Permesso SIAE",
   ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
 };
-const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
+const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "gruppo", "attivita_parrocchiale", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "minori", "accessibilita", "altre_esigenze", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
   ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
   ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_opere", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
 // permesso SIAE: a carico dell'organizzatore, da allegare alla scheda
@@ -1945,7 +1952,7 @@ function siaeStato(d, s) {
   return (d.siae_file || []).length ? "allegato" : "da_ricevere";
 }
 function risposteHtml(d, conLink = true) {
-  const val = (k, v) => (k === "siae" ? (v === "si" ? "sì: permesso a carico dell'organizzatore" : "no, nessuna opera protetta") : k === "siae_dopo" ? "non ancora allegato: lo mandano per email prima dell'evento" : v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
+  const val = (k, v) => (k === "attivita_parrocchiale" ? ({ consiglio_pastorale: "Consiglio pastorale", catechismo: "Catechismo", conferenza: "Conferenza o incontro parrocchiale", fidanzati: "Corso fidanzati", altra_parrocchia: "Altra attività parrocchiale" }[v] || v) : k === "siae" ? (v === "si" ? "sì: permesso a carico dell'organizzatore" : "no, nessuna opera protetta") : k === "siae_dopo" ? "non ancora allegato: lo mandano per email prima dell'evento" : v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
   return GRUPPI_SCHEDA.map(([g, ks]) => {
     const righe = ks.flatMap((k) => {
       if (k === "orari") return (d.orari || []).map((o, i) => `<dt>Giorno ${i + 1}</dt><dd>${esc(o.data ? fmtDay(o.data) : "")}${o.all_da ? ` · allestimento ${esc(o.all_da)}–${esc(o.all_a)}` : ""}${o.porte ? ` · porte ${esc(o.porte)}` : ""} · inizio ${esc(o.inizio)}${o.fine ? `, fine ${esc(o.fine)}` : ""}${o.sgombero ? ` · sgombero ${esc(o.sgombero)}` : ""}</dd>`);
@@ -1976,16 +1983,26 @@ function apriScheda(id) {
   dlgSK.querySelectorAll('[name="sk-sic"]').forEach((r) => (r.checked = r.value === s.sicurezza));
   $("#sk-note").value = s.sicurezza_note || "";
   $("#sk-error").innerHTML = "";
-  $("#sk-copia").hidden = !b;
+  $("#sk-copia").hidden = !b || s.percorso === "parrocchia";
+  $("#sk-approva").hidden = s.percorso === "parrocchia" && (!S.staff || s.stato === "approvata");
+  $("#sk-approva").textContent = s.percorso === "parrocchia" ? "Approva e prenota gratuitamente gli incontri" : "Approva";
+  $("#sk-correggi").hidden = s.percorso === "parrocchia" && (!S.staff || s.stato === "approvata");
   dlgSK.showModal();
 }
 $("#sk-approva").onclick = async () => {
   const s = S.editingScheda, sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value;
   if (!sic) { $("#sk-error").innerHTML = `<div class="warn">Indica il parere del responsabile della sicurezza.</div>`; return; }
   if (sic === "non_compatibile") { $("#sk-error").innerHTML = `<div class="warn">Con parere «non compatibile» la scheda non si approva: usa «Chiedi correzioni» o contatta l'organizzatore.</div>`; return; }
-  if (siaeStato(s.dati, s) === "da_ricevere" && S.siaeAvvisato !== s.id) {
+  if ((siaeStato(s.dati, s) === "da_ricevere" || (s.percorso === "parrocchia" && s.dati.siae === "si")) && S.siaeAvvisato !== s.id) {
     S.siaeAvvisato = s.id;
-    $("#sk-error").innerHTML = `<div class="warn">Il permesso SIAE non è allegato: è a carico dell'organizzatore e va consegnato prima dell'evento. Se l'avete già ricevuto per email, premi di nuovo «Approva».</div>`;
+    $("#sk-error").innerHTML = `<div class="warn">${s.percorso === "parrocchia" ? "È previsto uso di opere protette: verifica la gestione delle autorizzazioni prima di approvare gli incontri gratuiti. Dopo la verifica, premi di nuovo «Approva»." : "Il permesso SIAE non è allegato: è a carico dell’organizzatore e va consegnato prima dell’evento. Se l’avete già ricevuto per email, premi di nuovo «Approva»."}</div>`;
+    return;
+  }
+  if (s.percorso === "parrocchia") {
+    const button = $("#sk-approva"); button.disabled = true;
+    try { await run(sb.rpc("parrocchia_approva", { p_scheda: s.id, p_sicurezza: sic, p_note: $("#sk-note").value.trim(), p_siae_verificata: S.siaeAvvisato === s.id }), "Richiesta approvata: incontri gratuiti creati in calendario"); dlgSK.close(); }
+    catch (e) { $("#sk-error").innerHTML = `<div class="warn">${esc(errText(e))}</div>`; }
+    finally { button.disabled = false; }
     return;
   }
   try { await run(sb.from("schede").update({ stato: "approvata", sicurezza: sic, sicurezza_note: $("#sk-note").value.trim(), verificata_da: S.me.id, verificata_il: new Date().toISOString() }).eq("id", s.id), "Scheda approvata"); dlgSK.close(); }
@@ -2015,11 +2032,20 @@ $("#sk-stampa").onclick = () => {
   w.document.close();
 };
 const dlgNS = $("#dlg-nuova-scheda");
-$("#sc-nuova").onclick = () => { ["#ns-dest", "#ns-contatto", "#ns-titolo", "#ns-data"].forEach((id) => ($(id).value = "")); dlgNS.showModal(); };
+function nuovaScheda(percorso) {
+  if (percorso === "parrocchia" && !S.staff) return;
+  S.nuovaSchedaPercorso = percorso;
+  ["#ns-dest", "#ns-contatto", "#ns-titolo", "#ns-data"].forEach((id) => ($(id).value = ""));
+  dlgNS.querySelector("h2").textContent = percorso === "parrocchia" ? "Richiesta per attività della Parrocchia" : "Scheda senza prenotazione";
+  dlgNS.querySelector("p.hint").textContent = percorso === "parrocchia" ? "Predisponi il link per un gruppo della Parrocchia di San Biagio. Utilizzo sempre gratuito; gli incontri saranno prenotati solo dopo l’approvazione di un gestore." : "Per chi chiede la sala ma non è ancora in calendario: riceverà il link e compilerà tutto lui.";
+  dlgNS.showModal();
+}
+$("#sc-nuova").onclick = () => nuovaScheda("esterno");
+$("#sc-parrocchia").onclick = () => nuovaScheda("parrocchia");
 $("#ns-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    const { data, error } = await sb.from("schede").insert({ destinatario: $("#ns-dest").value.trim(), contatto: $("#ns-contatto").value.trim(), titolo: $("#ns-titolo").value.trim(), data_evento: $("#ns-data").value || null, stato: "inviata", inviata_il: new Date().toISOString() }).select("*").single();
+    const { data, error } = await sb.from("schede").insert({ ...(S.nuovaSchedaPercorso === "parrocchia" ? { percorso: "parrocchia" } : {}), destinatario: $("#ns-dest").value.trim(), contatto: $("#ns-contatto").value.trim(), titolo: $("#ns-titolo").value.trim(), data_evento: $("#ns-data").value || null, stato: "inviata", inviata_il: new Date().toISOString() }).select("*").single();
     if (error) throw error;
     dlgNS.close(); openCopyText(messaggioScheda(data, null, false)); await loadAll();
   } catch (x) { toast(errText(x)); }
@@ -3038,7 +3064,7 @@ const regoleTurni = () => ({ ...TURNI_DEFAULT, ...((S.tariffe && S.tariffe.turni
 function pubblicoDi(b) {
   const t = b.tariffa || {};
   if (PUBBLICO[t.pubblico]) return { k: t.pubblico, auto: false };
-  const sk = S.schede.filter((x) => x.booking_id === b.id && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+  const sk = S.schede.filter((x) => (x.booking_id === b.id || x.id === b.scheda_parrocchia_id) && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
   const d = (sk && sk.dati) || {};
   // una proiezione che cade dentro l'orario dell'evento (o nello stesso giorno, se l'evento è «tutto il giorno»)
   const film = S.proiezioni.some((p) => p.data === b.data && (b.giornata_intera || (p.ora >= addMin(b.inizio, -30) && p.ora < b.fine)));
@@ -3853,7 +3879,7 @@ function renderSerata() {
   const quando = d === TODAY ? "Stasera" : d === addDays(TODAY, 1) ? "Domani" : d < TODAY ? "Serata passata" : "Prossima serata";
   const tel = (n) => (n ? `<a href="tel:${esc(String(n).replace(/[^\d+]/g, ""))}">${esc(n)}</a>` : "");
   const riga = (et, v) => (v ? `<div class="sr-riga"><span>${et}</span><div>${v}</div></div>` : "");
-  const schedaDi = (b) => S.schede.filter((x) => x.booking_id === b.id && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
+  const schedaDi = (b) => S.schede.filter((x) => (x.booking_id === b.id || x.id === b.scheda_parrocchia_id) && x.dati && Object.keys(x.dati).length).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
 
   const blocchiEventi = eventi.map((b) => {
     const sk = schedaDi(b), dd = (sk && sk.dati) || {}, pub = pubblicoDi(b).k;
@@ -4516,6 +4542,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["037_richieste_parrocchia.sql", "Richieste parrocchiali gratuite con approvazione", S.schede.length ? "percorso" in S.schede[0] : undefined],
     ["035_siae_sala.sql", "SIAE a carico della sala per gli eventi co-organizzati", S.schede.length ? "siae_sala" in S.schede[0] : undefined],
     ["034_rubrica.sql", "Rubrica della sala (anche i contatti della posta)", !manca(e2.rubrica) && !manca(e2.rubricaMail), "Per i contatti della posta: ricopia lo script Google (2026-11-03.2) e aggiungi «+rubrica» alla MODALITA dell'account della sala"],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
