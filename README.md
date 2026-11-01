@@ -252,7 +252,46 @@ Per ogni taglio si mette solo il numero di pezzi, scrivendolo o con i bottoni �
 totale di banconote e monete e lo mette da sola nei «Contanti contati», con la quadratura. Senza conteggio si può
 ancora scrivere il totale a mano.
 
-**Postazione con la tessera sanitaria** (script `028_cassa_tessera.sql`): il computer della biglietteria entra con un
+**Cassa con il solo badge, senza account sul computer** (script
+[`043_cassa_badge_senza_account.sql`](supabase/043_cassa_badge_senza_account.sql)):
+
+1. Da amministratore o coordinatore, in **Volontari → Scheda**, spuntare
+   **Abilitato alla cassa con badge, senza account** per le persone autorizzate.
+   Le abilitazioni nuove sono disattivate fino a questa scelta esplicita.
+2. Sul computer aprire `modulo/cassa.html`, oppure **Cassa con badge · senza
+   account** dalla schermata iniziale. Il link può essere salvato nei preferiti.
+3. Passare il badge STM al lettore: il codice completo attiva l’accesso
+   automaticamente. Sono disponibili anche Invio e il pulsante Entra.
+4. Aprire o continuare la cassa, scegliere evento/proiezione o inserire un titolo,
+   registrare biglietti e incassi e contare il fondo e i contanti. Il prelievo
+   indicato è successivo al conteggio. In chiusura ripassare il badge della persona
+   che chiude, anche se diversa da chi ha aperto. Si torna poi alla lettura badge.
+
+La pagina non crea account Google, profili di accesso o utenti anonimi. Il badge
+abilitato è la credenziale del cassiere e il suo codice va tenuto riservato,
+come il link personale che lo mostra. La sessione rimane solo in memoria:
+ricaricando la pagina si ripassa il badge. Scade dopo 20 minuti senza attività e
+comunque dopo 8 ore. Esci, disattivazione del volontario, revoca dell’abilitazione
+o generazione di un nuovo badge invalidano le sessioni. I badge già stampati
+rimangono validi; la migrazione non li sostituisce.
+
+Si gestisce solo la serata corrente, con il giorno precedente disponibile prima
+delle 06:00 (fuso Europe/Rome). Sono mostrati solo gli eventi/proiezioni e i dati
+necessari alla cassa, oltre al fondo proposto dall’ultima chiusura. Il registro
+storico e le correzioni delle casse chiuse restano nel gestionale dei responsabili.
+Apertura, ultimo salvataggio e chiusura registrano i volontari reali. Il riepilogo
+di una cassa chiusa si legge e si stampa dopo aver ripassato un badge abilitato.
+
+Le tabelle restano protette da RLS; le operazioni senza account passano da RPC
+con sessioni revocabili, limite ai tentativi, importi e saldo calcolati sul server,
+controllo delle revisioni e blocco delle aperture duplicate dello stesso evento.
+Badge e sessioni non compaiono in URL o archivi del browser. La modalità senza
+account usa il badge STM della Sala; la modalità precedente con tessera sanitaria
+resta disponibile per chi usa ancora un account della postazione.
+
+Applicare 043 dopo gli aggiornamenti precedenti, prima di pubblicare questa versione.
+
+**Modalità precedente con account e tessera sanitaria** (script `028_cassa_tessera.sql`): il computer della biglietteria entra con un
 account apposta (in Persone: ruolo Volontario, «Fa cassa» e «Postazione cassa») che vede solo la cassa. Il volontario
 passa la tessera sanitaria con il lettore di codici a barre (o scrive il codice fiscale e preme Invio): l'app lo
 riconosce, apre la cassa della serata a suo nome e, alla chiusura, chiede di ripassare la tessera di chi chiude. Nella

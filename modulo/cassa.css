@@ -1,0 +1,5 @@
+.badge-cassa{max-width:980px;margin:24px auto;padding:20px}.badge-cassa .panel{margin:16px 0}.cb-login{max-width:580px;margin:30px auto;text-align:center}.cb-login input{font-size:1.4rem;text-align:center;letter-spacing:.08em}.badge-cassa .form{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}.cb-riepilogo{display:flex;flex-wrap:wrap;gap:20px;margin:18px 0}.cb-riepilogo strong{display:block;font-size:1.3rem}.cb-conta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.cb-conta label{display:flex;flex-direction:column;gap:4px}.cb-conta input{width:100%;min-width:0;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit}.cb-error{color:#b42318;white-space:pre-wrap}.badge-cassa textarea{min-height:80px}.cb-esito{white-space:pre-wrap}.badge-cassa .toolbar{flex-wrap:wrap}@media(max-width:560px){.badge-cassa{padding:14px;margin:0}.cb-conta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+@media print{.cb-login,.badge-cassa>.hint,button,.actions{display:none!important}.badge-cassa{max-width:none;margin:0}}
+
+.cb-success{color:var(--accent);font-weight:600}

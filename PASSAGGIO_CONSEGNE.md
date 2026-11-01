@@ -66,7 +66,7 @@ Per ognuno, la persona che subentra deve essere aggiunta **prima** che serva:
 - Password, chiave segreta di Supabase, `SYNC_TOKEN` e chiavi di servizi esterni **non vanno mai** nel codice né mandate in chat o per email: stanno nelle impostazioni di Supabase e nelle proprietà dello script.
 - **Tessera sanitaria**: il codice fiscale **non viene salvato**; si tiene solo un'impronta cifrata con un segreto che resta nel database, che serve a riconoscere il volontario alla cassa e non permette di risalire al codice.
 - **Dati dei volontari** (telefono, data di nascita, attestato antincendio) e **contatti di terzi** (rubrica, email di richiesta): si usano solo per le attività della sala; i volontari che non collaborano più si disattivano e, se lo chiedono, si eliminano.
-- Il backup **non contiene** i link personali dei volontari né le impronte della tessera.
+- Il backup **non contiene** i link personali dei volontari, i codici dei badge né le impronte della tessera.
 
 ## 6. Modificare il codice
 

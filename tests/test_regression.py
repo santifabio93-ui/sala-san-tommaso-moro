@@ -115,6 +115,8 @@ class Regression(unittest.TestCase):
         self.parish_ids = []
         self.group_ids = []
         self.contact_keys = []
+        self.cash_ids = []
+        self.cash_film_ids = []
         self.context = self.browser.new_context()
         self.errors = []
         self.context.on('page', lambda page: page.on('pageerror', lambda error: self.errors.append(str(error))))
@@ -132,6 +134,10 @@ class Regression(unittest.TestCase):
             ok(api('/rest/v1/schede?id=eq.' + sid, 'DELETE', service=True))
         for rid in self.request_ids:
             ok(api('/rest/v1/richieste?id=eq.' + rid, 'DELETE', service=True))
+        for cid in self.cash_ids:
+            ok(api('/rest/v1/cassa?id=eq.'+cid,'DELETE',service=True))
+        for fid in self.cash_film_ids:
+            ok(api('/rest/v1/films?id=eq.'+fid,'DELETE',service=True))
         for bid in self.booking_ids:
             ok(api('/rest/v1/schede?booking_id=eq.' + bid, 'DELETE', service=True))
             ok(api('/rest/v1/eventi_info?chiave=eq.b:' + bid, 'DELETE', service=True))
@@ -1388,6 +1394,197 @@ class Regression(unittest.TestCase):
         saved=ok(api('/rest/v1/schede?id=eq.'+s['id'],service=True))[0]
         self.assertEqual(saved['stato'],'compilata')
         self.assertEqual(saved['danza_verifica'],{})
+
+
+    def cash_badge_volunteers(self):
+        people=self.volunteers()
+        for v in people:
+            ok(api('/rest/v1/volontari?id=eq.'+v['id'],'PATCH',{'cassa_badge':True},token=self.users['admin']['token']))
+        return people
+
+    def cash_badge_session(self,v):
+        r=ok(rpc('cassa_badge_accesso',{'p_badge':v['badge']}))
+        self.assertTrue(r['ok'],r.get('errore'))
+        return r['sessione']
+
+    def cash_badge_body(self,session):
+        info=ok(rpc('cassa_badge_leggi',{'p_sessione':session}))
+        return {'data':info['data'],'evento':'','titolo':'Cassa prova '+uuid4().hex[:8],
+                'fondo_iniziale':100,'online_n':2,'online_euro':14,'contanti_n':10,'contanti_euro':70,
+                'pos_n':3,'pos_euro':21,'omaggi_n':1,'contati':None,'conteggio':{},'prelievo':0,'note':'Note cassa test'}
+
+    def cash_badge_save(self,session,body,c=None,close=False,badge=None):
+        return rpc('cassa_badge_salva',{'p_sessione':session,'p_id':c['id'] if c else None,'p_dati':body,
+                   'p_chiudi':close,'p_revisione':c['aggiornato'] if c else None,'p_badge_chiusura':badge})
+
+    def test_cash_badge_browser_without_account_counts_and_different_closer(self):
+        a,b=self.cash_badge_volunteers()
+        page=self.context.new_page()
+        page.goto('http://127.0.0.1:8765/modulo/cassa.html')
+        expect(page.locator('#cb-accesso')).to_be_visible()
+        self.assertEqual(page.locator('#btn-login').count(),0)
+        page.locator('#cb-badge').fill(a['badge'])
+        expect(page.locator('#cb-nuova')).to_be_visible()
+        self.assertEqual(page.evaluate('localStorage.length'),0)
+        self.assertEqual(page.evaluate('sessionStorage.length'),0)
+        page.locator('#cb-nuova').click()
+        title='Cassa browser badge '+uuid4().hex[:8]
+        page.locator('#cb-titolo').fill(title)
+        page.get_by_text('Conta il fondo iniziale',exact=True).click()
+        page.locator('[data-cb-conto=fondo][data-taglio="50"]').fill('2')
+        expect(page.locator('#cb-fondo_iniziale')).to_have_value('100')
+        for kind,n,e in [('online','2','14'),('contanti','10','70'),('pos','3','21')]:
+            page.locator('#cb-'+kind+'_n').fill(n)
+            page.locator('#cb-'+kind+'_euro').fill(e)
+        page.locator('#cb-omaggi_n').fill('1')
+        page.locator('#cb-salva').click()
+        expect(page.locator('#cb-nuova')).to_be_visible()
+        row=next(c for c in ok(api('/rest/v1/cassa',service=True)) if c['titolo']==title)
+        self.cash_ids.append(row['id'])
+        self.assertEqual((row['aperta_da_nome'],row['aperta_volontario_id'],row['creato_da']),(a['nome'],a['id'],None))
+        page.locator('[data-cb-apri="'+row['id']+'"]').click()
+        page.get_by_text('Conta i contanti a fine serata',exact=True).click()
+        for taglio,pezzi in [('100','1'),('50','1'),('20','1')]:
+            page.locator('[data-cb-conto=chiusura][data-taglio="'+taglio+'"]').fill(pezzi)
+        page.locator('#cb-prelievo').fill('70')
+        expect(page.locator('#cb-contati')).to_have_value('170')
+        expect(page.locator('#cb-totali')).to_contain_text('Quadra')
+        page.set_viewport_size({'width':390,'height':844})
+        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth-innerWidth'),1)
+        page.locator('#cb-chiudi').click()
+        page.locator('#cb-badge-chiusura').fill(b['badge'])
+        expect(page.locator('#cb-accesso')).to_be_visible()
+        expect(page.locator('#cb-error')).to_contain_text('Cassa chiusa da '+b['nome'])
+        row=ok(api('/rest/v1/cassa?id=eq.'+row['id'],service=True))[0]
+        self.assertEqual((row['stato'],row['chiusa_da_nome'],row['chiusa_volontario_id'],row['fondo_finale']),('chiusa',b['nome'],b['id'],100))
+        expect(page.locator('#cb-app')).not_to_contain_text(title)
+        page.locator('#cb-badge').fill(b['badge']);page.locator('#cb-badge').press('Enter')
+        page.locator('[data-cb-apri="'+row['id']+'"]').click()
+        expect(page.locator('#cb-app')).to_contain_text('Fondo finale:')
+        expect(page.locator('#cb-stampa')).to_be_visible()
+        self.assertEqual(page.locator('#cb-salva').count(),0)
+        page.get_by_role('link',name='Gestionale della Sala',exact=True).click()
+        expect(page.locator('#screen-login')).to_be_visible()
+        page.get_by_role('link',name='Cassa con badge · senza account',exact=True).click()
+        expect(page.locator('#cb-accesso')).to_be_visible()
+
+    def test_cash_badge_permission_revocation_rotation_expiry_and_private_data(self):
+        a,b=self.volunteers()
+        self.assertFalse(ok(rpc('cassa_badge_accesso',{'p_badge':a['badge']}))['ok'])
+        ok(api('/rest/v1/volontari?id=eq.'+a['id'],'PATCH',{'cassa_badge':True},token=self.users['admin']['token']))
+        session=self.cash_badge_session(a)
+        data=ok(rpc('cassa_badge_leggi',{'p_sessione':session}))
+        self.assertNotIn('cellulare',data)
+        self.assertNotIn('data_nascita',data)
+        for table in ('cassa','cassa_badge_sessioni','cassa_badge_limiti'):
+            self.assertEqual(ok(api('/rest/v1/'+table)),[])
+        self.assertGreaterEqual(rpc('cassa_badge_controlla',{'p_sessione':session})[0],400)
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':str(uuid4())})[0],400)
+        ok(api('/rest/v1/volontari?id=eq.'+a['id'],'PATCH',{'cassa_badge':False},service=True))
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+        ok(api('/rest/v1/volontari?id=eq.'+a['id'],'PATCH',{'cassa_badge':True},service=True))
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+        session=self.cash_badge_session(a)
+        new_badge=ok(api('/rest/v1/rpc/volontario_badge_nuovo','POST',{'p_volontario':a['id']},token=self.users['admin']['token']))
+        self.assertFalse(ok(rpc('cassa_badge_accesso',{'p_badge':a['badge']}))['ok'])
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+        a['badge']=new_badge;session=self.cash_badge_session(a)
+        ok(api('/rest/v1/cassa_badge_sessioni?volontario_id=eq.'+a['id'],'PATCH',{'scade':'2000-01-01T00:00:00Z'},service=True))
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+        session=self.cash_badge_session(a)
+        ok(rpc('cassa_badge_esci',{'p_sessione':session}))
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+        result=api('/rest/v1/volontari?id=eq.'+b['id'],'PATCH',{'cassa_badge':True},token=self.users['volontario']['token'])
+        self.assertTrue(result[0]>=400 or result[1]==[])
+        self.assertFalse(ok(api('/rest/v1/volontari?id=eq.'+b['id'],service=True))[0]['cassa_badge'])
+
+    def test_cash_badge_server_money_revision_dates_closing_and_concurrency(self):
+        a,b=self.cash_badge_volunteers()
+        session=self.cash_badge_session(a);other=self.cash_badge_session(b)
+        body=self.cash_badge_body(session)
+        future={**body,'data':DAY}
+        self.assertGreaterEqual(self.cash_badge_save(session,future)[0],400)
+        self.assertGreaterEqual(self.cash_badge_save(session,{**body,'fondo_finale':99999})[0],400)
+        self.assertGreaterEqual(self.cash_badge_save(session,{**body,'online_n':-1})[0],400)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(lambda token:self.cash_badge_save(token,body),[session,other]))
+        self.assertEqual(sum(r[0]<300 and r[1].get('ok') for r in results),1)
+        created=next(r[1]['cassa'] for r in results if r[0]<300 and r[1].get('ok'))
+        self.cash_ids.append(created['id'])
+        self.assertEqual(created['fondo_finale'],170)
+        changed=ok(self.cash_badge_save(session,{**body,'contanti_n':11,'contanti_euro':77},created))['cassa']
+        self.assertGreaterEqual(self.cash_badge_save(other,body,created)[0],400)
+        self.assertGreaterEqual(self.cash_badge_save(session,body,changed,True,b['badge'])[0],400)
+        result=ok(self.cash_badge_save(session,{**body,'contati':170},changed,True,'NONVALIDO'))
+        self.assertFalse(result['ok'])
+        counted={**body,'fondo_iniziale':0,'contati':999,'prelievo':70,'conteggio':{'_fondo':{'50':2},'100':1,'50':1,'20':1}}
+        closed=ok(self.cash_badge_save(session,counted,changed,True,b['badge']))['cassa']
+        self.assertEqual((closed['fondo_iniziale'],closed['contati'],closed['fondo_finale']),(100,170,100))
+        self.assertGreaterEqual(self.cash_badge_save(session,counted,closed)[0],400)
+        tamper=api('/rest/v1/cassa?id=eq.'+closed['id'],'PATCH',{'contanti_euro':999})
+        self.assertTrue(tamper[0]>=400 or tamper[1]==[])
+        self.assertEqual(ok(api('/rest/v1/cassa?id=eq.'+closed['id'],service=True))[0]['contanti_euro'],70)
+
+    def test_cash_badge_admin_enable_and_public_entry_link(self):
+        a,b=self.volunteers()
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#volontari')
+        page.locator('[data-vedit="'+a['id']+'"]').first.click()
+        page.locator('#v-cassa-badge').check()
+        page.locator('#volontario-form [type=submit]').click()
+        expect(page.locator('#dlg-volontario')).not_to_be_visible()
+        self.assertTrue(ok(api('/rest/v1/volontari?id=eq.'+a['id'],service=True))[0]['cassa_badge'])
+        self.assertTrue(ok(rpc('cassa_badge_accesso',{'p_badge':a['badge']}))['ok'])
+        page.goto('http://127.0.0.1:8765/#economia')
+        with page.expect_download() as exported:
+            page.locator('#btn-export').click()
+        backup=json.loads(Path(exported.value.path()).read_text())
+        record=next(v for v in backup['volontari'] if v['id']==a['id'])
+        self.assertTrue(record['cassa_badge'])
+        self.assertTrue({'badge','token','cf_impronta'}.isdisjoint(record))
+
+
+
+
+    def test_cash_badge_rate_limit_commits_on_bad_codes(self):
+        a,_=self.cash_badge_volunteers()
+        ok(api('/rest/v1/cassa_badge_limiti?id=eq.1','DELETE',service=True))
+        try:
+            for _ in range(120):
+                r=ok(rpc('cassa_badge_accesso',{'p_badge':'NONVALIDO'}))
+                self.assertFalse(r['ok'])
+            blocked=ok(rpc('cassa_badge_accesso',{'p_badge':a['badge']}))
+            self.assertFalse(blocked['ok'])
+            self.assertIn('Troppi tentativi',blocked['errore'])
+        finally:ok(api('/rest/v1/cassa_badge_limiti?id=eq.1','DELETE',service=True))
+
+
+
+    def test_cash_badge_today_projection_booking_scope_and_idle_expiry(self):
+        a,_=self.cash_badge_volunteers()
+        session=self.cash_badge_session(a)
+        body=self.cash_badge_body(session)
+        film=ok(api('/rest/v1/films','POST',{'titolo':'Film cassa '+uuid4().hex[:8],'note':'Nota film privata'},token=self.users['admin']['token']))[0]
+        self.cash_film_ids.append(film['id'])
+        projection=ok(api('/rest/v1/proiezioni','POST',{'film_id':film['id'],'data':body['data'],'ora':'20:30'},token=self.users['admin']['token']))[0]
+        data=ok(rpc('cassa_badge_leggi',{'p_sessione':session}))
+        event=next(e for e in data['eventi'] if e['valore']=='p:'+projection['id'])
+        self.assertEqual(set(event),{'valore','titolo','ora'})
+        self.assertNotIn('Nota film privata',str(data))
+        saved=ok(self.cash_badge_save(session,{**body,'evento':event['valore']}))['cassa']
+        self.cash_ids.append(saved['id'])
+        self.assertEqual(saved['proiezione_id'],projection['id'])
+        self.assertEqual(saved['titolo'],film['titolo']+' · 20:30')
+        b=self.booking()
+        self.assertGreaterEqual(self.cash_badge_save(session,{**body,'evento':'b:'+b['id']})[0],400)
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'data':body['data']},token=self.users['admin']['token']))
+        booked=ok(self.cash_badge_save(session,{**body,'evento':'b:'+b['id']}))['cassa']
+        self.cash_ids.append(booked['id'])
+        self.assertEqual(booked['booking_id'],b['id'])
+        self.assertGreaterEqual(self.cash_badge_save(session,{**body,'evento':'b:'+b['id']},saved)[0],400)
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session,'p_data':DAY})[0],400)
+        ok(api('/rest/v1/cassa_badge_sessioni?volontario_id=eq.'+a['id'],'PATCH',{'ultimo_uso':'2000-01-01T00:00:00Z'},service=True))
+        self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
 
 
 if __name__ == '__main__':

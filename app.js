@@ -1,13 +1,13 @@
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.89";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.90";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.89";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.89";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.89";
-import { schedaEvento } from "./evento.js?v=2026-11-01.89";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.90";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.90";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.90";
+import { schedaEvento } from "./evento.js?v=2026-11-01.90";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.89";
+const VERSIONE = "2026-11-01.90";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -217,6 +217,9 @@ async function loadAll() {
     // compleanno e attestato antincendio (aggiornamento 19)
     const vd = S.canWrite && !vo.error ? await sb.from("volontari").select("data_nascita").limit(1) : { error: null };
     S.loadErr2.volDati = vd.error && (vd.error.message || "errore");
+    const badgeCassa = S.staff ? await sb.from("volontari").select("cassa_badge").limit(1) : {error: true};
+    S.cassaBadgeDisponibile = !badgeCassa.error;
+
     // pulizie fatte, con le note del gruppo pulizie (aggiornamento 24)
     const pf = S.canWrite ? await sb.from("pulizie_fatte").select("*").order("creato", { ascending: false }).limit(60) : { data: null };
     S.pulizieFatte = pf.data || [];
@@ -2736,6 +2739,12 @@ $("#c-evento").addEventListener("change", () => { $("#c-titolo-wrap").hidden = $
 async function saveCassa(close) {
   const rec = readCassa();
   const prevRec = S.cassa.find((c) => c.id === S.editingCassa);
+  if (S.cassaBadgeDisponibile || (prevRec && 'aggiornata_da_nome' in prevRec)) {
+    rec.aggiornata_da_nome = S.me.nome || S.me.email || '';
+    rec.aggiornata_volontario_id = null;
+    if (prevRec?.proiezione_id && (rec.booking_id || rec.titolo !== prevRec.titolo)) rec.proiezione_id = null;
+  }
+
   if (!rec.data) { $("#c-error").innerHTML = `<div class="warn">Scegli la data.</div>`; return; }
   if (!rec.booking_id && !rec.titolo) { $("#c-error").innerHTML = `<div class="warn">Scegli l'evento o scrivi un titolo.</div>`; return; }
   if (close && rec.contati == null) { $("#c-error").innerHTML = `<div class="warn">Per chiudere la cassa inserisci i contanti contati.</div>`; $("#c-contati").focus(); return; }
@@ -2831,7 +2840,7 @@ $("#btn-export").onclick = async () => {
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
-    c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, ...v }) => v),
+    c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
     convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala };
@@ -3364,6 +3373,9 @@ function openVolontario(v) {
   $("#v-ai-scad").value = (v && v.antincendio_scadenza) || "";
   $("#v-note").value = (v && v.note) || "";
   $("#v-attivo").checked = !v || v.attivo;
+  const badgeCassa = document.getElementById('v-cassa-badge');
+  if (badgeCassa) { badgeCassa.checked = !!v?.cassa_badge; badgeCassa.disabled = !S.cassaBadgeDisponibile; }
+
   $("#v-file").value = "";
   S.volTogliFile = false;
   mostraFileVol();
@@ -3448,6 +3460,8 @@ $("#volontario-form").addEventListener("submit", async (e) => {
   const ai = $("#v-ai").value, file = $("#v-file").files[0];
   if (file && file.size > 10 * 1024 * 1024) { $("#v-error").innerHTML = `<div class="warn">Il file è troppo grande (massimo 10 MB).</div>`; return; }
   const rec = { nome, cellulare: $("#v-cell").value.trim(), attivo: $("#v-attivo").checked };
+  if (S.cassaBadgeDisponibile) rec.cassa_badge = !!document.getElementById('v-cassa-badge')?.checked;
+
   if (!S.loadErr2?.volDati) Object.assign(rec, { data_nascita: $("#v-nascita").value || null, antincendio: ai, antincendio_data: ai ? $("#v-ai-data").value || null : null,
     antincendio_scadenza: ai ? $("#v-ai-scad").value || null : null, note: $("#v-note").value.trim() });
   else if ($("#v-nascita").value || ai) { $("#v-error").innerHTML = `<div class="warn">Per salvare compleanno e attestato esegui prima lo script <b>019_volontari_dati.sql</b>.</div>`; return; }
@@ -4608,6 +4622,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["043_cassa_badge_senza_account.sql", "Cassa con badge senza account sul computer", !!S.cassaBadgeDisponibile, "Abilitare i cassieri nella scheda del volontario"],
     ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],
     ["041_importa_collegamenti_gruppi.sql", "Importazione dei collegamenti confermati fra persone e gruppi", undefined, "Eseguire dopo 040 per usare Importa collegamenti in Rubrica"],
     ["040_gruppi_persone.sql", "Gruppi, persone e collegamento alle attività", !S.loadErr2?.gruppi],
