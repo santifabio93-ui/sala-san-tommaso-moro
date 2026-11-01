@@ -1,11 +1,12 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.86";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.86";
-import { schedaEvento } from "./evento.js?v=2026-11-01.86";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.87";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.87";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.87";
+import { schedaEvento } from "./evento.js?v=2026-11-01.87";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.86";
+const VERSIONE = "2026-11-01.87";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -69,6 +70,7 @@ const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluogh
 const canSee = (k) => (S.postazione ? k === "cassa" : k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const apriPreventivo = creaPreventivi({ getState: () => S, calcolaTariffa, esc, iso, fmtDay });
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
+const gruppi = creaGruppi({client: () => sb, getState: () => S, contatti: () => contattiSala(), esc, onChange: () => loadAll(), toast});
 const eventiSala = creaEventiSala({ client: () => sb, getState: () => S, esc, onChange: () => loadAll(), openCopyText,
   promozione: (b, i) => {
     apriInfoSocial("b:" + b.id, true);
@@ -77,6 +79,7 @@ const eventiSala = creaEventiSala({ client: () => sb, getState: () => S, esc, on
 });
 
 const S = {
+  gruppi: [], gruppiPersone: [], rubrica: [],
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
   bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], tariffe: { ...DEFAULT_TARIFFE }, tariffeDb: false, sync: {},
   reqFilter: "nuove", fromRequest: null, cassa: [], editingCassa: null, canCassa: false,
@@ -227,6 +230,10 @@ async function loadAll() {
     const rb = S.canWrite ? await sb.from("rubrica").select("*") : { data: null };
     S.rubrica = rb.data || [];
     S.loadErr2.rubrica = rb.error && (rb.error.message || "errore");
+    const [gr, gp] = S.canWrite ? await Promise.all([sb.from("gruppi").select("*").order("nome"), sb.from("gruppi_persone").select("*")]) : [{data: []}, {data: []}];
+    S.gruppi = gr.data || []; S.gruppiPersone = gp.data || [];
+    S.loadErr2.gruppi = gr.error?.message || gp.error?.message;
+
     const rm = S.canWrite && !rb.error ? await sb.from("rubrica_mail").select("*").order("ultimo", { ascending: false }).limit(5000) : { data: null };
     S.rubricaMail = rm.data || [];
     S.loadErr2.rubricaMail = rm.error && (rm.error.message || "errore");
@@ -303,7 +310,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica", "eventi_sala"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica", "eventi_sala", "gruppi", "gruppi_persone"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -816,6 +823,10 @@ function openBooking(b, date, prefill) {
   S.locandinaBozza = (prefill && prefill.__locandina) || null;
   $("#b-head").textContent = b ? "Prenotazione" : "Nuova prenotazione";
   for (const k of ["titolo", "referente", "tipo", "telefono", "email", "data", "inizio", "fine", "prezzo", "incassato", "stato", "note"]) $("#b-" + k).value = v[k] ?? "";
+  gruppi.collega($("#b-associazione"), "b", v, (c) => {
+    for (const [key, value] of Object.entries({referente: c.nome, telefono: c.telefono, email: c.email})) $("#b-" + key).value = value;
+  });
+  $("#b-referente").oninput = () => { const persona = $("#b-persona"); if (persona) persona.value = ""; };
   // tariffa: quella salvata, altrimenti lo spazio dedotto dal pubblico previsto nella scheda dell'organizzatore
   const sk = b && S.schede.filter((x) => (x.booking_id === b.id || x.id === b.scheda_parrocchia_id) && x.dati && x.dati.fascia).sort((x, y) => (y.compilata_il || "").localeCompare(x.compilata_il || ""))[0];
   const tar = v.tariffa || (sk ? { spazio: sk.dati.fascia, dallaScheda: true } : {});
@@ -957,6 +968,7 @@ $("#booking-form").addEventListener("submit", async (e) => {
   if (err) { $("#b-error").innerHTML = `<div class="warn">${err}</div>`; return; }
   const btn = $("#b-submit"); btn.disabled = true;
   try {
+    Object.assign(rec, await gruppi.leggi($("#b-associazione")));
     if (S.editing) {
       const prev = S.bookings.find((x) => x.id === S.editing);
       if (prev?.scheda_parrocchia_id) { rec.prezzo = 0; rec.incassato = 0; rec.tariffa = $("#b-pubblico").value ? { pubblico: $("#b-pubblico").value } : null; rec.della_sala = true; rec.comune = false; }
@@ -2048,6 +2060,8 @@ function nuovaScheda(percorso) {
   ["#ns-dest", "#ns-contatto", "#ns-titolo", "#ns-data"].forEach((id) => ($(id).value = ""));
   dlgNS.querySelector("h2").textContent = percorso === "parrocchia" ? "Richiesta per attività della Parrocchia" : "Scheda senza prenotazione";
   dlgNS.querySelector("p.hint").textContent = percorso === "parrocchia" ? "Predisponi il link per un gruppo della Parrocchia di San Biagio. Utilizzo sempre gratuito; gli incontri saranno prenotati solo dopo l’approvazione di un gestore." : "Per chi chiede la sala ma non è ancora in calendario: riceverà il link e compilerà tutto lui.";
+  gruppi.collega($("#ns-associazione"), "ns", {}, (c) => { $("#ns-dest").value = c.nome; $("#ns-contatto").value = c.telefono || c.email; });
+  $("#ns-dest").oninput = () => { const persona = $("#ns-persona"); if (persona) persona.value = ""; };
   dlgNS.showModal();
 }
 $("#sc-nuova").onclick = () => nuovaScheda("esterno");
@@ -2055,7 +2069,12 @@ $("#sc-parrocchia").onclick = () => nuovaScheda("parrocchia");
 $("#ns-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    const { data, error } = await sb.from("schede").insert({ ...(S.nuovaSchedaPercorso === "parrocchia" ? { percorso: "parrocchia" } : {}), destinatario: $("#ns-dest").value.trim(), contatto: $("#ns-contatto").value.trim(), titolo: $("#ns-titolo").value.trim(), data_evento: $("#ns-data").value || null, stato: "inviata", inviata_il: new Date().toISOString() }).select("*").single();
+    const associazione = await gruppi.leggi($("#ns-associazione"));
+    const persona = S.rubrica.find(c => c.chiave === associazione.persona_chiave) || contattiSala().find(c => c.chiave === associazione.persona_chiave);
+    const gruppo = S.gruppi?.find(g => g.id === associazione.gruppo_id);
+    const contattoScheda = $("#ns-contatto").value.trim();
+    const dati = S.nuovaSchedaPercorso === "parrocchia" ? {gruppo: gruppo?.nome || "", referente: $("#ns-dest").value.trim(), cellulare: contattoScheda && !contattoScheda.includes("@") ? contattoScheda : persona?.telefono || persona?.telefoni?.[0] || "", email: contattoScheda.includes("@") ? contattoScheda : (Array.isArray(persona?.email) ? persona.email[0] : persona?.email) || ""} : {};
+    const { data, error } = await sb.from("schede").insert({ ...associazione, dati, ...(S.nuovaSchedaPercorso === "parrocchia" ? { percorso: "parrocchia" } : {}), destinatario: $("#ns-dest").value.trim(), contatto: $("#ns-contatto").value.trim(), titolo: $("#ns-titolo").value.trim(), data_evento: $("#ns-data").value || null, stato: "inviata", inviata_il: new Date().toISOString() }).select("*").single();
     if (error) throw error;
     dlgNS.close(); openCopyText(messaggioScheda(data, null, false)); await loadAll();
   } catch (x) { toast(errText(x)); }
@@ -2786,6 +2805,7 @@ function download(name, text, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 $("#btn-export").onclick = async () => {
+  if (S.loadErr2?.gruppi) { toast("Backup non completato: gruppi non disponibili. Verifica la migrazione 040."); return; }
   const { data: organizzazioneSala, error: erroreSala } = await sb.from("eventi_sala").select("*");
   if (erroreSala) { toast("Backup non completato: impossibile leggere l’organizzazione degli eventi Sala. Riprova dopo aver verificato la migrazione 039."); return; }
   const stamp = TODAY;
@@ -2794,7 +2814,7 @@ $("#btn-export").onclick = async () => {
     c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
-    convenzione: S.conv, persone: S.profiles, organizzazione_sala: organizzazioneSala };
+    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala };
   const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
   download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
   try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
@@ -3547,6 +3567,12 @@ function contattiSala() {
     if (r) { salvati.delete(r.chiave); c.chiave = r.chiave; c.salvato = r; ["nome", "ente", "categoria", "note"].forEach((k) => r[k] && (c[k] = r[k])); if (r.telefono && !c.telefoni.length) c.telefoni = [r.telefono]; if (r.email && !c.email.length) c.email = [mailPulita(r.email)]; c.nascosto = r.nascosto; }
   }
   for (const r of salvati.values()) out.push({ chiave: r.chiave, nome: r.nome, ente: r.ente, qualifica: "", indirizzo: "", cf: "", sito: "", prenotazioni: [], primaMail: "", categoria: r.categoria || "Altro", note: r.note, telefoni: r.telefono ? [r.telefono] : [], email: r.email ? [r.email] : [], ruoli: [], storia: [], ultimo: String(r.creato || "").slice(0, 10), salvato: r, nascosto: r.nascosto, aMano: true });
+  // Lo storico strutturato usa la chiave stabile anche per gli eventi della Sala.
+  for (const c of out) for (const b of S.bookings.filter(b => b.persona_chiave === c.chiave)) {
+    if (b.stato !== "annullata" && !c.prenotazioni.some(x => x.id === b.id)) c.prenotazioni.push(b);
+    if (!c.storia.some(x => x.k === "b:" + b.id)) c.storia.push({k: "b:" + b.id, data: b.data, testo: b.titolo, b: b.id});
+    if (b.data > c.ultimo) c.ultimo = b.data;
+  }
   out.forEach((c) => c.storia.sort((a, b) => b.data.localeCompare(a.data)));
   return out;
 }
@@ -3596,6 +3622,7 @@ function renderRubrica() {
   $("#rb-ord").onchange = (e) => { S.rbOrd = e.target.value; renderRubrica(); };
   const tt = $("#rb-tutti"); if (tt) tt.onclick = () => { S.rbTanti = true; renderRubrica(); };
   const nn = $("#rb-nasc"); if (nn) nn.onclick = () => { S.rbNascosti = !S.rbNascosti; renderRubrica(); };
+  const gruppiHost = document.createElement("div"); gruppiHost.id = "rubrica-gruppi"; el.querySelector(".toolbar").after(gruppiHost); gruppi.render(gruppiHost);
   $("#rb-nuovo").onclick = () => apriContatto(null);
   $("#rb-csv").onclick = () => esportaRubrica(lista);
   el.querySelectorAll("[data-rb]").forEach((b) => (b.onclick = () => apriContatto(tutti.find((c) => c.chiave === b.dataset.rb))));
@@ -3609,6 +3636,8 @@ function esportaRubrica(lista) {
   document.body.appendChild(a); a.click(); a.remove();
 }
 const dlgRb = $("#dlg-rubrica");
+const contattoCollegato = (c) => (S.gruppiPersone || []).some(m => m.persona_chiave === c.chiave) || (S.gruppi || []).some(g => g.referente_chiave === c.chiave) || S.bookings.some(b => b.persona_chiave === c.chiave) || S.schede.some(s => s.persona_chiave === c.chiave);
+
 function apriContatto(c) {
   S.rbEdit = c;
   $("#rb-head").textContent = c ? c.nome || c.ente || "Contatto" : "Nuovo contatto";
@@ -3623,7 +3652,7 @@ function apriContatto(c) {
   $("#rb-scheda").innerHTML = c ? schedaContatto(c) : "";
   $("#rb-storia").innerHTML = c && c.storia.length ? `<h4 style="margin:12px 0 4px">Con la sala (${c.storia.length})</h4>${c.storia.map((s) => `<div class="todo-riga"><div><b>${esc(fmtShort(s.data))}</b> ${esc(s.testo)}</div>${s.b && S.bookings.some((x) => x.id === s.b) ? `<div class="az"><button class="btn ghost sm" type="button" data-rb-b="${esc(s.b)}">Apri</button></div>` : s.link && /^https:\/\/mail\.google\.com\//.test(s.link) ? `<div class="az"><a class="btn ghost sm" href="${esc(s.link)}" target="_blank" rel="noopener">Apri l'email</a></div>` : ""}</div>`).join("")}` : "";
   $("#rb-storia").querySelectorAll("[data-rb-b]").forEach((b) => (b.onclick = () => { dlgRb.close(); openBooking(S.bookings.find((x) => x.id === b.dataset.rbB)); }));
-  $("#rb-nascondi").hidden = !c; $("#rb-nascondi").textContent = c && c.nascosto ? "Rimetti nella rubrica" : c && c.aMano ? "Elimina" : "Nascondi dalla rubrica";
+  $("#rb-nascondi").hidden = !c; $("#rb-nascondi").textContent = c && c.nascosto ? "Rimetti nella rubrica" : c && c.aMano && !contattoCollegato(c) ? "Elimina" : "Nascondi dalla rubrica";
   $("#rb-prenota").hidden = !c;
   $("#rb-error").innerHTML = "";
   dlgRb.showModal();
@@ -3635,6 +3664,7 @@ function schedaContatto(c) {
   const sito = c.sito ? (/^https?:\/\//i.test(c.sito) ? c.sito : "https://" + c.sito) : "";
   const righe = [
     ["Ruolo", c.qualifica && esc(c.qualifica)],
+    ["Gruppi", (S.gruppiPersone || []).filter(m => m.persona_chiave === c.chiave).map(m => esc(S.gruppi.find(g => g.id === m.gruppo_id)?.nome || "")).filter(Boolean).join(" · ")],
     ["Indirizzo", c.indirizzo && esc(c.indirizzo)],
     ["Codice fiscale / P. IVA", c.cf && esc(c.cf)],
     ["Sito", sito && `<a href="${esc(sito)}" target="_blank" rel="noopener">${esc(c.sito.replace(/^https?:\/\//i, "").replace(/\/$/, ""))}</a>`],
@@ -3661,7 +3691,7 @@ $("#rubrica-form").addEventListener("submit", async (e) => {
 $("#rb-nascondi").onclick = async () => {
   const c = S.rbEdit; if (!c) return;
   try {
-    if (c.aMano && !c.nascosto) { if (!confirm(`Eliminare ${c.nome || c.ente} dalla rubrica?`)) return; await run(sb.from("rubrica").delete().eq("chiave", c.chiave), "Contatto eliminato"); }
+    if (c.aMano && !c.nascosto && !contattoCollegato(c)) { if (!confirm(`Eliminare ${c.nome || c.ente} dalla rubrica?`)) return; await run(sb.from("rubrica").delete().eq("chiave", c.chiave), "Contatto eliminato"); }
     else await salvaContatto({ nascosto: !c.nascosto });
     dlgRb.close();
   } catch (x) { $("#rb-error").innerHTML = `<div class="warn">${esc(errText(x))}</div>`; }
@@ -4557,6 +4587,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["040_gruppi_persone.sql", "Gruppi, persone e collegamento alle attività", !S.loadErr2?.gruppi],
     ["038_parrocchia_esigenze.sql", "Dettagli delle attività parrocchiali: spazi, programma e dotazioni", undefined, "Eseguire dopo 037 per validare le richieste dettagliate"],
     ["037_richieste_parrocchia.sql", "Richieste parrocchiali gratuite con approvazione", S.schede.length ? "percorso" in S.schede[0] : undefined],
     ["035_siae_sala.sql", "SIAE a carico della sala per gli eventi co-organizzati", S.schede.length ? "siae_sala" in S.schede[0] : undefined],

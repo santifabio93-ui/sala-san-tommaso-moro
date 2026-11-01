@@ -111,6 +111,8 @@ class Regression(unittest.TestCase):
         self.expense_ids = []
         self.request_ids = []
         self.parish_ids = []
+        self.group_ids = []
+        self.contact_keys = []
         self.context = self.browser.new_context()
         self.errors = []
         self.context.on('page', lambda page: page.on('pageerror', lambda error: self.errors.append(str(error))))
@@ -134,6 +136,10 @@ class Regression(unittest.TestCase):
             ok(api('/rest/v1/bookings?id=eq.' + bid, 'DELETE', service=True))
         for eid in self.expense_ids:
             ok(api('/rest/v1/expenses?id=eq.' + eid, 'DELETE', service=True))
+        for gid in self.group_ids:
+            ok(api('/rest/v1/gruppi?id=eq.' + gid, 'DELETE', service=True))
+        for key in self.contact_keys:
+            ok(api('/rest/v1/rubrica?chiave=eq.' + key, 'DELETE', service=True))
         for vid in self.volunteer_ids:
             ok(api('/rest/v1/volontari?id=eq.' + vid, 'DELETE', service=True))
         self.assertEqual(self.errors, [], 'Browser JavaScript errors')
@@ -934,6 +940,155 @@ class Regression(unittest.TestCase):
         self.assertNotEqual(draft['ospite_token'],r['ospite_token'])
         self.assertIsNotNone(draft['ospite_token'])
         self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_conferma','POST',{'p_booking':b['id'],'p_revisione':draft['revisione']},token=staff)[0],400)
+
+
+    def group_people(self):
+        records = [{'chiave': 'man:' + uuid4().hex, 'nome': name + ' ' + uuid4().hex[:6], 'telefono': phone,
+                    'email': uuid4().hex + '@example.test', 'note': 'Nota personale riservata'}
+                   for name, phone in [('Anna Referente','3331111111'),('Bruno Referente','3332222222')]]
+        ok(api('/rest/v1/rubrica','POST',records,token=self.users['admin']['token']))
+        self.contact_keys.extend(r['chiave'] for r in records)
+        return records
+
+    def group_record(self, people, **extra):
+        data = {'p_id': None, 'p_nome': 'Gruppo prova ' + uuid4().hex[:8], 'p_tipo': 'parrocchia',
+                'p_persone': people, 'p_referente': people[0]['chiave'] if people else None,
+                'p_note': 'Nota gruppo strettamente riservata', 'p_archiviato': False, 'p_revisione': None, **extra}
+        r = ok(api('/rest/v1/rpc/gruppo_salva','POST',data,token=self.users['admin']['token']))
+        self.group_ids.append(r['id'])
+        return r, data
+
+    def test_groups_browser_default_override_and_history(self):
+        people = self.group_people()
+        bookings = [self.booking(), self.booking()]
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        page.get_by_role('button',name='+ Nuovo gruppo',exact=True).click()
+        title = 'Gruppo browser ' + uuid4().hex[:8]
+        dlg = page.locator('#dlg-gruppo')
+        dlg.locator('#gr-nome').fill(title)
+        for p in people:
+            dlg.locator('#gr-persone input[value="'+p['chiave']+'"]').check()
+        dlg.locator('#gr-cerca').fill(people[0]['telefono'])
+        expect(dlg.locator('#gr-persone input[value="'+people[0]['chiave']+'"]')).to_be_visible()
+        expect(dlg.locator('#gr-persone input[value="'+people[1]['chiave']+'"]')).not_to_be_visible()
+        dlg.locator('#gr-cerca').fill('')
+        dlg.locator('#gr-referente').select_option(people[0]['chiave'])
+        dlg.get_by_role('button',name='Salva gruppo',exact=True).click()
+        expect(dlg).not_to_be_visible()
+        g = ok(api('/rest/v1/gruppi?nome=eq.'+title.replace(' ','%20'),service=True))[0]
+        self.group_ids.append(g['id'])
+        for i, b in enumerate(bookings):
+            page.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+            page.locator('[data-event-action="edit"]').first.click()
+            page.locator('#b-gruppo').select_option(g['id'])
+            expect(page.locator('#b-referente')).to_have_value(people[0]['nome'])
+            if i:
+                page.locator('#b-persona').select_option(people[1]['chiave'])
+            expect(page.locator('#b-email')).to_have_value(people[i]['email'])
+            page.locator('#b-submit').click()
+            expect(page.locator('#dlg-booking')).not_to_be_visible()
+            expect(page.locator('#evento-body')).to_contain_text(title)
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        page.locator('[data-gr="'+g['id']+'"]').click()
+        dlg.locator('#gr-referente').select_option(people[1]['chiave'])
+        dlg.get_by_role('button',name='Salva gruppo',exact=True).click()
+        expect(dlg).not_to_be_visible()
+        for i,b in enumerate(bookings):
+            current=ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))[0]
+            self.assertEqual((current['gruppo_id'],current['persona_chiave'],current['referente']), (g['id'],people[i]['chiave'],people[i]['nome']))
+            self.assertEqual(current['prezzo'],500)
+        page.goto('http://127.0.0.1:8765/#evento/'+bookings[0]['id'])
+        page.locator('[data-event-action="edit"]').first.click()
+        expect(page.locator('#b-persona')).to_have_value(people[0]['chiave'])
+        page.locator('#dlg-booking').get_by_role('button',name='Chiudi',exact=True).click()
+        page.set_viewport_size({'width':390,'height':844})
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        page.locator('[data-gr="'+g['id']+'"]').click()
+        self.assertLessEqual(dlg.evaluate('(el)=>el.scrollWidth-el.clientWidth'),1)
+        dlg.locator('#gr-chiudi').click()
+        page.locator('[data-rb="'+people[0]['chiave']+'"]').click()
+        expect(page.locator('#rb-scheda')).to_contain_text(title)
+        expect(page.locator('#rb-storia')).to_contain_text(bookings[0]['titolo'])
+        expect(page.locator('#rb-nascondi')).to_have_text('Nascondi dalla rubrica')
+
+    def test_groups_membership_roles_archive_and_revision(self):
+        people=self.group_people()
+        g,body=self.group_record(people)
+        found={'chiave':'mail:'+uuid4().hex+'@example.test','nome':'Contatto trovato','telefono':'3339876543','email':uuid4().hex+'@example.test','ente':'Ente originale','categoria':'Volontario'}
+        self.contact_keys.append(found['chiave'])
+        other,_=self.group_record([people[0],found])
+        saved=ok(api('/rest/v1/rubrica?chiave=eq.'+found['chiave'],service=True))[0]
+        self.assertEqual((saved['nome'],saved['ente'],saved['categoria']),('Contatto trovato','Ente originale','Volontario'))
+        self.assertEqual(len(ok(api('/rest/v1/gruppi_persone?persona_chiave=eq.'+people[0]['chiave'],service=True))),2)
+        self.assertEqual(ok(api('/rest/v1/rubrica?chiave=eq.'+people[0]['chiave'],service=True))[0]['note'],'Nota personale riservata')
+        for role in ('volontario','in_attesa','bloccato'):
+            token=self.users[role]['token']
+            for table in ('gruppi','gruppi_persone'):
+                self.assertEqual(ok(api('/rest/v1/'+table,token=token)),[])
+            self.assertGreaterEqual(api('/rest/v1/rpc/gruppo_salva','POST',body,token=token)[0],400)
+        self.assertEqual(ok(api('/rest/v1/gruppi')),[])
+        invalid={**body,'p_id':g['id'],'p_revisione':g['revisione'],'p_referente':'man:non-membro'}
+        self.assertGreaterEqual(api('/rest/v1/rpc/gruppo_salva','POST',invalid,token=self.users['admin']['token'])[0],400)
+        duplicate={**body,'p_nome':g['nome'].upper()}
+        self.assertGreaterEqual(api('/rest/v1/rpc/gruppo_salva','POST',duplicate,token=self.users['admin']['token'])[0],400)
+        b=self.booking()
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'gruppo_id':g['id'],'persona_chiave':people[0]['chiave']},token=self.users['admin']['token']))
+        archived=ok(api('/rest/v1/rpc/gruppo_salva','POST',{**body,'p_id':g['id'],'p_revisione':g['revisione'],'p_archiviato':True},token=self.users['segreteria']['token']))
+        self.assertTrue(archived['archiviato'])
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'persona_chiave':people[1]['chiave']},token=self.users['admin']['token']))
+        self.assertGreaterEqual(api('/rest/v1/rpc/gruppo_salva','POST',{**body,'p_id':g['id'],'p_revisione':g['revisione']},token=self.users['admin']['token'])[0],400)
+        second=self.booking()
+        self.assertGreaterEqual(api('/rest/v1/bookings?id=eq.'+second['id'],'PATCH',{'gruppo_id':g['id']},token=self.users['admin']['token'])[0],400)
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'note':'Lo storico resta modificabile'},token=self.users['admin']['token']))
+        self.assertGreaterEqual(api('/rest/v1/rubrica?chiave=eq.'+people[0]['chiave'],'DELETE',service=True)[0],400)
+        self.assertGreaterEqual(api('/rest/v1/gruppi?id=eq.'+g['id'],'DELETE',service=True)[0],400)
+        self.assertGreaterEqual(api('/rest/v1/rpc/gruppo_salva','POST',body)[0],400)
+
+    def test_groups_parish_prefill_and_approval_keep_association(self):
+        people=self.group_people()
+        g,_=self.group_record(people)
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#schede')
+        page.locator('#sc-parrocchia').click()
+        page.locator('#ns-gruppo').select_option(g['id'])
+        expect(page.locator('#ns-dest')).to_have_value(people[0]['nome'])
+        title='Richiesta gruppo '+uuid4().hex[:8]
+        page.locator('#ns-titolo').fill(title)
+        page.locator('#ns-form [type=submit]').click()
+        expect(page.locator('#dlg-copy')).to_be_visible()
+        token=re.search(r'[?&]t=([0-9a-f-]+)',page.locator('#copy-text').input_value())[1]
+        s=ok(api('/rest/v1/schede?token=eq.'+token,service=True))[0]
+        self.parish_ids.append(s['id'])
+        public=ok(rpc('scheda_apri',{'p_token':token}))
+        self.assertNotIn('strettamente riservata',json.dumps(public))
+        self.assertNotIn(people[1]['email'],json.dumps(public))
+        self.assertNotIn('persona_chiave',public)
+        form=self.context.new_page()
+        form.goto('http://127.0.0.1:8765/modulo/compila.html?t='+token)
+        expect(form.locator('#p-gruppo')).to_have_value(g['nome'])
+        expect(form.locator('#p-referente')).to_have_value(people[0]['nome'])
+        expect(form.locator('#p-cellulare')).to_have_value(people[0]['telefono'])
+        _,data=self.parish_request()
+        data.update(gruppo=g['nome'],referente=people[0]['nome'],cellulare=people[0]['telefono'],email=people[0]['email'])
+        ok(rpc('scheda_invia',{'p_token':token,'p_dati':data,'p_firma':data['referente']}))
+        ok(self.approve_parish(s))
+        bookings=ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.'+s['id'],service=True))
+        self.assertEqual(len(bookings),1)
+        self.assertEqual((bookings[0]['gruppo_id'],bookings[0]['persona_chiave'],bookings[0]['prezzo']),(g['id'],people[0]['chiave'],0))
+
+    def test_groups_public_changed_identity_is_not_linked_to_wrong_person(self):
+        people=self.group_people()
+        g,_=self.group_record(people)
+        s,data=self.parish_request()
+        ok(api('/rest/v1/schede?id=eq.'+s['id'],'PATCH',{'gruppo_id':g['id'],'persona_chiave':people[0]['chiave']},token=self.users['admin']['token']))
+        data.update(gruppo='Un altro gruppo',referente='Una persona differente')
+        ok(rpc('scheda_invia',{'p_token':s['token'],'p_dati':data,'p_firma':data['referente']}))
+        ok(self.approve_parish(s))
+        b=ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.'+s['id'],service=True))[0]
+        self.assertIsNone(b['gruppo_id'])
+        self.assertIsNone(b['persona_chiave'])
+        self.assertEqual(b['referente'],'Una persona differente')
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=2026-11-01.86">
+<link rel="stylesheet" href="style.css?v=2026-11-01.87">
 </head>
 <body>
 <!-- sipario d'ingresso: si apre quando l'app è pronta (o dopo qualche secondo comunque) -->
@@ -338,6 +338,7 @@
     <div id="b-origin" class="hint"></div>
     <div class="form">
       <div class="field"><label for="b-titolo">Evento</label><input id="b-titolo" required placeholder="Es. Festa di compleanno, Assemblea condominiale"></div>
+      <div class="attivita-associazione" id="b-associazione"></div>
       <div class="field h"><label for="b-referente">Referente</label><input id="b-referente" placeholder="Nome e cognome"></div>
       <div class="field h"><label for="b-tipo">Tipo</label>
         <select id="b-tipo"><option>Festa privata</option><option>Riunione / assemblea</option><option>Conferenza / incontro</option><option>Cinema / proiezione</option><option>Spettacolo / concerto</option><option>Corso / laboratorio</option><option>Attività parrocchiale</option><option>Altro</option><option value="">Non specificato</option></select></div>
@@ -529,6 +530,7 @@
     <div class="dlg-head"><h2>Scheda senza prenotazione</h2><button class="btn ghost sm" type="button" data-close>Chiudi</button></div>
     <p class="hint" style="margin:0">Per chi chiede la sala ma non è ancora in calendario: riceverà il link e compilerà tutto lui.</p>
     <div class="form">
+      <div class="attivita-associazione" id="ns-associazione"></div>
       <div class="field h"><label for="ns-dest">A chi la mandate</label><input id="ns-dest" placeholder="Nome e cognome"></div>
       <div class="field h"><label for="ns-contatto">Telefono o email</label><input id="ns-contatto"></div>
       <div class="field q"><label for="ns-titolo">Evento (se lo sapete)</label><input id="ns-titolo"></div>
@@ -732,7 +734,7 @@
 <button id="nuova-versione" class="nuova-versione" type="button" hidden>✨ C'è una versione nuova dell'app: tocca per aggiornare</button>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=2026-11-01.86"></script>
-<script type="module" src="app.js?v=2026-11-01.86"></script>
+<script src="config.js?v=2026-11-01.87"></script>
+<script type="module" src="app.js?v=2026-11-01.87"></script>
 </body>
 </html>

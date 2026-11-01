@@ -57,6 +57,7 @@ export function schedaEvento(S, b, h) {
       <p>${b.scheda_parrocchia_id ? badge('Attività della Parrocchia · gratuita', 'saldato') : prezzo > 0 ? badge(residuo(b) ? 'Da saldare' : 'Saldato', residuo(b) ? 'acconto' : 'saldato') : '<span class="hint">Importo non indicato o evento senza addebito.</span>'}</p>${!cancellato && !b.scheda_parrocchia_id ? button('payment', 'Aggiorna pagamento') : ''}`);
     const telefono = String(d.cellulare || b.telefono || '').replace(/[^\d+]/g, '');
     contatti = panel('contatti', 'Organizzatore e informazioni', `<dl class="evento-info">
+      ${b.gruppo_id ? `<dt>Gruppo</dt><dd>${esc((S.gruppi || []).find(g => g.id === b.gruppo_id)?.nome || 'Gruppo collegato')}</dd>` : ''}
       <dt>Organizzatore</dt><dd>${esc(d.ente || b.referente || 'Non indicato')}</dd>
       ${d.ente && b.referente ? `<dt>Referente</dt><dd>${esc(b.referente)}</dd>` : ''}
       ${telefono ? `<dt>Telefono</dt><dd><a href="tel:${telefono}">${esc(d.cellulare || b.telefono)}</a></dd>` : ''}
