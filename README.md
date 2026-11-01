@@ -125,6 +125,41 @@ non disponibili non vengono presentati come controlli superati. Aggiungere mater
 a un affitto privato non lo pubblica sul sito o nel programma dei social.
 La scheda usa le tabelle esistenti, senza nuovi aggiornamenti SQL.
 
+## Richieste per attività della Parrocchia
+
+In **Affitti → Schede → + Richiesta Parrocchia**, un amministratore o coordinatore
+predispone un link per il gruppo parrocchiale. Il percorso è assegnato dalla sala:
+non si ottiene scegliendo “Parrocchia” nel modulo per utilizzatori esterni.
+
+Il modulo raccoglie consiglio pastorale, catechismo, conferenza/incontro,
+corso fidanzati o altra attività parrocchiale da valutare, gruppo, referente e
+responsabile presente, partecipanti/minori, accessibilità e attrezzature.
+I dati anagrafici sono quelli della Parrocchia di San Biagio; non si chiedono
+codice fiscale o indirizzo del singolo gruppo. Feste private escluse; corsi e
+laboratori esterni non attivi. La gratuità non esonera dalla verifica dei diritti
+per eventuali opere protette.
+
+Si possono richiedere fino a 52 incontri con preparazione e riordino. L’invio
+porta la richiesta in **Da verificare**, senza creare prenotazioni. Dopo la
+verifica delle risposte e del parere di sicurezza, un gestore preme **Approva e
+prenota gratuitamente gli incontri**. Se una data si sovrappone a un evento
+attivo del calendario dell’app, nessun incontro viene confermato: si devono
+correggere date/orari e riprovare. I tempi di preparazione e riordino sono inclusi
+nell’occupazione del calendario. Incontri distinti vengono creati per ogni riga.
+Una seconda approvazione non crea duplicati.
+
+Gli incontri approvati sono sempre gratuiti: il database blocca prezzi e incassi
+diversi da zero, e l’app non propone preventivi o pagamenti. La richiesta resta collegata
+a tutti gli incontri. Dopo l’approvazione, le modifiche si gestiscono dal calendario;
+il link del richiedente mostra la conferma e non consente altri invii.
+
+**Aggiornamento necessario:** eseguire
+[`037_richieste_parrocchia.sql`](supabase/037_richieste_parrocchia.sql) nel SQL Editor
+Supabase dopo i precedenti aggiornamenti, prima di usare il nuovo percorso.
+Lo script è rieseguibile; le schede precedenti restano nel percorso esterno e
+non vengono riclassificate automaticamente. Il gestore verifica che si tratti effettivamente di un’attività della Parrocchia
+prima di approvarla.
+
 ## Preventivo per chi chiede la sala
 
 Nella **Scheda evento → Prepara preventivo**, oppure in **Affitti → Richieste →

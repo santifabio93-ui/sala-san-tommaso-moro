@@ -63,7 +63,7 @@ class Regression(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.users = {}
-        for role in ('admin', 'coordinatore', 'volontario', 'in_attesa', 'bloccato'):
+        for role in ('admin', 'coordinatore', 'volontario', 'in_attesa', 'bloccato', 'segreteria'):
             email = f'{role}-{uuid4().hex[:8]}@example.test'
             user = ok(api('/auth/v1/admin/users', 'POST', {
                 'email': email, 'password': PASSWORD, 'email_confirm': True,
@@ -95,6 +95,7 @@ class Regression(unittest.TestCase):
         self.volunteer_ids = []
         self.expense_ids = []
         self.request_ids = []
+        self.parish_ids = []
         self.context = self.browser.new_context()
         self.errors = []
         self.context.on('page', lambda page: page.on('pageerror', lambda error: self.errors.append(str(error))))
@@ -107,6 +108,9 @@ class Regression(unittest.TestCase):
 
     def tearDown(self):
         self.context.close()
+        for sid in self.parish_ids:
+            ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + sid, 'DELETE', service=True))
+            ok(api('/rest/v1/schede?id=eq.' + sid, 'DELETE', service=True))
         for rid in self.request_ids:
             ok(api('/rest/v1/richieste?id=eq.' + rid, 'DELETE', service=True))
         for bid in self.booking_ids:
@@ -400,6 +404,151 @@ class Regression(unittest.TestCase):
         record = ok(api('/rest/v1/richieste?id=eq.' + request['id'], service=True))[0]
         self.assertIsNone(record['booking_id'])
         self.assertEqual(record['stato'], 'nuova')
+
+    def parish_request(self, rows=None):
+        s = ok(api('/rest/v1/schede', 'POST', {'percorso': 'parrocchia', 'stato': 'inviata', 'titolo': 'Incontri parrocchiali'}, token=self.users['admin']['token']))[0]
+        self.parish_ids.append(s['id'])
+        d = {'attivita_parrocchiale': 'catechismo', 'gruppo': 'Gruppo catechismo', 'titolo': 'Incontri catechismo',
+             'referente': 'Referente prova', 'cellulare': '3330000000', 'resp_sera': 'Responsabile prova', 'resp_cell': '3331111111',
+             'fascia': 'galleria', 'pubblico_n': 30, 'minori': 'si', 'siae': 'no', 'ok_regole': True, 'ok_privacy': True,
+             'orari': rows or [{'data': DAY, 'inizio': '10:00', 'fine': '11:00', 'all_da': '09:30', 'all_a': '10:00', 'sgombero': '11:15'}]}
+        return s, d
+
+    def approve_parish(self, s, token=None, **extra):
+        return api('/rest/v1/rpc/parrocchia_approva', 'POST', {'p_scheda': s['id'], 'p_sicurezza': 'compatibile', **extra}, token=token or self.users['admin']['token'])
+
+    def test_parish_browser_request_requires_approval_and_creates_free_series(self):
+        admin = self.login()
+        admin.goto('http://127.0.0.1:8765/#schede')
+        admin.locator('#sc-parrocchia').click()
+        admin.locator('#ns-dest').fill('Referente prova')
+        admin.locator('#ns-titolo').fill('Catechismo del gruppo')
+        admin.locator('#ns-form button[type="submit"]').click()
+        expect(admin.locator('#dlg-copy')).to_be_visible()
+        text = admin.locator('#copy-text').input_value()
+        token = re.search(r'[?&]t=([0-9a-f-]+)', text)[1]
+        s = ok(api('/rest/v1/schede?token=eq.' + token, service=True))[0]
+        self.parish_ids.append(s['id'])
+        organizer = self.context.new_page()
+        organizer.goto('http://127.0.0.1:8765/modulo/compila.html?t=' + token)
+        expect(organizer.get_by_role('heading', name='Attività della Parrocchia')).to_be_visible()
+        expect(organizer.locator('[name="cf"]')).to_have_count(0)
+        organizer.locator('[name="attivita_parrocchiale"][value="catechismo"]').check()
+        organizer.locator('#p-gruppo').fill('Gruppo catechismo')
+        organizer.locator('#p-cellulare').fill('3330000000')
+        organizer.locator('[name="o_data"]').fill(DAY)
+        organizer.locator('[name="o_inizio"]').fill('10:00')
+        organizer.locator('[name="o_fine"]').fill('11:00')
+        organizer.locator('#parrocchia-aggiungi').click()
+        row = organizer.locator('.riga-orari').nth(1)
+        row.locator('[name="o_data"]').fill((date.fromisoformat(DAY) + timedelta(days=1)).isoformat())
+        row.locator('[name="o_inizio"]').fill('10:00')
+        row.locator('[name="o_fine"]').fill('11:00')
+        organizer.locator('[name="fascia"][value="galleria"]').check()
+        organizer.locator('#p-pubblico_n').fill('30')
+        organizer.locator('[name="minori"][value="si"]').check()
+        organizer.locator('[name="siae"][value="no"]').check()
+        organizer.locator('[name="ok_regole"]').check()
+        organizer.locator('[name="ok_privacy"]').check()
+        organizer.locator('#p-firma').fill('Referente prova')
+        organizer.set_viewport_size({'width': 390, 'height': 844})
+        self.assertTrue(organizer.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+        if os.environ.get('SALA_PARISH_SCREENSHOT'):
+            organizer.evaluate('window.scrollTo(0, 0)')
+            organizer.screenshot(path=os.environ['SALA_PARISH_SCREENSHOT'], full_page=True)
+        organizer.locator('#parrocchia-invia').click()
+        expect(organizer.get_by_role('heading', name='Richiesta inviata, in attesa di approvazione')).to_be_visible()
+        self.assertEqual(ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + s['id'], service=True)), [])
+        admin.goto('http://127.0.0.1:8765/#schede')
+        admin.reload()
+        admin.locator('[data-vedi="' + s['id'] + '"]').click()
+        admin.locator('[name="sk-sic"][value="compatibile"]').check()
+        admin.locator('#sk-approva').click()
+        expect(admin.locator('#dlg-scheda')).not_to_be_visible(timeout=15000)
+        rows = ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + s['id'], service=True))
+        self.assertEqual(len(rows), 2)
+        for b in rows:
+            self.assertEqual((b['stato'], b['prezzo'], b['incassato'], b['della_sala']), ('confermata', 0, 0, True))
+        self.assertEqual(ok(self.approve_parish(s))['incontri'], 2)
+        organizer.reload()
+        expect(organizer.get_by_role('heading', name='Richiesta parrocchiale approvata')).to_be_visible()
+        admin.goto('http://127.0.0.1:8765/#evento/' + rows[1]['id'])
+        expect(admin.locator('#evento-pagamenti')).to_contain_text('Parrocchia · gratuita')
+        expect(admin.locator('[data-event-action="quote"]')).to_have_count(0)
+        expect(admin.locator('[data-event-action="payment"]')).to_have_count(0)
+        admin.get_by_role('button', name='Modifica prenotazione', exact=True).click()
+        expect(admin.locator('#b-prezzo')).not_to_be_visible()
+        admin.locator('#b-pubblico').select_option('galleria')
+        admin.locator('#b-submit').click()
+        expect(admin.locator('#dlg-booking')).not_to_be_visible()
+
+    def test_parish_approval_conflicts_roll_back_all_dates(self):
+        b = self.booking()
+        next_day = (date.fromisoformat(DAY) + timedelta(days=1)).isoformat()
+        s, d = self.parish_request([{'data': next_day, 'inizio': '10:00', 'fine': '11:00'}, {'data': DAY, 'inizio': '17:30', 'fine': '18:30'}])
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        result = self.approve_parish(s)
+        self.assertGreaterEqual(result[0], 400)
+        self.assertIn('Sovrapposizione', result[1]['message'])
+        self.assertEqual(ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + s['id'], service=True)), [])
+        saved = ok(api('/rest/v1/schede?id=eq.' + s['id'], service=True))[0]
+        self.assertEqual(saved['stato'], 'compilata')
+        self.assertIsNone(saved['booking_id'])
+
+    def test_parish_route_and_approval_cannot_be_self_assigned(self):
+        s, d = self.parish_request()
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        self.assertGreaterEqual(self.approve_parish(s, token=self.users['volontario']['token'])[0], 400)
+        self.assertGreaterEqual(rpc('parrocchia_approva', {'p_scheda': s['id'], 'p_sicurezza': 'compatibile'})[0], 400)
+        result = api('/rest/v1/schede', 'POST', {'percorso': 'parrocchia', 'stato': 'inviata'}, token=self.users['volontario']['token'])
+        self.assertGreaterEqual(result[0], 400)
+        result = api('/rest/v1/schede', 'POST', {'percorso': 'parrocchia', 'stato': 'inviata'}, token=self.users['segreteria']['token'])
+        self.assertGreaterEqual(result[0], 400)
+        external = ok(api('/rest/v1/schede', 'POST', {'stato': 'inviata'}, service=True))[0]
+        self.parish_ids.append(external['id'])
+        d['a_titolo'] = 'parrocchia'
+        ok(rpc('scheda_invia', {'p_token': external['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        self.assertGreaterEqual(self.approve_parish(external)[0], 400)
+        self.assertEqual(ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + external['id'], service=True)), [])
+        self.assertGreaterEqual(api('/rest/v1/schede?id=eq.' + external['id'], 'PATCH', {'percorso': 'parrocchia'}, token=self.users['admin']['token'])[0], 400)
+
+    def test_parish_free_amounts_and_approved_request_are_protected(self):
+        s, d = self.parish_request()
+        d.update({'prezzo': 999, 'incassato': 99, 'cf': 'Dato non necessario'})
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        ok(self.approve_parish(s))
+        b = ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + s['id'], service=True))[0]
+        self.assertEqual(b['inizio'], '09:30:00')
+        self.assertEqual(b['fine'], '11:15:00')
+        for change in ({'prezzo': 1}, {'incassato': 1}, {'della_sala': False}, {'scheda_parrocchia_id': None}):
+            self.assertGreaterEqual(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', change, token=self.users['admin']['token'])[0], 400)
+        self.assertGreaterEqual(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'})[0], 400)
+        saved = ok(api('/rest/v1/schede?id=eq.' + s['id'], service=True))[0]
+        self.assertNotIn('cf', saved['dati'])
+        self.assertNotIn('prezzo', saved['dati'])
+        fake = {'titolo': 'Incontro non approvato', 'data': DAY, 'inizio': '12:00', 'fine': '13:00', 'prezzo': 0,
+                'incassato': 0, 'stato': 'confermata', 'della_sala': True, 'scheda_parrocchia_id': s['id'], 'parrocchia_riga': 2}
+        result = api('/rest/v1/bookings', 'POST', fake, token=self.users['admin']['token'])
+        self.assertGreaterEqual(result[0], 400)
+        self.assertIn('data approvata', result[1]['message'])
+        next_day = (date.fromisoformat(DAY) + timedelta(days=1)).isoformat()
+        result = api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'data': next_day}, token=self.users['segreteria']['token'])
+        self.assertGreaterEqual(result[0], 400)
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'data': next_day}, token=self.users['admin']['token']))
+        summary = ok(rpc('scheda_apri', {'p_token': s['token']}))
+        self.assertEqual(summary['incontri'][0]['data'], next_day)
+
+    def test_parish_checks_activity_capacity_times_and_rights(self):
+        s, d = self.parish_request()
+        invalid = [{**d, 'attivita_parrocchiale': 'festa_privata'}, {**d, 'attivita_parrocchiale': 'corso_esterno'},
+                   {**d, 'pubblico_n': 135}, {**d, 'resp_cell': ''}, {**d, 'ok_regole': False},
+                   {**d, 'orari': [{'data': DAY, 'inizio': '11:00', 'fine': '10:00'}]}]
+        for data in invalid:
+            self.assertGreaterEqual(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': data, 'p_firma': 'Referente prova'})[0], 400)
+        d.update({'siae': 'si', 'siae_opere': 'Proiezione da verificare'})
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        self.assertGreaterEqual(self.approve_parish(s)[0], 400)
+        self.assertEqual(ok(self.approve_parish(s, p_siae_verificata=True))['incontri'], 1)
 
     def test_signup_is_idempotent_and_invalid_link_rejected(self):
         b = self.booking()

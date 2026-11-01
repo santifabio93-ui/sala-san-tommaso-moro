@@ -1,4 +1,5 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
+import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.83";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Scheda di richiesta online: l'organizzatore la apre dal link personale (?t=codice), senza account.
@@ -38,11 +39,12 @@ function modulo(d, info) {
   ${info.stato === "compilata" ? `<div class="ok-note no-print">Avete già inviato la scheda il ${esc(new Date(info.compilata_il).toLocaleDateString("it-IT"))}. Potete correggerla e inviarla di nuovo.</div>` : ""}
   ${info.stato === "respinta" ? `<div class="warn no-print">La sala ha chiesto di rivedere alcune risposte: correggetele e inviate di nuovo la scheda.</div>` : ""}
   <p>Gentile organizzatore, compilate questa scheda per ${info.titolo ? `<b>${esc(info.titolo)}</b>` : "il vostro evento"}${info.data ? ` del <b>${esc(fmtData(info.data))}</b>` : ""}. Ci vogliono circa 5 minuti; i campi con <span style="color:var(--due-fg)">*</span> sono obbligatori. Le risposte si salvano su questo dispositivo mentre scrivete.</p>
+  <p class="hint">Le feste private sono escluse. I corsi e laboratori esterni non sono attivi. Per le attività della Parrocchia chiedete alla sala il link dedicato.</p>
   <form id="scheda" novalidate>
   <section class="sez"><h2><span class="n">1</span>Chi organizza</h2>
     <div class="griglia">
       ${campo("ente", "Ente, associazione o persona", d.ente, "", true, "full")}
-      <div class="campo full"><span class="lbl">Richiedete la sala come</span>${scelta("a_titolo", [["parrocchia", "gruppo della Parrocchia"], ["comune", "Comune"], ["associazione", "associazione"], ["scuola", "scuola"], ["privato", "privato"], ["altro", "altro"]], d.a_titolo)}</div>
+      <div class="campo full"><span class="lbl">Richiedete la sala come</span>${scelta("a_titolo", [["comune", "Comune"], ["associazione", "associazione"], ["scuola", "scuola"], ["privato", "privato"], ["altro", "altro"]], d.a_titolo)}</div>
       ${campo("cf", "Codice fiscale o P. IVA (per la ricevuta)", d.cf)}
       ${campo("indirizzo", "Indirizzo", d.indirizzo)}
       ${campo("referente", "Referente", d.referente ?? info.referente, "autocomplete=\"name\"", true)}
@@ -199,6 +201,7 @@ async function avvia() {
   if (!token) { mostra(`<div class="esito"><h2>Link non completo</h2><p>Per compilare la scheda usate il link che vi ha mandato la sala. Per informazioni: salatommasomoro@gmail.com</p></div>`); return; }
   const { data: info, error } = await sb.rpc("scheda_apri", { p_token: token });
   if (error || !info) { mostra(`<div class="esito"><h2>Scheda non trovata</h2><p>Il link potrebbe essere scaduto o incompleto. Chiedete alla sala di mandarvene uno nuovo: salatommasomoro@gmail.com</p></div>`); return; }
+  if (info.percorso === 'parrocchia') { avviaParrocchia({ info, token, sb, esc, fmtData, mostra, BOZZA, rigaOrari }); return; }
   if (info.chiusa) { mostra(`<div class="esito"><h2>Scheda già approvata</h2><p>La sala ha già approvato la scheda${info.titolo ? ` per <b>${esc(info.titolo)}</b>` : ""}. Per modifiche contattate la sala: salatommasomoro@gmail.com</p></div>`); return; }
   let d = info.dati || {};
   try { const b = JSON.parse(localStorage.getItem(BOZZA) || "null"); if (b && (!info.compilata_il || Object.keys(d).length === 0)) d = { ...d, ...b }; } catch (e) {}
