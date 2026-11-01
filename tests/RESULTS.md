@@ -1,5 +1,37 @@
 # Esiti della validazione
 
+## Importazione modificabile dei collegamenti: 36 test superati
+
+Suite completa su Supabase locale reale e Chromium terminata con OK: 36 test
+in circa 93 secondi. Database ricostruito da zero da 41 file SQL e migrazione
+041 rieseguita con successo. Sintassi e compressione Terser 5.49.2 verificate
+per app, gruppi e importatore CSV.
+
+Verificati CSV con BOM, virgolette, punto e virgola nei valori e campi su più
+righe, esclusione delle proposte non confermate e delle righe senza persona,
+riutilizzo dei contatti della rubrica e deduplicazione dei collegamenti.
+L’anteprima permette di cambiare persona o gruppo ed escludere una riga.
+Controllati errori di formato, contenuti HTML trattati come testo e vista
+mobile a 390 px senza scorrimento orizzontale.
+
+I test API verificano importazione atomica con rollback anche dopo una prima
+riga valida, permessi di amministratore/coordinatore/segreteria, rifiuto degli
+altri ruoli e dell’accesso anonimo, gruppi archiviati e revisioni concorrenti.
+Ripetere un import invariato non duplica le appartenenze né aggiorna le revisioni.
+Membri, note, tipo e referente abituale dei gruppi esistenti sono conservati;
+i nuovi gruppi non ricevono automaticamente un referente abituale.
+
+Dopo l’importazione sono stati modificati nome e referente di un gruppo e
+rimossa una persona: tutte le modifiche sono state salvate correttamente.
+Una rinomina avvenuta mentre l’anteprima è aperta interrompe l’importazione
+senza ricreare il nome precedente. Corretto anche il caricamento iniziale delle
+nuove richieste: i pulsanti diventano disponibili quando la rubrica è pronta.
+
+Il CSV privato dei 15 collegamenti approvati dall’utilizzatore è stato verificato
+con lo stesso parser dell’app, senza inserirne i dati nel repository. Nessuna
+modifica al database reale e nessuna pubblicazione. Per attivare l’importazione
+applicare 041 dopo 040, prima della nuova versione dell’app.
+
 ## Persone, gruppi e attività: 32 test superati
 
 La suite completa su Supabase locale reale e Chromium ha terminato con OK:

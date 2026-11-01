@@ -1,5 +1,7 @@
 """Real local Supabase API + browser regression tests. No production access."""
 import concurrent.futures
+import csv
+import io
 from datetime import date, timedelta
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -1089,6 +1091,140 @@ class Regression(unittest.TestCase):
         self.assertIsNone(b['gruppo_id'])
         self.assertIsNone(b['persona_chiave'])
         self.assertEqual(b['referente'],'Una persona differente')
+
+
+    def import_group_rows(self, rows, token=None):
+        return api('/rest/v1/rpc/gruppi_importa_collegamenti','POST',{'p_collegamenti':rows},token=token or self.users['admin']['token'])
+
+    def test_group_import_browser_reuse_preserve_and_edit_after_import(self):
+        people=self.group_people()
+        g,body=self.group_record([people[0]])
+        new_name='Gruppo "Musica; Teatro" '+uuid4().hex[:8]
+        output=io.StringIO(newline='')
+        writer=csv.writer(output,delimiter=';')
+        writer.writerow(['Stato','Persona','Gruppo','Tipo gruppo','Dettagli'])
+        writer.writerow(['CONFERMATO',people[1]['nome'],g['nome'],'compagnia','Una nota\ncon due righe'])
+        writer.writerow(['CONFERMATO',people[1]['nome'],new_name,'compagnia',''])
+        writer.writerow(['CONFERMATO',people[1]['nome'],new_name,'compagnia','Riga duplicata'])
+        writer.writerow(['DA CONFERMARE',people[0]['nome'],'Non importare','associazione',''])
+        writer.writerow(['GRUPPO SENZA PERSONA IDENTIFICATA','','Senza referente','altro',''])
+        payload={'name':'collegamenti.csv','mimeType':'text/csv','buffer':('\ufeff'+output.getvalue()).encode()}
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        for attempt in range(2):
+            page.get_by_role('button',name='Importa collegamenti',exact=True).click()
+            dlg=page.locator('#dlg-importa-gruppi')
+            dlg.locator('#gi-file').set_input_files(payload)
+            expect(dlg.locator('#gi-info')).to_contain_text('3 collegamenti confermati · 2 righe non confermate escluse')
+            expect(dlg.locator('#gi-persona-0')).to_have_value(people[1]['chiave'])
+            dlg.locator('#gi-salva').click()
+            expect(dlg).not_to_be_visible()
+            groups=ok(api('/rest/v1/gruppi',service=True))
+            new=next(r for r in groups if r['nome']==new_name)
+            if not attempt:self.group_ids.append(new['id'])
+            self.assertIsNone(new['referente_chiave'])
+            existing=next(r for r in groups if r['id']==g['id'])
+            self.assertEqual((existing['note'],existing['referente_chiave'],existing['tipo']),(body['p_note'],people[0]['chiave'],'parrocchia'))
+            self.assertEqual(len(ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+g['id'],service=True))),2)
+            self.assertEqual(len(ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+new['id'],service=True))),1)
+        page.locator('[data-gr="'+new['id']+'"]').click()
+        edit=page.locator('#dlg-gruppo')
+        changed='Nome corretto '+uuid4().hex[:8]
+        edit.locator('#gr-nome').fill(changed)
+        edit.locator('#gr-referente').select_option(people[1]['chiave'])
+        edit.get_by_role('button',name='Salva gruppo',exact=True).click()
+        expect(edit).not_to_be_visible()
+        current=ok(api('/rest/v1/gruppi?id=eq.'+new['id'],service=True))[0]
+        self.assertEqual((current['nome'],current['referente_chiave']),(changed,people[1]['chiave']))
+        page.locator('[data-gr="'+g['id']+'"]').click()
+        edit.locator('#gr-persone input[value="'+people[1]['chiave']+'"]').uncheck()
+        edit.get_by_role('button',name='Salva gruppo',exact=True).click()
+        expect(edit).not_to_be_visible()
+        self.assertEqual([m['persona_chiave'] for m in ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+g['id'],service=True))],[people[0]['chiave']])
+
+    def test_group_import_atomic_permissions_revisions_and_archive(self):
+        people=self.group_people()
+        g,body=self.group_record([people[0]],p_nome='AA importazione '+uuid4().hex[:8])
+        row={'gruppo':g['nome'],'tipo':'parrocchia','persona':people[1],'revisione_gruppo':g['revisione']}
+        bad={'gruppo':'ZZ errore '+uuid4().hex[:8],'tipo':'altro','persona':{'chiave':'man:'+uuid4().hex,'nome':''},'revisione_gruppo':None}
+        self.assertGreaterEqual(self.import_group_rows([row,bad])[0],400)
+        self.assertEqual(len(ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+g['id'],service=True))),1)
+        self.assertEqual(ok(api('/rest/v1/gruppi?id=eq.'+g['id'],service=True))[0]['revisione'],g['revisione'])
+        self.assertEqual(ok(api('/rest/v1/rubrica?chiave=eq.'+bad['persona']['chiave'],service=True)),[])
+        for role in ('volontario','in_attesa','bloccato'):
+            self.assertGreaterEqual(self.import_group_rows([row],token=self.users[role]['token'])[0],400)
+        self.assertGreaterEqual(rpc('gruppi_importa_collegamenti',{'p_collegamenti':[row]})[0],400)
+        saved=ok(self.import_group_rows([row],token=self.users['segreteria']['token']))
+        self.assertEqual(saved,{'collegamenti_aggiunti':1,'gia_presenti':0,'gruppi_creati':0})
+        self.assertGreaterEqual(self.import_group_rows([row])[0],400)
+        latest=ok(api('/rest/v1/gruppi?id=eq.'+g['id'],service=True))[0]
+        row['revisione_gruppo']=latest['revisione']
+        self.assertEqual(ok(self.import_group_rows([row]))['gia_presenti'],1)
+        self.assertEqual(ok(api('/rest/v1/gruppi?id=eq.'+g['id'],service=True))[0]['revisione'],latest['revisione'])
+        ok(api('/rest/v1/rpc/gruppo_salva','POST',{**body,'p_id':g['id'],'p_persone':people,'p_archiviato':True,'p_revisione':latest['revisione']},token=self.users['admin']['token']))
+        latest=ok(api('/rest/v1/gruppi?id=eq.'+g['id'],service=True))[0]
+        row['revisione_gruppo']=latest['revisione']
+        self.assertGreaterEqual(self.import_group_rows([row])[0],400)
+
+    def test_group_import_csv_invalid_and_selection_can_be_corrected(self):
+        people=self.group_people()
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        page.get_by_role('button',name='Importa collegamenti',exact=True).click()
+        dlg=page.locator('#dlg-importa-gruppi')
+        for data in ['Stato;Persona;Gruppo;Tipo gruppo\nCONFERMATO;"Virgolette aperte',
+                     'Nome;Email\nPersona;persona@example.test',
+                     'Stato;Persona;Gruppo;Tipo gruppo\nDA CONFERMARE;Persona;Gruppo;altro']:
+            dlg.locator('#gi-file').set_input_files({'name':'errato.csv','mimeType':'text/csv','buffer':data.encode()})
+            expect(dlg.locator('#gi-error')).not_to_be_empty()
+            expect(dlg.locator('#gi-salva')).to_be_disabled()
+        attack='<img src=x onerror=window.csvExecuted=true>'
+        group_name='Da correggere '+uuid4().hex[:8]
+        output=io.StringIO(newline='');writer=csv.writer(output,delimiter=';')
+        writer.writerow(['Stato','Persona','Gruppo','Tipo gruppo'])
+        writer.writerow(['CONFERMATO',attack,group_name,'altro'])
+        dlg.locator('#gi-file').set_input_files({'name':'correggibile.csv','mimeType':'text/csv','buffer':output.getvalue().encode()})
+        expect(dlg.locator('#gi-info')).to_contain_text('1 collegamenti confermati')
+        expect(dlg.locator('#gi-salva')).to_be_disabled()
+        self.assertEqual(dlg.locator('img').count(),0)
+        self.assertIsNone(page.evaluate('window.csvExecuted'))
+        dlg.locator('#gi-persona-0').select_option(people[0]['chiave'])
+        dlg.locator('[data-gi-usa]').uncheck()
+        expect(dlg.locator('#gi-salva')).to_be_disabled()
+        dlg.locator('[data-gi-usa]').check()
+        expect(dlg.locator('#gi-salva')).to_be_enabled()
+        page.set_viewport_size({'width':390,'height':844})
+        self.assertLessEqual(dlg.evaluate('(el)=>el.scrollWidth-el.clientWidth'),1)
+        corrected='Corretto '+uuid4().hex[:8]
+        dlg.locator('#gi-gruppo-0').fill(corrected)
+        dlg.locator('#gi-salva').click()
+        expect(dlg).not_to_be_visible()
+        records=ok(api('/rest/v1/gruppi',service=True))
+        created=next(r for r in records if r['nome']==corrected)
+        self.group_ids.append(created['id'])
+        self.assertEqual(ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+created['id'],service=True))[0]['persona_chiave'],people[0]['chiave'])
+
+
+
+    def test_group_import_stale_preview_preserves_group_edits(self):
+        people=self.group_people()
+        g,body=self.group_record([people[0]])
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#rubrica')
+        page.get_by_role('button',name='Importa collegamenti',exact=True).click()
+        dlg=page.locator('#dlg-importa-gruppi')
+        output=io.StringIO(newline='');writer=csv.writer(output,delimiter=';')
+        writer.writerow(['Stato','Persona','Gruppo','Tipo gruppo'])
+        writer.writerow(['CONFERMATO',people[1]['nome'],g['nome'],'parrocchia'])
+        dlg.locator('#gi-file').set_input_files({'name':'confermati.csv','mimeType':'text/csv','buffer':output.getvalue().encode()})
+        expect(dlg.locator('#gi-salva')).to_be_enabled()
+        updated_name='Nome modificato nel frattempo '+uuid4().hex[:8]
+        ok(api('/rest/v1/rpc/gruppo_salva','POST',{**body,'p_id':g['id'],'p_nome':updated_name,'p_revisione':g['revisione']},token=self.users['admin']['token']))
+        dlg.locator('#gi-salva').click()
+        expect(dlg.locator('#gi-error')).to_contain_text('ricarica')
+        self.assertEqual(ok(api('/rest/v1/gruppi?id=eq.'+g['id'],service=True))[0]['nome'],updated_name)
+        self.assertEqual(len(ok(api('/rest/v1/gruppi_persone?gruppo_id=eq.'+g['id'],service=True))),1)
+        self.assertEqual(sum(r['nome']==g['nome'] for r in ok(api('/rest/v1/gruppi',service=True))),0)
 
 
 if __name__ == '__main__':
