@@ -112,3 +112,14 @@ indichi il percorso esterno/parrocchiale e che le richieste approvate mostrino
 il riepilogo completo senza tornare modificabili. Una pagina HTML precedente
 viene servita tramite HTTP locale per verificare la compatibilità con script
 aggiornati, mantenendo attivi i normali controlli di origine e rete del browser.
+
+## Panoramica e preparazione degli eventi
+
+La migrazione 044 aggiunge stati condivisi per prenotazioni e proiezioni.
+I test controllano il salvataggio e la persistenza dal browser, il programma di
+oggi e domani, l’esclusione degli annullati, le persone nei turni, le proiezioni,
+i problemi e la vista mobile. Le API locali verificano i permessi di tutti i
+ruoli, la vista ridotta per i volontari, il divieto di scrittura diretta,
+i salvataggi concorrenti, la validazione, i cambi di data/orario e la cancellazione
+in cascata. I servizi non disponibili restano esplicitamente da verificare.
+Per salvare l’anteprima mobile impostare `SALA_TODAY_SCREENSHOT` a un percorso locale.
