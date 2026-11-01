@@ -104,3 +104,11 @@ riepilogo nella scheda evento. Altri casi verificano descrizione/uso degli spazi
 obbligatori, dotazioni incompatibili con la galleria, quantità e recapiti mancanti,
 accessibilità e pulizia dei campi disattivati. Il responsabile presente già
 indicato viene conservato quando è diverso dal referente.
+
+### Link personali e cache
+
+La suite controlla che i link copiati abbiano la versione dell’app, che la pagina
+indichi il percorso esterno/parrocchiale e che le richieste approvate mostrino
+il riepilogo completo senza tornare modificabili. Una pagina HTML precedente
+viene servita tramite HTTP locale per verificare la compatibilità con script
+aggiornati, mantenendo attivi i normali controlli di origine e rete del browser.

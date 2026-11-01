@@ -1,5 +1,20 @@
 # Esiti della validazione
 
+## Link personali e riepilogo approvato: 24 test superati
+
+Riprodotto il percorso che, dopo l’approvazione, mostrava solo conferma e date:
+ora espone anche attività, persone, sala, allestimento, dotazioni ed esigenze
+in sola lettura. Testati contenuti del riepilogo e assenza di un modulo inviabile.
+La suite completa ha terminato con OK (24 test, circa 65 secondi). Dopo la
+rifinitura di compatibilità è passata anche la prova mirata con una vecchia
+pagina HTML servita su HTTP locale e script aggiornati, senza disabilitare i
+controlli di sicurezza del browser. Controllati versione nei link, percorso
+visibile e compressione Terser.
+
+La lettura diretta di GitHub Pages è bloccata dalla policy di rete della sessione:
+queste prove non verificano il dominio o la cache del browser dell’utilizzatore.
+Nessuna nuova migrazione SQL e nessuna modifica alle richieste reali.
+
 ## Richieste parrocchiali dettagliate: 23 test eseguiti, 23 superati
 
 Il modulo raccoglie descrizione obbligatoria dell’attività, utilizzo delle sale,

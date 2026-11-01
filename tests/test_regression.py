@@ -58,6 +58,21 @@ class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_GET(self):
+        # Serve an older HTML shell over real HTTP to reproduce mixed cache
+        # without changing the page's network origin or private-network checks.
+        url = urlsplit(self.path)
+        if url.path == '/modulo/compila.html' and 'legacy_test=1' in url.query:
+            html = (ROOT / 'modulo/compila.html').read_text()
+            body = re.sub(r'<p class="hint no-print">Versione modulo.*?</p>', '', html).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
 
 class Regression(unittest.TestCase):
     @classmethod
@@ -426,6 +441,8 @@ class Regression(unittest.TestCase):
         admin.locator('#ns-form button[type="submit"]').click()
         expect(admin.locator('#dlg-copy')).to_be_visible()
         text = admin.locator('#copy-text').input_value()
+        versione = re.search(r'Versione (\S+)', admin.locator('footer.version').inner_text())[1]
+        self.assertIn('&v=' + versione, text)
         token = re.search(r'[?&]t=([0-9a-f-]+)', text)[1]
         s = ok(api('/rest/v1/schede?token=eq.' + token, service=True))[0]
         self.parish_ids.append(s['id'])
@@ -606,6 +623,15 @@ class Regression(unittest.TestCase):
         expect(page.locator('#evento-programma')).to_contain_text('2 microfoni a filo')
         expect(page.locator('#evento-programma')).to_contain_text('Tre relatori')
         expect(page.locator('#evento-programma')).to_contain_text('supporto per accendere')
+        organizer.reload()
+        expect(organizer.get_by_role('heading', name='Richiesta parrocchiale approvata')).to_be_visible()
+        expect(organizer.locator('#modulo-percorso')).to_have_text('Percorso Parrocchia')
+        expect(organizer.locator('#app')).to_contain_text('Come userete gli spazi scelti?')
+        expect(organizer.locator('#app')).to_contain_text('PC portatile del gruppo con HDMI')
+        expect(organizer.locator('#app')).to_contain_text('2 microfoni a filo')
+        expect(organizer.locator('#app')).to_contain_text('supporto per accendere')
+        expect(organizer.locator('form')).to_have_count(0)
+
 
     def test_parish_detailed_fields_are_required_and_consistent(self):
         s, d = self.parish_request()
@@ -634,6 +660,16 @@ class Regression(unittest.TestCase):
         saved = ok(api('/rest/v1/schede?id=eq.' + s['id'], service=True))[0]['dati']
         self.assertFalse(saved['audio'])
         self.assertNotIn('mic_filo_n', saved)
+
+    def test_personal_form_identifies_external_route(self):
+        s = ok(api('/rest/v1/schede', 'POST', {'stato': 'inviata'}, service=True))[0]
+        self.parish_ids.append(s['id'])
+        page = self.context.new_page()
+        page.goto('http://127.0.0.1:8765/modulo/compila.html?t=' + s['token'] + '&v=2026-11-01.85&legacy_test=1')
+        expect(page.locator('#modulo-percorso')).to_have_text('Percorso utilizzatori esterni')
+        expect(page.locator('body')).to_contain_text('Versione modulo')
+        expect(page.locator('#scheda')).to_be_visible()
+        expect(page.locator('#parrocchia-form')).to_have_count(0)
 
     def test_signup_is_idempotent_and_invalid_link_rejected(self):
         b = self.booking()
