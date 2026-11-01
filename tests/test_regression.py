@@ -409,8 +409,8 @@ class Regression(unittest.TestCase):
         s = ok(api('/rest/v1/schede', 'POST', {'percorso': 'parrocchia', 'stato': 'inviata', 'titolo': 'Incontri parrocchiali'}, token=self.users['admin']['token']))[0]
         self.parish_ids.append(s['id'])
         d = {'attivita_parrocchiale': 'catechismo', 'gruppo': 'Gruppo catechismo', 'titolo': 'Incontri catechismo',
-             'referente': 'Referente prova', 'cellulare': '3330000000', 'resp_sera': 'Responsabile prova', 'resp_cell': '3331111111',
-             'fascia': 'galleria', 'pubblico_n': 30, 'minori': 'si', 'siae': 'no', 'ok_regole': True, 'ok_privacy': True,
+             'firma': 'Referente prova', 'referente': 'Referente prova', 'cellulare': '3330000000', 'resp_sera': 'Responsabile prova', 'resp_cell': '3331111111',
+             'descrizione': 'Catechesi e confronto su un brano, con lavoro di gruppo.', 'utilizzo_spazi': 'Riunione di tutto il gruppo in galleria.', 'disposizione': 'seduti', 'palco': 'no', 'tecnico': 'nessuno', 'attrezzature': 'no', 'scenografie': 'no', 'conferma_esigenze': True, 'fascia': 'galleria', 'pubblico_n': 30, 'minori': 'si', 'siae': 'no', 'ok_regole': True, 'ok_privacy': True,
              'orari': rows or [{'data': DAY, 'inizio': '10:00', 'fine': '11:00', 'all_da': '09:30', 'all_a': '10:00', 'sgombero': '11:15'}]}
         return s, d
 
@@ -435,6 +435,14 @@ class Regression(unittest.TestCase):
         expect(organizer.locator('[name="cf"]')).to_have_count(0)
         organizer.locator('[name="attivita_parrocchiale"][value="catechismo"]').check()
         organizer.locator('#p-gruppo').fill('Gruppo catechismo')
+        organizer.locator('#p-descrizione').fill('Catechesi con lettura e confronto tra i partecipanti.')
+        organizer.locator('#p-utilizzo_spazi').fill('Tutto il gruppo si riunisce in galleria per un incontro seduto.')
+        organizer.locator('[name="disposizione"][value="seduti"]').check()
+        organizer.locator('[name="palco"][value="no"]').check()
+        organizer.locator('[name="tecnico"][value="nessuno"]').check()
+        organizer.locator('[name="attrezzature"][value="no"]').check()
+        organizer.locator('[name="scenografie"][value="no"]').check()
+        organizer.locator('[name="conferma_esigenze"]').check()
         organizer.locator('#p-cellulare').fill('3330000000')
         organizer.locator('[name="o_data"]').fill(DAY)
         organizer.locator('[name="o_inizio"]').fill('10:00')
@@ -473,6 +481,8 @@ class Regression(unittest.TestCase):
         organizer.reload()
         expect(organizer.get_by_role('heading', name='Richiesta parrocchiale approvata')).to_be_visible()
         admin.goto('http://127.0.0.1:8765/#evento/' + rows[1]['id'])
+        expect(admin.locator('#evento-programma')).to_contain_text('Catechesi con lettura')
+        expect(admin.locator('#evento-programma')).to_contain_text('Galleria')
         expect(admin.locator('#evento-pagamenti')).to_contain_text('Parrocchia · gratuita')
         expect(admin.locator('[data-event-action="quote"]')).to_have_count(0)
         expect(admin.locator('[data-event-action="payment"]')).to_have_count(0)
@@ -549,6 +559,81 @@ class Regression(unittest.TestCase):
         ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
         self.assertGreaterEqual(self.approve_parish(s)[0], 400)
         self.assertEqual(ok(self.approve_parish(s, p_siae_verificata=True))['incontri'], 1)
+
+    def test_parish_full_requirements_are_visible_to_manager(self):
+        s, d = self.parish_request()
+        d.update({'attivita_parrocchiale': 'conferenza', 'fascia': 'platea', 'palco': 'si', 'palco_n': 3,
+            'palco_uso': 'Tre relatori presentano il tema dal palco.', 'disposizione': 'seduti',
+            'descrizione': 'Conferenza con tre interventi, slide e domande del pubblico.',
+            'utilizzo_spazi': 'Relatori sul palco in platea e partecipanti seduti in platea.',
+            'proiettore': True, 'contenuti_proiezione': 'Slide preparate dal gruppo.', 'collegamento_video': 'PC portatile del gruppo con HDMI',
+            'audio': True, 'audio_uso': 'Voce dei relatori e domande del pubblico.', 'mic_filo': True, 'mic_filo_n': 2,
+            'radiomic': True, 'radiomic_n': 1, 'mic_tavolo': True, 'mic_tavolo_n': 1, 'tavolo': True, 'tavolo_n': 3,
+            'tecnico': 'nostro', 'tecnico_nome': 'Tecnico prova', 'tecnico_cell': '3332222222',
+            'attrezzature': 'si', 'attrezzature_quali': 'Un PC e un piccolo mixer del gruppo.', 'potenza_w': 250,
+            'scenografie': 'si', 'scenografie_quali': 'Pannelli ignifughi da concordare con la sala.',
+            'esigenze_apertura': 'Il referente arriva alle 09:30 e chiede supporto per accendere gli impianti.',
+            'variazioni_incontri': 'Per tutti gli incontri sono richieste le stesse dotazioni.'})
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        organizer = self.context.new_page()
+        organizer.goto('http://127.0.0.1:8765/modulo/compila.html?t=' + s['token'])
+        expect(organizer.locator('#p-mic_filo_n')).to_have_value('2')
+        expect(organizer.locator('#p-tecnico_nome')).to_have_value('Tecnico prova')
+        expect(organizer.locator('#p-resp_sera')).to_have_value('Responsabile prova')
+        organizer.locator('#p-descrizione').fill('Conferenza con tre interventi, slide e un confronto finale con il pubblico.')
+        organizer.reload()
+        expect(organizer.locator('#p-descrizione')).to_have_value('Conferenza con tre interventi, slide e un confronto finale con il pubblico.')
+        organizer.set_viewport_size({'width': 390, 'height': 844})
+        self.assertTrue(organizer.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+        if os.environ.get('SALA_PARISH_SCREENSHOT'):
+            organizer.evaluate('window.scrollTo(0, 0)')
+            organizer.screenshot(path=os.environ['SALA_PARISH_SCREENSHOT'] + '.dettagli.png', full_page=True)
+        organizer.locator('#parrocchia-invia').click()
+        expect(organizer.get_by_role('heading', name='Richiesta inviata, in attesa di approvazione')).to_be_visible()
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#schede')
+        page.locator('[data-vedi="' + s['id'] + '"]').click()
+        expect(page.locator('#sk-risposte')).to_contain_text('un confronto finale')
+        expect(page.locator('#sk-risposte')).to_contain_text('PC portatile del gruppo con HDMI')
+        expect(page.locator('#sk-risposte')).to_contain_text('Tecnico prova')
+        expect(page.locator('#sk-risposte')).to_contain_text('supporto per accendere')
+        page.locator('[name="sk-sic"][value="compatibile"]').check()
+        page.locator('#sk-approva').click()
+        expect(page.locator('#dlg-scheda')).not_to_be_visible()
+        b = ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + s['id'], service=True))[0]
+        page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        expect(page.locator('#evento-programma')).to_contain_text('Platea con palco')
+        expect(page.locator('#evento-programma')).to_contain_text('2 microfoni a filo')
+        expect(page.locator('#evento-programma')).to_contain_text('Tre relatori')
+        expect(page.locator('#evento-programma')).to_contain_text('supporto per accendere')
+
+    def test_parish_detailed_fields_are_required_and_consistent(self):
+        s, d = self.parish_request()
+        invalid = [
+            {**d, 'descrizione': ''}, {**d, 'utilizzo_spazi': ''}, {**d, 'disposizione': 'altro'},
+            {**d, 'palco': 'si', 'palco_n': 1, 'palco_uso': 'Un relatore'},
+            {**d, 'proiettore': True}, {**d, 'audio': True}, {**d, 'tecnico': 'nostro'},
+            {**d, 'attrezzature': 'si'}, {**d, 'scenografie': 'si'}, {**d, 'conferma_esigenze': False},
+            {**d, 'audio': True, 'audio_uso': 'Relatori', 'radiomic': True, 'radiomic_n': 3},
+            {**d, 'tavolo': True, 'tavolo_n': 0}, {**d, 'carrozzina_n': 31}, {**d, 'luci': True}
+        ]
+        for data in invalid:
+            result = rpc('scheda_invia', {'p_token': s['token'], 'p_dati': data, 'p_firma': 'Referente prova'})
+            self.assertGreaterEqual(result[0], 400, data)
+        ok(rpc('scheda_invia', {'p_token': s['token'], 'p_dati': d, 'p_firma': 'Referente prova'}))
+        page = self.context.new_page()
+        page.goto('http://127.0.0.1:8765/modulo/compila.html?t=' + s['token'])
+        page.locator('[name="audio"]').check()
+        page.locator('#p-audio_uso').fill('Voce del relatore')
+        page.locator('[name="mic_filo"]').check()
+        page.locator('#p-mic_filo_n').fill('2')
+        page.locator('[name="audio"]').uncheck()
+        expect(page.locator('#p-mic_filo_n')).to_be_disabled()
+        page.locator('#parrocchia-invia').click()
+        expect(page.get_by_role('heading', name='Richiesta inviata, in attesa di approvazione')).to_be_visible()
+        saved = ok(api('/rest/v1/schede?id=eq.' + s['id'], service=True))[0]['dati']
+        self.assertFalse(saved['audio'])
+        self.assertNotIn('mic_filo_n', saved)
 
     def test_signup_is_idempotent_and_invalid_link_rejected(self):
         b = self.booking()

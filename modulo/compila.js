@@ -1,5 +1,5 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.83";
+import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.84";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Scheda di richiesta online: l'organizzatore la apre dal link personale (?t=codice), senza account.

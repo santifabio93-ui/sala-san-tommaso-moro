@@ -1,5 +1,22 @@
 # Esiti della validazione
 
+## Richieste parrocchiali dettagliate: 23 test eseguiti, 23 superati
+
+Il modulo raccoglie descrizione obbligatoria dell’attività, utilizzo delle sale,
+allestimento e palco, contenuti/collegamento della proiezione, uso dell’audio e
+quantità delle dotazioni, tecnico, attrezzature/materiali propri ed esigenze
+organizzative. Verificati validazione dei campi condizionali, incompatibilità
+con la galleria e visibilità dei dettagli nella revisione e nella scheda evento.
+Il responsabile diverso dal referente viene conservato.
+
+Ricostruzione del database locale da 38 file SQL e suite completa terminata con
+OK (23 test, circa 67 secondi). Dopo la rifinitura delle bozze, rieseguito e
+superato anche il test completo modulo → ricaricamento → invio → gestore → scheda
+evento. La bozza di una richiesta già inviata conserva le modifiche sul dispositivo
+quando la versione server non è cambiata. Ispezionata la vista mobile dettagliata
+a 390 px, senza scorrimento orizzontale. Compressione Terser verificata.
+Nessuna modifica al database reale; per l’attivazione applicare 038 dopo 037.
+
 ## Percorso parrocchiale: 21 test eseguiti, 21 superati
 
 Verificato il flusso dal gestore che predispone il link all’invio del referente,

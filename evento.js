@@ -14,7 +14,7 @@ export function schedaEvento(S, b, h) {
   const panel = (id, title, content) => `<section class="panel evento-panel" id="evento-${id}" aria-labelledby="evento-title-${id}"><h3 id="evento-title-${id}">${title}</h3>${content}</section>`;
   const next = (text, action, label) => { if (!cancellato) azioni.push({ text, action, label }); };
   if (staff && b.stato === 'opzione') next('La prenotazione è ancora da confermare.', 'edit', 'Rivedi prenotazione');
-  let documenti = '', pagamenti = '', contatti = '', materiali = '', collegati = '';
+  let programma = '', documenti = '', pagamenti = '', contatti = '', materiali = '', collegati = '';
   if (staff) {
     let statoScheda, tipoScheda = 'acconto';
     if (!schedeDisponibili) statoScheda = 'Dati non disponibili';
@@ -33,6 +33,24 @@ export function schedaEvento(S, b, h) {
       <div class="sr-riga"><span>SIAE</span><div>${badge(statoSiae, ['allegato', 'non_serve'].includes(siae) ? 'saldato' : 'acconto')}${siae === 'sala' ? '<p class="hint">La gestione è della Sala; questo stato non conferma il rilascio del permesso.</p>' : ''}</div></div>
       ${s?.sicurezza ? `<div class="sr-riga"><span>Parere di sicurezza</span><div>${esc(({ compatibile: 'Compatibile', condizioni: 'Compatibile con condizioni', non_compatibile: 'Non compatibile' })[s.sicurezza] || s.sicurezza)}${s.sicurezza_note ? `<p>${esc(s.sicurezza_note)}</p>` : ''}</div></div>` : ''}
       <div class="actions">${conRisposte ? button('document', s.stato === 'compilata' ? 'Verifica risposte e allegati' : 'Apri risposte e allegati') : ''}${schedeDisponibili && !nonRichiesta && s?.stato !== 'non_serve' ? button('send-document', s ? 'Copia link scheda' : 'Prepara link scheda') : ''}</div>`);
+    if (s?.percorso === 'parrocchia') {
+      const sale = { galleria: 'Galleria', platea: 'Platea con palco', tutta: 'Platea e galleria' };
+      const disposizione = { seduti: 'Partecipanti seduti', tavolo: 'Riunione attorno a un tavolo', gruppi: 'Lavoro in piccoli gruppi', altro: 'Altro allestimento da concordare' };
+      const righe = [
+        ['Che cosa faranno', d.descrizione], ['Sala richiesta', sale[d.fascia] || d.fascia], ['Come useranno gli spazi', d.utilizzo_spazi],
+        ['Allestimento', [disposizione[d.disposizione], d.disposizione_dettagli].filter(Boolean).join(' · ')],
+        ['Partecipanti', d.pubblico_n ? `${d.pubblico_n} complessivi${d.minori === 'si' ? ' · presenti minori' : ''}` : ''],
+        ['Palco', d.palco === 'si' ? `${d.palco_n} persone · ${d.palco_uso || ''}` : d.palco === 'no' ? 'Non richiesto' : ''],
+        ['Accessibilità', [d.carrozzina_n ? `${d.carrozzina_n} persone in carrozzina` : '', d.accessibilita].filter(Boolean).join(' · ')],
+        ['Dotazioni richieste', [d.proiettore ? 'Proiettore' : '', d.audio ? 'Impianto audio' : '', d.mic_filo ? `${d.mic_filo_n || '?'} microfoni a filo` : '', d.radiomic ? `${d.radiomic_n || '?'} radiomicrofoni` : '', d.mic_tavolo ? `${d.mic_tavolo_n || '?'} microfoni da tavolo` : '', d.tavolo ? `Tavolo relatori (${d.tavolo_n || '?'} posti)` : '', d.luci ? 'Luci di scena' : '', d.sipario ? 'Sipario e quinte' : ''].filter(Boolean).join(' · ')],
+        ['Proiezione', [d.contenuti_proiezione, d.collegamento_video].filter(Boolean).join(' · ')], ['Audio', d.audio_uso],
+        ['Attrezzature proprie', d.attrezzature === 'si' ? `${d.attrezzature_quali || ''}${d.potenza_w ? ' · ' + d.potenza_w + ' W' : ''}` : ''],
+        ['Materiali e scenografie', d.scenografie === 'si' ? d.scenografie_quali : ''],
+        ['Tecnico del gruppo', d.tecnico === 'nostro' ? [d.tecnico_nome, d.tecnico_cell].filter(Boolean).join(' · ') : ''],
+        ['Apertura e assistenza da concordare', d.esigenze_apertura], ['Variazioni tra incontri', d.variazioni_incontri], ['Altre esigenze', d.altre_esigenze]
+      ];
+      programma = panel('programma', 'Attività, sala ed esigenze', `<dl class="evento-info">${righe.filter(([, valore]) => valore).map(([label, valore]) => `<dt>${esc(label)}</dt><dd class="evento-note">${esc(valore)}</dd>`).join('')}</dl><p class="hint">Dotazioni, allestimenti e assistenza sono le richieste del gruppo: verificare quanto concordato prima dell’apertura.</p>`);
+    }
     const prezzo = Number(b.prezzo) || 0, incassato = Number(b.incassato) || 0;
     if (prezzo > 0 && residuo(b) > 0) next(`Restano ${money(residuo(b))} da incassare.`, 'payment', 'Registra incasso');
     pagamenti = panel('pagamenti', 'Pagamenti', `<dl class="evento-totali"><div><dt>Importo previsto</dt><dd>${money(prezzo)}</dd></div><div><dt>Incassato</dt><dd>${money(incassato)}</dd></div><div><dt>Da incassare</dt><dd>${money(residuo(b))}</dd></div></dl>
@@ -64,5 +82,5 @@ export function schedaEvento(S, b, h) {
   }).join('')}` : '<p class="hint">Nessuna fascia oraria pianificata.</p>'}<div class="actions">${!cancellato && turni(b).length ? button('shifts', staff ? 'Gestisci turni dell’evento' : 'Segnati ai turni') : ''}${staff && !cancellato ? button('edit', 'Modifica fasce') : ''}</div>`);
   return `${S.loadErr?.bookings ? '<p class="warn" role="status">Impossibile aggiornare la prenotazione: sono mostrati gli ultimi dati disponibili.</p>' : ''}<div class="toolbar evento-header"><div><a href="#${staff ? 'prenotazioni' : 'calendario'}">← ${staff ? 'Prenotazioni' : 'Calendario'}</a><p class="eyebrow">Scheda evento</p><h2 id="evento-titolo" tabindex="-1">${esc(b.titolo)}</h2><p>${esc(fmtDay(b.data))} · ${esc(orario(b))}${b.tipo ? ` · ${esc(b.tipo)}` : ''}</p>${badge(({ opzione: 'Opzione', confermata: 'Confermata', annullata: 'Annullata' })[b.stato] || b.stato, b.stato)}</div><div class="actions">${staff ? button('edit', 'Modifica prenotazione') + (!cancellato && !b.scheda_parrocchia_id ? button('quote', 'Prepara preventivo') : '') : ''}${button('serata', 'La serata di questa data')}</div></div>
     ${cancellato ? '<div class="warn" role="status">Evento annullato: le informazioni restano consultabili.</div>' : `<section id="evento-prossime" class="panel evento-prossime" aria-labelledby="evento-prossime-title"><h3 id="evento-prossime-title">Prossime azioni</h3>${azioni.length ? `<ul>${azioni.map((a) => `<li><span>${esc(a.text)}</span>${button(a.action, a.label)}</li>`).join('')}</ul>` : '<p>Nessuna azione segnalata dai dati disponibili. Controlla comunque documenti e dettagli prima dell’apertura.</p>'}</section>`}
-    <div class="evento-grid">${documenti}${turniHtml}${pagamenti}${contatti}${materiali}${collegati}</div>`;
+    <div class="evento-grid">${programma}${documenti}${turniHtml}${pagamenti}${contatti}${materiali}${collegati}</div>`;
 }

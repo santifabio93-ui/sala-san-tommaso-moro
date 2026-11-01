@@ -1,10 +1,10 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.83";
-import { schedaEvento } from "./evento.js?v=2026-11-01.83";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.84";
+import { schedaEvento } from "./evento.js?v=2026-11-01.84";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.83";
+const VERSIONE = "2026-11-01.84";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1930,7 +1930,7 @@ async function sollecitaScheda(id) {
   openCopyText(messaggioScheda(s, b, true));
   try { await run(sb.from("schede").update({ sollecitata_il: new Date().toISOString() }).eq("id", id)); } catch (e) { toast(errText(e)); }
 }
-const ETICHETTE = { gruppo: "Gruppo parrocchiale", attivita_parrocchiale: "Attività parrocchiale", minori: "Presenza di minori", accessibilita: "Esigenze di accessibilità", altre_esigenze: "Altre esigenze",
+const ETICHETTE = { utilizzo_spazi: "Utilizzo degli spazi", disposizione: "Allestimento richiesto", disposizione_dettagli: "Dettagli e arredi richiesti", palco: "Utilizzo del palco", palco_uso: "Attività sul palco", audio_uso: "Utilizzo dell’audio", contenuti_proiezione: "Contenuti da proiettare", collegamento_video: "Dispositivo e collegamento video", esigenze_apertura: "Apertura, accoglienza e assistenza", variazioni_incontri: "Esigenze diverse tra gli incontri", conferma_esigenze: "Esigenze dichiarate da verificare", gruppo: "Gruppo parrocchiale", attivita_parrocchiale: "Attività parrocchiale", minori: "Presenza di minori", accessibilita: "Esigenze di accessibilità", altre_esigenze: "Altre esigenze",
   ente: "Organizzatore", a_titolo: "Richiede come", cf: "CF / P. IVA", indirizzo: "Indirizzo", referente: "Referente", cellulare: "Cellulare", email: "Email", resp_sera: "Responsabile la sera", resp_cell: "Suo cellulare",
   titolo: "Titolo", tipo: "Tipo", descrizione: "Descrizione", ingresso: "Ingresso", prezzo: "Prezzo €", biglietti: "Biglietti gestiti da", fascia: "Spazio", galleria_anche: "Serve anche la galleria", pubblico_n: "Persone previste", bambini_n: "di cui bambini", carrozzina_n: "Persone in carrozzina", palco_n: "Persone sul palco",
   luci: "Luci di scena", sipario: "Sipario e quinte", audio: "Impianto audio", mic_filo: "Microfoni a filo", mic_filo_n: "n. microfoni a filo", radiomic: "Radiomicrofoni", radiomic_n: "n. radiomicrofoni", proiettore: "Proiettore e schermo", tavolo: "Tavolo relatori", tavolo_n: "posti al tavolo", mic_tavolo: "Microfoni da tavolo", mic_tavolo_n: "n. microfoni da tavolo", leggio: "Leggio",
@@ -1939,9 +1939,9 @@ const ETICHETTE = { gruppo: "Gruppo parrocchiale", attivita_parrocchiale: "Attiv
   siae: "Opere protette (SIAE)", siae_file: "Permesso SIAE", siae_dopo: "Permesso SIAE",
   ok_regole: "Regole accettate", ok_dichiarazione: "Dichiarazione accettata", ok_privacy: "Informativa privacy", firma: "Firmata da",
 };
-const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "gruppo", "attivita_parrocchiale", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "minori", "accessibilita", "altre_esigenze", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
-  ["Palco e tecnica", ["luci", "sipario", "audio", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
-  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["SIAE", ["siae", "siae_opere", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
+const GRUPPI_SCHEDA = [["Chi organizza", ["ente", "a_titolo", "gruppo", "attivita_parrocchiale", "cf", "indirizzo", "referente", "cellulare", "email", "resp_sera", "resp_cell"]], ["L'evento", ["titolo", "tipo", "descrizione", "utilizzo_spazi", "disposizione", "disposizione_dettagli", "palco", "palco_uso", "ingresso", "prezzo", "biglietti", "fascia", "pubblico_n", "minori", "accessibilita", "altre_esigenze", "bambini_n", "carrozzina_n", "palco_n"]], ["Date e orari", ["orari"]],
+  ["Palco e tecnica", ["luci", "sipario", "audio", "audio_uso", "contenuti_proiezione", "collegamento_video", "mic_filo", "mic_filo_n", "radiomic", "radiomic_n", "proiettore", "tavolo", "tavolo_n", "mic_tavolo", "mic_tavolo_n", "leggio", "tecnico", "tecnico_nome", "tecnico_cell", "attrezzature", "attrezzature_quali", "potenza_w"]],
+  ["Scenografie, effetti e altro", ["scenografie", "scenografie_quali", "ignifughi", "effetti", "effetti_quali", "durante", "pubblicabile", "locandina_entro", "altro"]], ["Organizzazione e assistenza", ["esigenze_apertura", "variazioni_incontri", "conferma_esigenze"]], ["SIAE", ["siae", "siae_opere", "siae_file", "siae_dopo"]], ["Firma", ["ok_regole", "ok_dichiarazione", "ok_privacy", "firma"]]];
 // permesso SIAE: a carico dell'organizzatore, da allegare alla scheda
 // evento co-organizzato: la SIAE la fa la sala (scelta nella scheda o evento «Organizzato dalla Sala»)
 const siaeDellaSala = (s) => !!(s && (s.siae_sala || (S.bookings.find((b) => b.id === s.booking_id) || {}).della_sala));
@@ -1952,7 +1952,7 @@ function siaeStato(d, s) {
   return (d.siae_file || []).length ? "allegato" : "da_ricevere";
 }
 function risposteHtml(d, conLink = true) {
-  const val = (k, v) => (k === "attivita_parrocchiale" ? ({ consiglio_pastorale: "Consiglio pastorale", catechismo: "Catechismo", conferenza: "Conferenza o incontro parrocchiale", fidanzati: "Corso fidanzati", altra_parrocchia: "Altra attività parrocchiale" }[v] || v) : k === "siae" ? (v === "si" ? "sì: permesso a carico dell'organizzatore" : "no, nessuna opera protetta") : k === "siae_dopo" ? "non ancora allegato: lo mandano per email prima dell'evento" : v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
+  const val = (k, v) => (k === "disposizione" ? ({ seduti: "Riunione o conferenza con partecipanti seduti", tavolo: "Riunione attorno a un tavolo", gruppi: "Lavoro in piccoli gruppi", altro: "Altro allestimento da concordare" }[v] || v) : k === "attivita_parrocchiale" ? ({ consiglio_pastorale: "Consiglio pastorale", catechismo: "Catechismo", conferenza: "Conferenza o incontro parrocchiale", fidanzati: "Corso fidanzati", altra_parrocchia: "Altra attività parrocchiale" }[v] || v) : k === "siae" ? (v === "si" ? "sì: permesso a carico dell'organizzatore" : "no, nessuna opera protetta") : k === "siae_dopo" ? "non ancora allegato: lo mandano per email prima dell'evento" : v === true ? "sì" : Array.isArray(v) ? v.join(", ") : /locandina_entro/.test(k) ? fmtShort(v) : String(v));
   return GRUPPI_SCHEDA.map(([g, ks]) => {
     const righe = ks.flatMap((k) => {
       if (k === "orari") return (d.orari || []).map((o, i) => `<dt>Giorno ${i + 1}</dt><dd>${esc(o.data ? fmtDay(o.data) : "")}${o.all_da ? ` · allestimento ${esc(o.all_da)}–${esc(o.all_a)}` : ""}${o.porte ? ` · porte ${esc(o.porte)}` : ""} · inizio ${esc(o.inizio)}${o.fine ? `, fine ${esc(o.fine)}` : ""}${o.sgombero ? ` · sgombero ${esc(o.sgombero)}` : ""}</dd>`);
@@ -4542,6 +4542,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["038_parrocchia_esigenze.sql", "Dettagli delle attività parrocchiali: spazi, programma e dotazioni", undefined, "Eseguire dopo 037 per validare le richieste dettagliate"],
     ["037_richieste_parrocchia.sql", "Richieste parrocchiali gratuite con approvazione", S.schede.length ? "percorso" in S.schede[0] : undefined],
     ["035_siae_sala.sql", "SIAE a carico della sala per gli eventi co-organizzati", S.schede.length ? "siae_sala" in S.schede[0] : undefined],
     ["034_rubrica.sql", "Rubrica della sala (anche i contatti della posta)", !manca(e2.rubrica) && !manca(e2.rubricaMail), "Per i contatti della posta: ricopia lo script Google (2026-11-03.2) e aggiungi «+rubrica» alla MODALITA dell'account della sala"],
