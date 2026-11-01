@@ -270,3 +270,22 @@ SQL Editor del progetto Supabase. I test locali non modificano il progetto reale
 Non sono stati eseguiti login Google, pubblicazioni o push su GitHub.
 L’esecuzione remota del workflow GitHub Actions resta da verificare dopo il
 caricamento dei file nel repository.
+
+## La Sala oggi e preparazione eventi — versione 2026-11-01.93
+
+Database locale ricostruito da zero dai 44 file SQL (schema e aggiornamenti
+fino a 044). Suite completa: **52 test superati in 139,7 secondi**.
+Dopo la rifinitura dei collegamenti, ripetuti i 10 scenari interessati di
+preparazione, scheda evento e conferenza Sala: **10 superati in 60,2 secondi**.
+
+Verificati il programma di oggi e domani, gli annullati esclusi, i nomi nei turni,
+il conteggio delle coperture, gli stati condivisi dopo ricaricamento, le proiezioni,
+i problemi, le informazioni della Sala confermate e i collegamenti agli editor.
+Le prove API coprono ruoli, note interne escluse dalla vista volontario, scritture
+solo tramite RPC, conflitti concorrenti, eventi spostati e cancellazione in cascata.
+Servizi non disponibili non vengono mostrati come pronti. Controllato il layout a
+390 px senza scorrimento orizzontale e la compressione con Terser usata dal sito.
+La migrazione 044 è stata anche rieseguita sul database locale senza errori.
+
+Nessuna modifica al Supabase reale e nessuna pubblicazione. Per attivare online,
+eseguire 044 nel SQL Editor e integrare il ramo `feat/sala-oggi-preparazione`.

@@ -809,3 +809,40 @@ Richiede [`042_schede_danza.sql`](supabase/042_schede_danza.sql) dopo 041.
 ## Diritti
 © 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
 il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.
+
+## La Sala oggi e preparazione degli eventi
+
+Dopo gli aggiornamenti precedenti, eseguire in Supabase SQL Editor
+[`044_preparazione_eventi.sql`](supabase/044_preparazione_eventi.sql), poi integrare
+la versione 2026-11-01.93. Lo script è rieseguibile; non modifica prenotazioni,
+richieste, turni o incassi esistenti. Senza lo script la panoramica resta
+consultabile, ma le voci operative indicano dati non disponibili.
+
+**La Sala oggi** è la pagina iniziale di amministratore, coordinatore, segreteria
+e volontario. Mostra gli eventi di oggi, domani o dei prossimi sette giorni,
+i referenti visibili al proprio ruolo, gli iscritti ai turni e i promemoria.
+I totali economici restano nella sezione Economia. I link diretti alle altre
+pagine e la vista del Parroco e della postazione cassa mantengono il proprio accesso.
+
+In ogni **scheda evento** c’è la preparazione: conferma della prenotazione,
+scheda di richiesta o informazioni interne della Sala e copertura dei turni
+si ricavano dai dati già presenti. Tecnico, apertura e chiavi, allestimento e
+postazione cassa hanno stato, nome del responsabile e note interne. I gestori
+possono scegliere Da fare, In corso, Pronto, Non serve o Problema. Per In corso
+e Pronto occorre il responsabile. Le informazioni mancanti o non leggibili
+restano da verificare, senza diventare verdi. Il riepilogo riguarda questi
+controlli di preparazione: documenti, permessi SIAE e dettagli restano consultabili
+nella scheda evento.
+
+Le proiezioni hanno il pulsante **Preparazione** nella panoramica: supporto e
+prova sono letti dalla scheda del film. La copertura dei volontari viene
+confermata esplicitamente dal gestore dopo aver controllato i turni della serata,
+perché non esiste un collegamento automatico tra proiezione e prenotazione.
+Segnare la postazione cassa pronta non apre una cassa e non registra incassi.
+
+Gli stati sono condivisi tra dispositivi e inclusi nel backup. Cambiare data o
+ora dell’evento richiede una nuova verifica delle voci operative; salvare da una
+pagina rimasta indietro viene rifiutato. Il controllo di revisione impedisce
+anche di sovrascrivere una modifica di un altro gestore.
+I volontari vedono soltanto stati operativi e nomi incaricati, senza note interne,
+recapiti, prezzi o risposte delle richieste; non possono modificare la preparazione.

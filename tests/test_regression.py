@@ -212,7 +212,7 @@ class Regression(unittest.TestCase):
         expect(page.locator('#app')).to_be_visible(timeout=30000)
         row = ok(api('/rest/v1/bookings?id=eq.' + b['id'], service=True))[0]
         self.assertEqual(row['incassato'], 150)
-        page.goto('http://127.0.0.1:8765/#oggi')
+        page.goto('http://127.0.0.1:8765/#economia')
         expect(page.locator('#kpis .kpi').filter(has_text='Da incassare').locator('b')).to_contain_text('350')
 
     def test_volunteers_signup_and_transfer_in_browser(self):
@@ -792,7 +792,9 @@ class Regression(unittest.TestCase):
         ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'della_sala': True}, service=True))
         page = self.login()
         page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
-        page.get_by_role('button', name='Prepara informazioni e invito').click()
+        expect(page.get_by_role('button', name='Prepara informazioni e invito')).to_be_visible()
+        expect(page.locator('[data-prep-voce=informazioni]')).to_contain_text('Programma e referente interno da completare')
+        page.locator('[data-prep-voce=informazioni] [data-event-action=organizzazione]').click()
         dlg = page.locator('#dlg-evento-sala')
         expect(dlg).to_be_visible()
         self.assertEqual(dlg.locator('[data-delega]').count(), 3)
@@ -808,6 +810,7 @@ class Regression(unittest.TestCase):
         expect(panel).to_contain_text('Da verificare dalla Sala')
         panel.get_by_role('button', name='Verifica e conferma esigenze').click()
         expect(panel).to_contain_text('Esigenze confermate dalla Sala')
+        expect(page.locator('[data-prep-voce=informazioni]')).to_contain_text('Programma ed esigenze confermati')
         r = ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'], service=True))[0]
         self.assertIsNone(r['ospite_token'])
         self.assertEqual(r['tecnica_confermata']['audio_uso'], 'Due microfoni per relatore e moderatore')
@@ -1588,6 +1591,150 @@ class Regression(unittest.TestCase):
         self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session,'p_data':DAY})[0],400)
         ok(api('/rest/v1/cassa_badge_sessioni?volontario_id=eq.'+a['id'],'PATCH',{'ultimo_uso':'2000-01-01T00:00:00Z'},service=True))
         self.assertGreaterEqual(rpc('cassa_badge_leggi',{'p_sessione':session})[0],400)
+
+
+    def prep_body(self, b, **changes):
+        return {'p_booking': b['id'], 'p_proiezione': None, 'p_compito': 'chiavi',
+                'p_stato': 'pronto', 'p_responsabile': 'Ada apertura', 'p_note': 'Nota interna riservata',
+                'p_data': b['data'], 'p_ora': b['inizio'], 'p_revisione': None, **changes}
+
+    def prep_save(self, body, role='admin'):
+        return api('/rest/v1/rpc/preparazione_salva', 'POST', body, token=self.users[role]['token'])
+
+    def test_preparazione_permissions_conflicts_and_reschedule(self):
+        b = self.booking()
+        body = self.prep_body(b)
+        row = ok(self.prep_save(body))
+        self.assertEqual((row['booking_id'], row['stato'], row['responsabile']), (b['id'], 'pronto', 'Ada apertura'))
+        self.assertEqual(ok(api('/rest/v1/evento_preparazione', token=self.users['volontario']['token'])), [])
+        public = ok(api('/rest/v1/preparazione_operativa?booking_id=eq.'+b['id'], token=self.users['volontario']['token']))[0]
+        self.assertEqual(public['responsabile'], 'Ada apertura')
+        self.assertTrue({'note','aggiornato_da','revisione'}.isdisjoint(public))
+        self.assertGreaterEqual(rpc('preparazione_salva', body)[0], 400)
+        self.assertGreaterEqual(api('/rest/v1/preparazione_operativa')[0], 400)
+        for role in ('volontario','in_attesa','bloccato'):
+            self.assertGreaterEqual(self.prep_save(body,role)[0],400)
+            if role != 'volontario':
+                self.assertEqual(ok(api('/rest/v1/preparazione_operativa',token=self.users[role]['token'])),[])
+        for role in ('coordinatore','segreteria'):
+            row = ok(self.prep_save({**body,'p_revisione':row['revisione'],'p_stato':'in_corso'},role))
+        self.assertGreaterEqual(api('/rest/v1/evento_preparazione?id=eq.'+row['id'],'PATCH',{'stato':'pronto'},token=self.users['admin']['token'])[0],400)
+        current = {**body,'p_revisione':row['revisione']}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(self.prep_save,[current,current]))
+        self.assertEqual(sum(code<300 for code,_ in results),1)
+        for change in ({'p_responsabile':''},{'p_stato':'inventato'},{'p_compito':'conferma'},{'p_note':'x'*2001},{'p_data':'2000-01-01'}):
+            self.assertGreaterEqual(self.prep_save({**body,**change})[0],400)
+        row = ok(api('/rest/v1/evento_preparazione?id=eq.'+row['id'],service=True))[0]
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'inizio':'17:00'},service=True))
+        self.assertGreaterEqual(self.prep_save({**body,'p_revisione':row['revisione']})[0],400)
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'stato':'annullata'},service=True))
+        self.assertGreaterEqual(self.prep_save({**body,'p_ora':'17:00','p_revisione':row['revisione']})[0],400)
+        self.assertEqual(ok(api('/rest/v1/preparazione_operativa?booking_id=eq.'+b['id'],token=self.users['volontario']['token'])),[])
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'DELETE',service=True))
+        self.assertEqual(ok(api('/rest/v1/evento_preparazione?id=eq.'+row['id'],service=True)),[])
+
+    def test_preparazione_today_browser_staff_and_volunteer(self):
+        b = self.booking()
+        today = date.today().isoformat()
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'data':today,'referente':'Referente privato','note':'Dettaglio privato'},service=True))
+        tomorrow = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.'+tomorrow['id'],'PATCH',{'data':(date.today()+timedelta(days=1)).isoformat()},service=True))
+        cancelled = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.'+cancelled['id'],'PATCH',{'data':today,'stato':'annullata'},service=True))
+        ok(api('/rest/v1/signups','POST',{'booking_id':b['id'],'slot_id':'porta','nome':'Ada turno','user_id':self.users['volontario']['id']},service=True))
+        page = self.login()
+        expect(page.locator('#view-oggi')).to_be_visible()
+        card = page.locator('[data-oggi-evento="b:'+b['id']+'"]')
+        expect(card).to_contain_text('Ada turno')
+        expect(card).to_contain_text('Referente privato')
+        expect(card).to_contain_text('Volontari')
+        expect(page.locator('[data-oggi-evento="b:'+cancelled['id']+'"]')).to_have_count(0)
+        expect(page.locator('[data-oggi-evento="b:'+tomorrow['id']+'"]')).to_have_count(0)
+        page.locator('[data-oggi-periodo="domani"]').click()
+        expect(page.locator('[data-oggi-evento="b:'+tomorrow['id']+'"]')).to_be_visible()
+        page.locator('[data-oggi-periodo="oggi"]').click()
+        card.get_by_role('link',name='Apri scheda evento').click()
+        expect(page.locator('[data-prep-voce="turni"]')).to_contain_text('1 posto da coprire')
+        page.locator('[data-prep-voce=conferma] [data-event-action=edit]').click()
+        expect(page.locator('#dlg-booking')).to_be_visible()
+        page.locator('#dlg-booking [data-close]').first.click()
+        page.locator('[data-prep-compito="chiavi"]').click()
+        page.locator('#prep-stato').select_option('pronto')
+        page.locator('#prep-responsabile').fill('Ada apertura')
+        page.locator('#prep-note').fill('Nota interna riservata <script>')
+        page.get_by_role('button',name='Salva preparazione',exact=True).click()
+        expect(page.locator('#dlg-preparazione')).not_to_be_visible()
+        expect(page.locator('[data-prep-voce="chiavi"]')).to_contain_text('Pronto')
+        expect(page.locator('[data-prep-voce="chiavi"]')).to_contain_text('Ada apertura')
+        page.reload()
+        expect(page.locator('[data-prep-voce="chiavi"]')).to_contain_text('Nota interna riservata <script>')
+        # Complete manual tasks cannot approve a request or fill empty volunteer places.
+        for compito in ('tecnico','allestimento','cassa'):
+            ok(self.prep_save(self.prep_body({**b,'data':today},p_compito=compito,p_stato='non_serve')))
+        page.reload()
+        expect(page.locator('#evento-preparazione')).not_to_contain_text('Preparazione completa')
+        page.goto('http://127.0.0.1:8765/#oggi')
+        page.set_viewport_size({'width':390,'height':844})
+        expect(card).to_be_visible()
+        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth-innerWidth'),1)
+        if os.environ.get('SALA_TODAY_SCREENSHOT'):
+            page.locator('#sipario').wait_for(state='detached',timeout=10000)
+            page.screenshot(path=os.environ['SALA_TODAY_SCREENSHOT'],full_page=True)
+        ok(api('/rest/v1/signups','POST',{'booking_id':b['id'],'slot_id':'porta','nome':'Bruno turno','user_id':self.users['admin']['id']},service=True))
+        ok(api('/rest/v1/schede','POST',{'booking_id':b['id'],'titolo':b['titolo'],'stato':'non_serve'},service=True))
+        page.reload()
+        expect(card).to_contain_text('Preparazione completa')
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'inizio':'17:00'},service=True))
+        page.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+        page.reload()
+        expect(page.locator('[data-prep-voce="chiavi"]')).to_contain_text('Evento spostato: ricontrollare')
+        page.locator('#app [data-logout]').click()
+        expect(page.locator('#screen-login')).to_be_visible()
+        volunteer = self.login('volontario')
+        vcard = volunteer.locator('[data-oggi-evento="b:'+b['id']+'"]')
+        expect(vcard).to_contain_text('Ada turno')
+        expect(vcard).not_to_contain_text('Referente privato')
+        vcard.get_by_role('link',name='Apri scheda evento').click()
+        expect(volunteer.locator('[data-prep-voce="chiavi"]')).to_contain_text('Ada apertura')
+        expect(volunteer.locator('#evento-preparazione')).not_to_contain_text('Nota interna riservata')
+        expect(volunteer.locator('[data-prep-compito]')).to_have_count(0)
+
+    def test_preparazione_unavailable_services_stay_unknown(self):
+        b = self.booking()
+        for table in ('evento_preparazione','schede','signups'):
+            self.context.route('**/rest/v1/'+table+'*',lambda route: route.fulfill(status=503,content_type='application/json',body='{"message":"Servizio non disponibile"}'))
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+        expect(page.locator('#evento-preparazione')).to_contain_text('Preparazione non disponibile',timeout=30000)
+        for key in ('informazioni','turni','chiavi'):
+            expect(page.locator('[data-prep-voce="'+key+'"]')).to_contain_text('Dati non disponibili')
+        expect(page.locator('#evento-preparazione')).not_to_contain_text('Preparazione completa')
+        expect(page.locator('[data-prep-compito="chiavi"]')).to_be_disabled()
+        expect(page.locator('#dlg-preparazione')).not_to_be_visible()
+
+    def test_preparazione_projection_browser_and_problem(self):
+        film = ok(api('/rest/v1/films','POST',{'titolo':'Film preparazione '+uuid4().hex[:8],'supporto':'file','acquisizione':'disponibile','provato_il':date.today().isoformat(),'prova_esito':'ok'},service=True))[0]
+        self.cash_film_ids.append(film['id'])
+        projection = ok(api('/rest/v1/proiezioni','POST',{'film_id':film['id'],'data':date.today().isoformat(),'ora':'20:30'},service=True))[0]
+        for compito in ('volontari','tecnico','chiavi','allestimento','cassa'):
+            ok(self.prep_save(self.prep_body({'id':None,'data':projection['data'],'inizio':projection['ora']},p_proiezione=projection['id'],p_compito=compito)))
+        page = self.login()
+        card = page.locator('[data-oggi-evento="p:'+projection['id']+'"]')
+        expect(card).to_contain_text('Preparazione completa')
+        card.get_by_role('button',name='Preparazione',exact=True).click()
+        expect(page.locator('#dlg-preparazione')).to_contain_text('Supporto disponibile e prova riuscita')
+        page.locator('#dlg-preparazione [data-prep-compito="tecnico"]').click()
+        page.locator('#prep-stato').select_option('problema')
+        page.locator('#prep-note').fill('Cavo da sostituire')
+        page.get_by_role('button',name='Salva preparazione',exact=True).click()
+        expect(page.locator('#dlg-preparazione')).not_to_be_visible()
+        expect(card).to_contain_text('Problemi da risolvere')
+        card.get_by_role('button',name='Preparazione',exact=True).click()
+        page.locator('#dlg-preparazione').get_by_role('link',name='Apri cinema',exact=True).first.click()
+        expect(page.locator('#dlg-preparazione')).not_to_be_visible()
+        expect(page.locator('#view-cinema')).to_be_visible()
+        self.assertEqual(ok(api('/rest/v1/cassa?proiezione_id=eq.'+projection['id'],service=True)),[])
 
 
 if __name__ == '__main__':

@@ -1,13 +1,14 @@
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.90";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.93";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.93";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.90";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.90";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.90";
-import { schedaEvento } from "./evento.js?v=2026-11-01.90";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.93";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.93";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.93";
+import { schedaEvento } from "./evento.js?v=2026-11-01.93";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.90";
+const VERSIONE = "2026-11-01.93";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -29,7 +30,7 @@ const SPAZI = { galleria: "Galleria (fino a 134 persone)", platea: "Platea (fino
 const SUPPLEMENTI = { biglietteria: "Utilizzo biglietteria", tappeto: "Utilizzo tappeto danza", commerciale: "Attività commerciale" };
 const VIEWS = {
   breve: { label: "In breve", roles: ["parroco"] },
-  oggi: { label: "Oggi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
+  oggi: { label: "La Sala oggi", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
   calendario: { label: "Calendario", roles: ["admin", "coordinatore", "volontario", "segreteria", "parroco"] },
   evento: { label: "Scheda evento", roles: ["admin", "coordinatore", "segreteria", "volontario"] },
   serata: { label: "La serata", roles: ["admin", "coordinatore", "volontario", "segreteria"] },
@@ -80,6 +81,7 @@ const eventiSala = creaEventiSala({ client: () => sb, getState: () => S, esc, on
 });
 
 const S = {
+  preparazione: [], organizzazioneSala: [], oggiPeriodo: "oggi",
   gruppi: [], gruppiPersone: [], rubrica: [],
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
   bookings: [], expenses: [], signups: [], profiles: [], requests: [], invites: [], tariffe: { ...DEFAULT_TARIFFE }, tariffeDb: false, sync: {},
@@ -91,6 +93,8 @@ const S = {
   selected: TODAY, filter: "prossime", q: "", year: new Date().getFullYear(), showTable: false,
   editing: null, editingExp: null, draftTurni: [], shiftFilter: "prossimi", openSignup: null,
 };
+
+const preparazione = creaPreparazione({ client: () => sb, getState: () => S, helpers: { schedaDi: b => schedaDi(b), isRecurring: b => isRecurring(b), coverage: b => coverage(b), turni: b => turni(b), signupsFor: (b,t) => signupsFor(b,t), siaeStato: (d,s) => siaeStato(d,s) }, esc, onChange: () => loadAll(), toast });
 
 function show(screen) {
   for (const id of ["loading", "login", "pending", "setup"]) $("#screen-" + id).hidden = id !== screen;
@@ -188,6 +192,16 @@ async function caricaParroco() {
   }
   render();
 }
+async function caricaPreparazione() {
+  const dati = [];
+  for (let da = 0; ; da += 500) {
+    const r = await sb.from(S.canWrite ? "evento_preparazione" : "preparazione_operativa").select("*").order("booking_id", { nullsFirst: true }).order("proiezione_id").order("compito").range(da, da + 499);
+    if (r.error) return r;
+    dati.push(...(r.data || []));
+    if ((r.data || []).length < 500) return { data: dati };
+  }
+}
+
 async function loadAll() {
   if (S.isParroco) return caricaParroco();
   if (loading) return loading;
@@ -238,6 +252,10 @@ async function loadAll() {
     S.gruppi = gr.data || []; S.gruppiPersone = gp.data || [];
     S.loadErr2.gruppi = gr.error?.message || gp.error?.message;
 
+    const [pre, org] = await Promise.all([caricaPreparazione(), S.canWrite ? sb.from("eventi_sala").select("*") : Promise.resolve({data: []})]);
+    S.loadErr2.preparazione = pre.error?.message || null; S.loadErr2.organizzazioneSala = org.error?.message || null;
+    S.preparazione = pre.data || []; S.organizzazioneSala = org.data || [];
+
     const rm = S.canWrite && !rb.error ? await sb.from("rubrica_mail").select("*").order("ultimo", { ascending: false }).limit(5000) : { data: null };
     S.rubricaMail = rm.data || [];
     S.loadErr2.rubricaMail = rm.error && (rm.error.message || "errore");
@@ -266,7 +284,7 @@ async function loadAll() {
     if (err) toast("Impossibile caricare i dati: " + err.error.message);
     // errori per tabella, per spiegare nelle pagine cosa manca (es. uno script SQL non eseguito)
     S.loadErr = { bookings: b.error && b.error.message, signups: s.error && s.error.message, prima_nota: pn.error && pn.error.message, schede: sch.error && sch.error.message, donatori: dn.error && dn.error.message, c1: c1r.error && c1r.error.message, settings: st.error && st.error.message,
-      cassa: ca.error && ca.error.message, sopralluoghi: so.error && so.error.message, films: fi.error && fi.error.message, richieste: rq.error && rq.error.message };
+      cassa: ca.error && ca.error.message, sopralluoghi: so.error && so.error.message, films: fi.error && fi.error.message, proiezioni: pj.error && pj.error.message, richieste: rq.error && rq.error.message };
     if (b.data) S.bookings = b.data.map(mapBooking);
     if (s.data) S.signups = s.data.map(mapSignup);
     if (e.data) S.expenses = e.data.map((r) => ({ ...r, importo: Number(r.importo) || 0 }));
@@ -314,7 +332,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica", "eventi_sala", "gruppi", "gruppi_persone"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica", "eventi_sala", "gruppi", "gruppi_persone", "evento_preparazione"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -456,8 +474,8 @@ function render() {
 
 function renderKpis() {
   // il parroco ha già i suoi numeri nella pagina «In breve»
-  // le quattro schede in alto servono solo in Oggi ed Economia → Spese e tariffe: nelle altre pagine occupano spazio e basta
-  const conKpi = ["oggi", "economia"].includes(S.view);
+  // La panoramica Oggi ha i propri numeri operativi; i totali restano in Economia.
+  const conKpi = S.view === "economia";
   $("#kpis").hidden = !!(S.isParroco || S.postazione) || !conKpi;
   if (S.isParroco || S.postazione || !conKpi) return;
   const upcoming = S.bookings.filter((b) => active(b) && b.data >= TODAY).sort(byWhen);
@@ -605,6 +623,8 @@ function renderEvento() {
     return;
   }
   root.innerHTML = schedaEvento(S, b, { esc, money, fmtDay, orario, coverage, turni, signupsFor, schedaDi, siaeStato, residuo, isRecurring });
+  root.querySelector(".evento-header").insertAdjacentHTML("afterend", preparazione.pannello(b));
+  preparazione.collega(root);
   if (S.canWrite && b.della_sala && b.stato !== "annullata") {
     const host = document.createElement("div"); host.id = "evento-sala-panel"; root.append(host); eventiSala.renderPanel(b, host);
   }
@@ -614,6 +634,8 @@ function renderEvento() {
     else if (action === "quote" && S.canWrite) apriPreventivo(b);
     else if (action === "document" && S.canWrite) { const s = schedaDi(b); if (s) apriScheda(s.id); }
     else if (action === "send-document" && S.canWrite) inviaScheda(b.id, schedaDi(b)?.id);
+    else if (action === "organizzazione" && S.canWrite) { const host = $("#evento-sala-panel"), pulsante = host?.querySelector('[data-es="modifica"]'); if (pulsante) pulsante.click(); else host?.scrollIntoView({ behavior: "smooth" }); }
+    else if (action === "documenti") $("#evento-documenti")?.scrollIntoView({ behavior: "smooth" });
     else if (action === "shifts") location.hash = "turni/" + b.id;
     else if (action === "serata") { S.serataData = b.data; location.hash = "serata"; }
     else if (action === "social" && S.staff) apriInfoSocial("b:" + b.id, true);
@@ -2837,13 +2859,14 @@ $("#btn-export").onclick = async () => {
   if (S.loadErr2?.gruppi) { toast("Backup non completato: gruppi non disponibili. Verifica la migrazione 040."); return; }
   const { data: organizzazioneSala, error: erroreSala } = await sb.from("eventi_sala").select("*");
   if (erroreSala) { toast("Backup non completato: impossibile leggere l’organizzazione degli eventi Sala. Riprova dopo aver verificato la migrazione 039."); return; }
+  if (S.loadErr2?.preparazione) { toast("Backup non completato: preparazione eventi non disponibile. Verifica l’aggiornamento 044."); return; }
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
     c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
-    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala };
+    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione };
   const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
   download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
   try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
@@ -4578,23 +4601,28 @@ function coseDiOggi() {
   return out.sort((a, b) => ordine[a.liv] - ordine[b.liv] || (a.entro || "9").localeCompare(b.entro || "9"));
 }
 function renderOggi() {
-  const el = $("#oggi-body"), cose = coseDiOggi().filter((c) => !c.link || canSee(c.link.slice(1).split("/")[0]));
-  const prossimi = [...S.bookings.filter((b) => active(b) && b.data >= TODAY && b.data <= addDays(TODAY, 2)).map((b) => ({ data: b.data, ora: b.giornata_intera ? "" : b.inizio, t: b.titolo })),
-    ...S.proiezioni.filter((p) => p.data >= TODAY && p.data <= addDays(TODAY, 2)).map((p) => ({ data: p.data, ora: p.ora, t: (S.films.find((f) => f.id === p.film_id) || {}).titolo || "Film" }))].sort((a, b) => (a.data + a.ora).localeCompare(b.data + b.ora));
-  const ciao = new Date().getHours() < 13 ? "Buongiorno" : new Date().getHours() < 18 ? "Buon pomeriggio" : "Buonasera";
-  el.innerHTML = `
-    <div class="toolbar"><div><span class="eyebrow">${esc(fmtDay(TODAY, { weekday: "long", day: "numeric", month: "long" }))}</span><h2>${ciao}${S.me.nome ? " " + esc(S.me.nome.split(" ")[0]) : ""}</h2></div>
-      <a class="btn" href="#serata">La serata</a></div>
-    <div class="oggi-grid">
-      <div class="panel"><div class="section-head"><h3>Da fare</h3><span class="hint">${cose.length ? `${cose.length} ${cose.length === 1 ? "cosa" : "cose"} · le più urgenti in alto` : ""}</span></div>
-        ${cose.length ? `<div class="oggi-lista">${cose.map((c, i) => `<div class="oggi-cosa liv-${c.liv}"><span class="pallino" aria-hidden="true"></span><div><div>${esc(c.testo)}</div>${c.quando ? `<span class="hint">${esc(c.quando)}</span>` : ""}</div><div class="az">${c.fatto ? `<button class="btn sm" type="button" data-fatto="${i}">Fatto</button>` : ""}${c.azione ? `<button class="btn sm primary" type="button" data-azione="${i}">${esc(c.azione.label)}</button>` : ""}<a class="btn ghost sm" href="${c.link}">Apri</a></div></div>`).join("")}</div>`
-          : `<div class="empty">Tutto in ordine: oggi non c'è niente da sistemare. ✓</div>`}</div>
-      <div class="panel"><div class="section-head"><h3>In sala</h3><span class="hint">oggi e nei prossimi due giorni</span></div>
-        ${prossimi.length ? prossimi.map((x) => `<div class="sr-riga"><span>${esc(x.data === TODAY ? "oggi" : x.data === addDays(TODAY, 1) ? "domani" : fmtShort(x.data))}${x.ora ? " " + esc(x.ora) : ""}</span><div>${esc(x.t)}</div></div>`).join("") : `<p class="hint">Niente in programma.</p>`}
-      </div>
-    </div>`;
-  el.querySelectorAll("[data-fatto]").forEach((b) => (b.onclick = () => { b.disabled = true; cose[+b.dataset.fatto].fatto(); }));
-  el.querySelectorAll("[data-azione]").forEach((b) => (b.onclick = () => cose[+b.dataset.azione].azione.fn()));
+  const el = $("#oggi-body"), cose = coseDiOggi().filter(c => !c.link || canSee(c.link.slice(1).split("/")[0]));
+  const tutti = [...S.bookings.filter(active), ...S.proiezioni].sort((a,b) => (a.data + (a.ora || a.inizio || "")).localeCompare(b.data + (b.ora || b.inizio || "")));
+  const dal = S.oggiPeriodo === "domani" ? addDays(TODAY,1) : TODAY, al = S.oggiPeriodo === "settimana" ? addDays(TODAY,6) : dal;
+  const eventi = tutti.filter(e => e.data >= dal && e.data <= al), date = [...new Set(eventi.map(e => e.data))];
+  const cop = eventi.filter(e => !e.film_id).map(coverage), posti = cop.reduce((n,c) => n+c.need,0), coperti = cop.reduce((n,c) => n+c.have,0);
+  const daPreparare = eventi.filter(e => preparazione.analizza(e).aperte.length).length;
+  const persone = eventi.filter(e => !e.film_id).flatMap(e => turni(e).flatMap(t => signupsFor(e.id,t.id).map(s => ({...s,evento:e.titolo,turno:t.label,inizio:t.inizio,data:e.data}))));
+  const prossimo = tutti.find(e => e.data > al);
+  const incompleti = !S.datiCaricati || S.loadErr?.bookings || S.loadErr?.proiezioni;
+  el.innerHTML = `<div class="toolbar sala-oggi-header"><div><span class="eyebrow">${esc(fmtDay(TODAY,{weekday:"long",day:"numeric",month:"long"}))}</span><h2>La Sala oggi</h2><p class="hint">${S.me.nome ? esc(S.me.nome.split(" ")[0]) + ', ecco' : 'Ecco'} cosa succede e cosa serve per aprire la Sala.</p></div><div class="actions"><a class="btn" href="#calendario">Calendario</a><a class="btn" href="#serata" id="oggi-serata">La serata</a><button class="btn" type="button" id="oggi-aggiorna">Aggiorna</button></div></div>
+   <div class="seg sala-periodo" role="group" aria-label="Periodo della panoramica">${[["oggi","Oggi"],["domani","Domani"],["settimana","Prossimi 7 giorni"]].map(([k,l]) => `<button type="button" data-oggi-periodo="${k}" aria-pressed="${S.oggiPeriodo === k}">${l}</button>`).join('')}</div>
+   ${incompleti ? `<p class="warn" role="status">${!S.datiCaricati ? 'Caricamento del programma…' : 'Programma non completamente disponibile. Riprova con Aggiorna: gli eventi mostrati potrebbero non essere aggiornati.'}</p>` : ''}
+   <div class="sala-numeri"><div><b>${incompleti ? '—' : eventi.length}</b><span>Eventi in programma</span></div><div><b>${S.loadErr?.signups || incompleti ? '—' : coperti + '/' + posti}</b><span>Posti coperti nei turni pianificati</span></div><div><b>${incompleti ? '—' : daPreparare}</b><span>Eventi con verifiche da completare</span></div></div>
+   <div class="sala-oggi-layout"><section aria-label="Eventi in sala">${date.length ? date.map(d => `<div class="sala-giorno"><h3>${esc(d === TODAY ? 'Oggi' : d === addDays(TODAY,1) ? 'Domani' : fmtShort(d))} <span class="hint">${esc(fmtShort(d))}</span></h3>${eventi.filter(e => e.data === d).map(e => preparazione.scheda(e)).join('')}</div>`).join('') : `<div class="panel empty">${incompleti ? 'In attesa del programma completo.' : 'Nessun evento in programma in questo periodo.'}${prossimo ? `<p>Prossimo appuntamento: ${esc(fmtShort(prossimo.data))} · ${esc(prossimo.film_id ? S.films.find(f => f.id === prossimo.film_id)?.titolo || 'Proiezione' : prossimo.titolo)}</p><a class="btn" href="${prossimo.film_id ? '#cinema' : '#evento/' + prossimo.id}">Apri prossimo evento</a>` : ''}</div>`}</section>
+   <aside><section class="panel sala-turni"><div class="section-head"><h3>Chi c’è in Sala</h3><a href="#turni">Turni</a></div>${S.loadErr?.signups ? '<p class="warn">Iscrizioni non disponibili: impossibile verificare le persone di turno.</p>' : persone.length ? persone.map(p => `<div class="sala-persona"><b>${esc(p.nome)}</b><span>${esc(p.turno)} · ${esc(p.inizio)}</span><span class="hint">${esc(p.evento)}${S.oggiPeriodo === 'settimana' ? ' · ' + esc(fmtShort(p.data)) : ''}</span></div>`).join('') : '<p class="hint">Nessuna persona iscritta ai turni del periodo selezionato.</p>'}</section>
+   <section class="panel"><div class="section-head"><h3>Da fare</h3><span class="hint">${cose.length} promemoria</span></div>${cose.length ? `<div class="oggi-lista">${cose.map((c,i) => `<div class="oggi-cosa liv-${c.liv}"><span class="pallino" aria-hidden="true"></span><div>${esc(c.testo)}${c.quando ? `<div class="hint">${esc(c.quando)}</div>` : ''}</div><div class="az">${c.fatto ? `<button class="btn sm" type="button" data-fatto="${i}">Fatto</button>` : ''}${c.azione ? `<button class="btn sm primary" type="button" data-azione="${i}">${esc(c.azione.label)}</button>` : ''}<a class="btn ghost sm" href="${c.link}">Apri</a></div></div>`).join('')}</div>` : '<p class="hint">Nessun altro promemoria dai dati disponibili.</p>'}</section></aside></div>`;
+  el.querySelectorAll('[data-oggi-periodo]').forEach(b => b.onclick = () => { S.oggiPeriodo = b.dataset.oggiPeriodo; renderOggi(); });
+  el.querySelector('#oggi-aggiorna').onclick = () => loadAll();
+  el.querySelector('#oggi-serata').onclick = () => { S.serataData = dal; };
+  el.querySelectorAll('[data-fatto]').forEach(b => b.onclick = () => { b.disabled = true; cose[+b.dataset.fatto].fatto(); });
+  el.querySelectorAll('[data-azione]').forEach(b => b.onclick = () => cose[+b.dataset.azione].azione.fn());
+  preparazione.collega(el);
 }
 
 /* ---------- stato dell'app: aggiornamenti del database e letture dello script Google ---------- */
@@ -4622,6 +4650,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["044_preparazione_eventi.sql", "La Sala oggi e preparazione condivisa degli eventi", !e2.preparazione, "Stati e responsabili per tecnico, chiavi, allestimento e cassa"],
     ["043_cassa_badge_senza_account.sql", "Cassa con badge senza account sul computer", !!S.cassaBadgeDisponibile, "Abilitare i cassieri nella scheda del volontario"],
     ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],
     ["041_importa_collegamenti_gruppi.sql", "Importazione dei collegamenti confermati fra persone e gruppi", undefined, "Eseguire dopo 040 per usare Importa collegamenti in Rubrica"],
