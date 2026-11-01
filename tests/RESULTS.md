@@ -289,3 +289,21 @@ La migrazione 044 è stata anche rieseguita sul database locale senza errori.
 
 Nessuna modifica al Supabase reale e nessuna pubblicazione. Per attivare online,
 eseguire 044 nel SQL Editor e integrare il ramo `feat/sala-oggi-preparazione`.
+
+## Elimina da La Sala oggi — versione 2026-11-01.94
+
+Database locale ricostruito dai 45 file SQL e migrazione 045 rieseguita dopo
+l’aggiunta della conservazione delle prenotazioni con incassi registrati.
+Suite completa: **55 test superati in 139,4 secondi**. Nessun accesso a dati reali.
+
+Verificati Annulla/conferma nel browser, rimozione dopo ricaricamento, messaggio
+di errore senza cancellazione, ruoli autorizzati e rifiuto delle pagine rimaste
+indietro. Le proiezioni si eliminano singolarmente conservando film, altri orari
+e casse collegate. Gli eventi Google restano annullati nell’app dopo una nuova
+importazione e non generano richieste di cancellazione su Google. Le esclusioni
+Cinebot impediscono la reimportazione della replica eliminata. Le prenotazioni
+con incassi restano consultabili come annullate, mantenendo gli importi.
+Controllate anche sintassi JavaScript, compressione Terser e differenze Git.
+
+Per attivare online, eseguire 045 dopo 044 e integrare `feat/elimina-eventi-oggi`.
+Nessuna modifica al database reale e nessuna pubblicazione eseguita.

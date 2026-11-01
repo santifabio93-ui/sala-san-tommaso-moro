@@ -123,3 +123,12 @@ ruoli, la vista ridotta per i volontari, il divieto di scrittura diretta,
 i salvataggi concorrenti, la validazione, i cambi di data/orario e la cancellazione
 in cascata. I servizi non disponibili restano esplicitamente da verificare.
 Per salvare l’anteprima mobile impostare `SALA_TODAY_SCREENSHOT` a un percorso locale.
+
+### Elimina dalla panoramica
+
+L’aggiornamento 045 viene incluso nella ricostruzione locale. I test verificano
+Annulla/conferma, persistenza dopo ricaricamento, errore senza cancellazione,
+permessi, pagine rimaste indietro, preparazione rimossa in cascata e conservazione
+degli incassi. Le importazioni reali tramite RPC locali confermano che gli eventi
+Google restino annullati nell’app e le repliche Cinebot eliminate non ricompaiano,
+conservando film e altri orari. Non vengono chiamati Google o Cinebot reali.

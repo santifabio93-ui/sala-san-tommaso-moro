@@ -1,14 +1,14 @@
-import { creaPreparazione } from "./preparazione.js?v=2026-11-01.93";
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.93";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.94";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.94";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.93";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.93";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.93";
-import { schedaEvento } from "./evento.js?v=2026-11-01.93";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.94";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.94";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.94";
+import { schedaEvento } from "./evento.js?v=2026-11-01.94";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.93";
+const VERSIONE = "2026-11-01.94";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -2860,13 +2860,15 @@ $("#btn-export").onclick = async () => {
   const { data: organizzazioneSala, error: erroreSala } = await sb.from("eventi_sala").select("*");
   if (erroreSala) { toast("Backup non completato: impossibile leggere l’organizzazione degli eventi Sala. Riprova dopo aver verificato la migrazione 039."); return; }
   if (S.loadErr2?.preparazione) { toast("Backup non completato: preparazione eventi non disponibile. Verifica l’aggiornamento 044."); return; }
+  const { data: proiezioniEscluse, error: erroreEscluse } = await sb.from("proiezioni_escluse").select("*");
+  if (erroreEscluse) { toast("Backup non completato: verifica l’aggiornamento 045 delle proiezioni escluse."); return; }
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
     c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
-    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione };
+    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione, proiezioni_escluse: proiezioniEscluse };
   const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
   download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
   try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
@@ -4650,6 +4652,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["045_elimina_eventi_oggi.sql", "Elimina eventi da La Sala oggi", undefined, "Eseguire dopo 044: conserva le esclusioni dalle importazioni"],
     ["044_preparazione_eventi.sql", "La Sala oggi e preparazione condivisa degli eventi", !e2.preparazione, "Stati e responsabili per tecnico, chiavi, allestimento e cassa"],
     ["043_cassa_badge_senza_account.sql", "Cassa con badge senza account sul computer", !!S.cassaBadgeDisponibile, "Abilitare i cassieri nella scheda del volontario"],
     ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],

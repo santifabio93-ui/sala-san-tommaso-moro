@@ -846,3 +846,25 @@ pagina rimasta indietro viene rifiutato. Il controllo di revisione impedisce
 anche di sovrascrivere una modifica di un altro gestore.
 I volontari vedono soltanto stati operativi e nomi incaricati, senza note interne,
 recapiti, prezzi o risposte delle richieste; non possono modificare la preparazione.
+
+### Elimina da La Sala oggi
+
+La versione 2026-11-01.94 aggiunge **Elimina** alle schede della panoramica.
+Eseguire prima [`045_elimina_eventi_oggi.sql`](supabase/045_elimina_eventi_oggi.sql),
+dopo 044. Il pulsante richiede sempre conferma con titolo, data e orario;
+Annulla lascia tutto invariato. I volontari non lo vedono. Segreteria può
+rimuovere prenotazioni; per le proiezioni servono amministratore o coordinatore,
+come nella gestione del cinema.
+
+Le prenotazioni nate nell’app, senza incassi registrati, vengono eliminate con
+i loro turni e la preparazione. Quelle con incassi vengono conservate come annullate
+per mantenere lo storico economico.
+Gli eventi collegati a Google Calendar vengono invece segnati annullati e fissati
+nell’app: spariscono dalla panoramica senza cancellare l’originale di Google e
+senza essere ripristinati dall’importazione. Restano consultabili fra gli annullati.
+Le proiezioni vengono eliminate singolarmente, conservando il film e gli altri
+orari; per quelle importate, l’esclusione viene conservata in `proiezioni_escluse`
+e inclusa nel backup, così Cinebot non le reimporta. La rimozione riguarda l’app:
+non modifica la vendita o la programmazione sul sito Cinebot.
+Casse e schede collegate restano archiviate. Una modifica dell’evento intervenuta
+nel frattempo blocca l’eliminazione e richiede di aggiornare la pagina.

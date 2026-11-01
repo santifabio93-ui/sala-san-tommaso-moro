@@ -117,6 +117,7 @@ class Regression(unittest.TestCase):
         self.contact_keys = []
         self.cash_ids = []
         self.cash_film_ids = []
+        self.excluded_keys = []
         self.context = self.browser.new_context()
         self.errors = []
         self.context.on('page', lambda page: page.on('pageerror', lambda error: self.errors.append(str(error))))
@@ -136,6 +137,8 @@ class Regression(unittest.TestCase):
             ok(api('/rest/v1/richieste?id=eq.' + rid, 'DELETE', service=True))
         for cid in self.cash_ids:
             ok(api('/rest/v1/cassa?id=eq.'+cid,'DELETE',service=True))
+        for key in self.excluded_keys:
+            ok(api('/rest/v1/proiezioni_escluse?cinebot_key=eq.'+key,'DELETE',service=True))
         for fid in self.cash_film_ids:
             ok(api('/rest/v1/films?id=eq.'+fid,'DELETE',service=True))
         for bid in self.booking_ids:
@@ -1734,7 +1737,93 @@ class Regression(unittest.TestCase):
         page.locator('#dlg-preparazione').get_by_role('link',name='Apri cinema',exact=True).first.click()
         expect(page.locator('#dlg-preparazione')).not_to_be_visible()
         expect(page.locator('#view-cinema')).to_be_visible()
+        page.goto('http://127.0.0.1:8765/#oggi')
+        card.get_by_role('button',name='Elimina',exact=True).click()
+        page.locator('#elimina-evento-si').click()
+        expect(card).to_have_count(0)
+        self.assertEqual(len(ok(api('/rest/v1/films?id=eq.'+film['id'],service=True))),1)
         self.assertEqual(ok(api('/rest/v1/cassa?proiezione_id=eq.'+projection['id'],service=True)),[])
+
+
+    def delete_event(self, row, role='admin', projection=False):
+        return api('/rest/v1/rpc/evento_elimina','POST',{'p_tipo':'p' if projection else 'b',
+            'p_id':row['id'],'p_data':row['data'],'p_ora':row['ora'] if projection else row['inizio'],
+            'p_aggiornato':None if projection else row['aggiornato']},token=self.users[role]['token'])
+
+    def test_delete_today_browser_cancel_confirm_and_permissions(self):
+        b=self.booking()
+        b=ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'data':date.today().isoformat()},service=True))[0]
+        ok(self.prep_save(self.prep_body(b)))
+        page=self.login()
+        card=page.locator('[data-oggi-evento="b:'+b['id']+'"]')
+        card.get_by_role('button',name='Elimina',exact=True).click()
+        expect(page.locator('#dlg-preparazione')).to_contain_text(b['titolo'])
+        page.locator('#elimina-evento-no').click()
+        expect(card).to_be_visible()
+        self.assertEqual(len(ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))),1)
+        for role in ('volontario','in_attesa','bloccato'):
+            self.assertGreaterEqual(self.delete_event(b,role)[0],400)
+        self.assertGreaterEqual(rpc('evento_elimina',{'p_tipo':'b','p_id':b['id'],'p_data':b['data'],'p_ora':b['inizio'],'p_aggiornato':b['aggiornato']})[0],400)
+        card.get_by_role('button',name='Elimina',exact=True).click()
+        self.context.route('**/rest/v1/rpc/evento_elimina',lambda route: route.fulfill(status=409,content_type='application/json',body='{"message":"Evento cambiato: riprova dopo aver aggiornato"}'))
+        page.locator('#elimina-evento-si').click()
+        expect(page.locator('#elimina-evento-error')).to_contain_text('Evento cambiato')
+        expect(card).to_be_visible()
+        self.assertEqual(len(ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))),1)
+        self.context.unroute('**/rest/v1/rpc/evento_elimina')
+        page.locator('#elimina-evento-si').click()
+        expect(page.locator('#dlg-preparazione')).not_to_be_visible()
+        expect(card).to_have_count(0)
+        page.reload()
+        expect(card).to_have_count(0)
+        self.assertEqual(ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True)),[])
+        self.assertEqual(ok(api('/rest/v1/evento_preparazione?booking_id=eq.'+b['id'],service=True)),[])
+        page.locator('#app [data-logout]').click()
+        volunteer=self.login('volontario')
+        expect(volunteer.locator('[data-oggi-elimina]')).to_have_count(0)
+
+    def test_delete_calendar_stays_cancelled_and_stale_changes_rejected(self):
+        b=self.booking()
+        gcal='delete-test-'+uuid4().hex+'|2026'
+        b=ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'gcal_id':gcal,'origine':'calendario'},service=True))[0]
+        body={'p_token':ok(api('/rest/v1/sync_tokens',service=True))[0]['token'],'p_from':DAY,'p_to':DAY,
+            'p_events':[{'gcal_id':gcal,'titolo':b['titolo'],'data':b['data'],'inizio':b['inizio'],'fine':b['fine'],'stato':'confermata'}]}
+        self.assertEqual(ok(self.delete_event(b,'segreteria'))['esito'],'annullato')
+        saved=ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))[0]
+        self.assertEqual((saved['stato'],saved['fissato_app']),('annullata',True))
+        self.assertEqual(ok(api('/rest/v1/calendar_deletions?gcal_id=eq.'+gcal,service=True)),[])
+        ok(rpc('sync_calendar_pull',body))
+        self.assertEqual(ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))[0]['stato'],'annullata')
+        other=self.booking()
+        ok(api('/rest/v1/bookings?id=eq.'+other['id'],'PATCH',{'titolo':'Titolo corretto'},service=True))
+        self.assertGreaterEqual(self.delete_event(other)[0],400)
+        self.assertEqual(len(ok(api('/rest/v1/bookings?id=eq.'+other['id'],service=True))),1)
+        paid=ok(api('/rest/v1/bookings?id=eq.'+other['id'],'PATCH',{'incassato':125},service=True))[0]
+        self.assertEqual(ok(self.delete_event(paid))['esito'],'annullato')
+        saved=ok(api('/rest/v1/bookings?id=eq.'+other['id'],service=True))[0]
+        self.assertEqual((saved['stato'],saved['incassato']),('annullata',125))
+
+    def test_delete_cinebot_not_reimported_and_cash_preserved(self):
+        key='delete-cinebot-'+uuid4().hex
+        self.excluded_keys.append(key)
+        token=ok(api('/rest/v1/sync_tokens',service=True))[0]['token']
+        payload={'p_token':token,'p_films':[{'cinebot_id':key,'titolo':'Film da conservare',
+            'proiezioni':[{'key':key,'data':DAY,'ora':'20:30'},{'key':key+'-seconda','data':DAY,'ora':'18:00'}]}]}
+        ok(rpc('sync_cinebot_push',payload))
+        p=ok(api('/rest/v1/proiezioni?cinebot_key=eq.'+key,service=True))[0]
+        self.cash_film_ids.append(p['film_id'])
+        cash=ok(api('/rest/v1/cassa','POST',{'data':DAY,'titolo':'Incasso conservato','proiezione_id':p['id'],'fondo_iniziale':100,'contanti_euro':70,'stato':'aperta'},service=True))[0]
+        self.cash_ids.append(cash['id'])
+        self.assertGreaterEqual(self.delete_event(p,'segreteria',True)[0],400)
+        self.assertEqual(ok(self.delete_event(p,'coordinatore',True))['esito'],'eliminato')
+        result=ok(rpc('sync_cinebot_push',payload))
+        self.assertEqual(result['proiezioni'],1)
+        self.assertEqual(ok(api('/rest/v1/proiezioni?cinebot_key=eq.'+key,service=True)),[])
+        self.assertEqual(len(ok(api('/rest/v1/proiezioni?cinebot_key=eq.'+key+'-seconda',service=True))),1)
+        self.assertEqual(len(ok(api('/rest/v1/films?id=eq.'+p['film_id'],service=True))),1)
+        saved=ok(api('/rest/v1/cassa?id=eq.'+cash['id'],service=True))[0]
+        self.assertEqual((saved['proiezione_id'],saved['titolo'],saved['contanti_euro']),(None,'Incasso conservato',70))
+        self.assertEqual(ok(api('/rest/v1/proiezioni_escluse',token=self.users['volontario']['token'])),[])
 
 
 if __name__ == '__main__':
