@@ -94,3 +94,13 @@ di preparazione/riordino, i permessi di assegnazione e approvazione, la gratuit�
 anche contro modifiche API e la validazione di attività, capienza e opere protette.
 Le richieste di prova e tutti gli incontri generati vengono eliminati dal solo
 Supabase locale a fine test. Nessuna credenziale reale necessaria.
+
+### Dettagli del percorso parrocchiale
+
+L’aggiornamento 038 viene applicato dopo 037. Le prove includono una conferenza
+con palco, relatori, proiettore, più tipi di microfono, tecnico e materiali
+propri; controllano salvataggio e modifica dal modulo, revisione del gestore e
+riepilogo nella scheda evento. Altri casi verificano descrizione/uso degli spazi
+obbligatori, dotazioni incompatibili con la galleria, quantità e recapiti mancanti,
+accessibilità e pulizia dei campi disattivati. Il responsabile presente già
+indicato viene conservato quando è diverso dal referente.

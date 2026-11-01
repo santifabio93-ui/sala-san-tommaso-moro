@@ -160,6 +160,32 @@ Lo script è rieseguibile; le schede precedenti restano nel percorso esterno e
 non vengono riclassificate automaticamente. Il gestore verifica che si tratti effettivamente di un’attività della Parrocchia
 prima di approvarla.
 
+### Descrizione, spazi e dotazioni della richiesta parrocchiale
+
+Ogni richiesta deve spiegare concretamente cosa si farà e come saranno usate le
+sale. Sono obbligatori descrizione, scelta tra galleria/platea/entrambe,
+allestimento e indicazione dell’eventuale uso del palco. L’allestimento può essere
+riunione seduta, tavolo, piccoli gruppi o altra disposizione da descrivere.
+La galleria non comprende il palco né le dotazioni di scena della platea.
+
+Le domande si adattano alle dotazioni selezionate: contenuti e collegamento del
+proiettore, utilizzo dell’audio, quantità di microfoni a filo/radiomicrofoni/da
+tavolo, posti al tavolo relatori, luci e sipario. Si indicano eventuale tecnico
+proprio e contatto, attrezzature elettriche portate, potenza se nota, materiali e
+loro collocazione. Sono disponibili campi per apertura/accoglienza/assistenza,
+accessibilità, differenze tra gli incontri e ulteriori spazi o esigenze da valutare.
+Le richieste non confermano automaticamente disponibilità di dotazioni o personale.
+
+Tutti i dettagli compaiono nelle risposte che il gestore verifica prima di approvare
+e nella sezione **Attività, sala ed esigenze** della scheda evento. Le quantità e
+i campi condizionali vengono controllati anche dal database, non solo dal modulo.
+Se una dotazione viene deselezionata, i suoi dettagli non vengono reinviati.
+
+**Aggiornamento necessario:** eseguire
+[`038_parrocchia_esigenze.sql`](supabase/038_parrocchia_esigenze.sql) dopo 037.
+Le richieste ancora da approvare devono essere integrate riaprendo il loro link;
+gli incontri e le richieste già approvati non vengono modificati.
+
 ## Preventivo per chi chiede la sala
 
 Nella **Scheda evento → Prepara preventivo**, oppure in **Affitti → Richieste →
