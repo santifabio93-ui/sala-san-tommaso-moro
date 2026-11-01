@@ -82,9 +82,30 @@ export function creaPreparazione({ client,getState,helpers,esc,onChange,toast })
    <div class="prep-semafori">${p.voci.map(v => `<span title="${esc(v.titolo + ': ' + v.testo)}">${statoHTML(v.tono,v.titolo + ' · ' + (v.manuale ? v.testo : ({verde:'OK',giallo:'Da completare',rosso:'Problema',ignoto:'Da verificare',neutro:'Non prevista'})[v.tono]))}</span>`).join('')}</div>
    ${persone.length ? `<div class="sala-persone">${persone.map(t => `<p><b>${esc(t.label)}</b> <span class="hint">${esc(t.inizio)}–${esc(t.fine)}</span><br>${t.persone.length ? t.persone.map(s => esc(s.nome)).join(' · ') : '<span class="hint">Nessuno ancora assegnato</span>'}</p>`).join('')}</div>` : ''}
    ${p.aperte.length ? `<p class="sala-manca"><b>Da preparare:</b> ${esc(p.aperte.slice(0,3).map(v => v.titolo + ': ' + v.testo + (v.responsabile ? ' · ' + v.responsabile : '')).join(', '))}${p.aperte.length > 3 ? '…' : ''}</p>` : ''}
-   <div class="actions"><a class="btn${proiezione ? '' : ' primary'}" href="${proiezione ? '#cinema' : '#evento/' + e.id}">${proiezione ? 'Apri cinema' : 'Apri scheda evento'}</a>${proiezione ? `<button class="btn primary" type="button" data-prep-apri="${p.chiave}">Preparazione</button>` : `<a class="btn" href="#turni/${e.id}">Turni</a>`}</div></article>`;
+   <div class="actions"><a class="btn${proiezione ? '' : ' primary'}" href="${proiezione ? '#cinema' : '#evento/' + e.id}">${proiezione ? 'Apri cinema' : 'Apri scheda evento'}</a>${proiezione ? `<button class="btn primary" type="button" data-prep-apri="${p.chiave}">Preparazione</button>` : `<a class="btn" href="#turni/${e.id}">Turni</a>`}${S.canWrite && (!proiezione || S.staff) ? `<button class="btn danger" type="button" data-oggi-elimina="${p.chiave}">Elimina</button>` : ''}</div></article>`;
+ }
+ async function elimina(e) {
+  const S = getState(), proiezione = !!e.film_id;
+  if(!S.canWrite || (proiezione && !S.staff))return;
+  const calendario = !proiezione && (e.gcal_id || e.origine === 'calendario');
+  const titolo = proiezione ? S.films.find(f => f.id === e.film_id)?.titolo || 'Proiezione' : e.titolo;
+  dialog.innerHTML = `<h2>Eliminare questo evento?</h2><p><b>${esc(titolo)}</b><br>${esc(e.data)} · ${esc(e.ora || e.inizio)}</p><p>${calendario ? 'L’evento verrà segnato come annullato nell’app e tolto da La Sala oggi. Rimarrà nel Google Calendar originale.' : !proiezione && Number(e.incassato)>0 ? 'L’evento verrà segnato come annullato e tolto da La Sala oggi, conservando gli incassi registrati.' : proiezione ? 'Verrà eliminato soltanto questo orario, mantenendo la scheda del film. Le informazioni di preparazione collegate a questa proiezione verranno rimosse.' : 'L’evento, i suoi turni e la preparazione verranno eliminati definitivamente.'}</p>${proiezione && e.cinebot_key ? '<p>Questa proiezione non verrà reimportata automaticamente da Cinebot.</p>' : ''}<p class="hint">Le eventuali casse e schede di richiesta restano archiviate.</p><p id="elimina-evento-error" role="alert"></p><div class="actions"><button class="btn danger" type="button" id="elimina-evento-si">Sì, elimina</button><button class="btn" type="button" id="elimina-evento-no" autofocus>Annulla</button></div>`;
+  let salvando = false;
+  dialog.oncancel = ev => { if(salvando)ev.preventDefault(); };
+  dialog.querySelector('#elimina-evento-no').onclick = () => dialog.close();
+  dialog.querySelector('#elimina-evento-si').onclick = async () => {
+   salvando = true; dialog.querySelectorAll('button').forEach(b => b.disabled = true);
+   try {
+    const {data,error} = await client().rpc('evento_elimina',{p_tipo:proiezione ? 'p' : 'b',p_id:e.id,p_data:e.data,p_ora:e.ora || e.inizio,p_aggiornato:proiezione ? null : e.aggiornato});
+    if(error)throw error;
+    dialog.close(); await onChange(); toast(data.esito === 'annullato' ? 'Evento rimosso dalla programmazione dell’app' : 'Evento eliminato');
+   } catch(error) { dialog.querySelector('#elimina-evento-error').textContent = /Could not find|schema cache|does not exist/i.test(error.message || '') ? 'Per attivare Elimina, esegui prima l’aggiornamento 045_elimina_eventi_oggi.sql in Supabase.' : error.message || 'Eliminazione non riuscita. Riprova.'; }
+   finally { salvando = false; dialog.querySelectorAll('button').forEach(b => b.disabled = false); }
+  };
+  if(!dialog.open)dialog.showModal();
  }
  function collega(root) {
+  root.querySelectorAll('[data-oggi-elimina]').forEach(b => b.onclick = () => { const e = trova(b.dataset.oggiElimina); if(e)elimina(e); });
   root.querySelectorAll('[data-prep-compito]').forEach(b => b.onclick = () => { const e = trova(b.dataset.prepEvento); if(e) modifica(e,b.dataset.prepCompito); });
   root.querySelectorAll('[data-prep-apri]').forEach(b => b.onclick = () => { const e = trova(b.dataset.prepApri); if(e) apri(e); });
  }

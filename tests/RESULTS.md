@@ -289,3 +289,43 @@ La migrazione 044 è stata anche rieseguita sul database locale senza errori.
 
 Nessuna modifica al Supabase reale e nessuna pubblicazione. Per attivare online,
 eseguire 044 nel SQL Editor e integrare il ramo `feat/sala-oggi-preparazione`.
+
+## Elimina da La Sala oggi — versione 2026-11-01.94
+
+Database locale ricostruito dai 45 file SQL e migrazione 045 rieseguita dopo
+l’aggiunta della conservazione delle prenotazioni con incassi registrati.
+Suite completa: **55 test superati in 139,4 secondi**. Nessun accesso a dati reali.
+
+Verificati Annulla/conferma nel browser, rimozione dopo ricaricamento, messaggio
+di errore senza cancellazione, ruoli autorizzati e rifiuto delle pagine rimaste
+indietro. Le proiezioni si eliminano singolarmente conservando film, altri orari
+e casse collegate. Gli eventi Google restano annullati nell’app dopo una nuova
+importazione e non generano richieste di cancellazione su Google. Le esclusioni
+Cinebot impediscono la reimportazione della replica eliminata. Le prenotazioni
+con incassi restano consultabili come annullate, mantenendo gli importi.
+Controllate anche sintassi JavaScript, compressione Terser e differenze Git.
+
+Per attivare online, eseguire 045 dopo 044 e integrare `feat/elimina-eventi-oggi`.
+Nessuna modifica al database reale e nessuna pubblicazione eseguita.
+
+## Semaforo economico — versione 2026-11-01.95
+
+Verificati cinque scenari dedicati: soglie e centesimi, tre colori nel browser,
+assenza/errori di lettura e permessi, aggregati del Parroco e prima nota con
+1001 movimenti. Tutti superati. Le righe datate in un altro anno seguono l’anno
+di competenza; il resoconto applica anche la fine del mese selezionato.
+Controllati stampa, mobile a 390 px e HTML precedente conservato dal browser.
+
+Suite completa: 60 scenari eseguiti, 59 superati al primo giro. Il test
+preesistente del cambio turno pubblico ha chiesto il cambio prima della conferma
+dell’iscrizione: la pagina rende il nuovo turno visibile in modo ottimistico.
+Il test ora attende la conferma dell’iscrizione prima del cambio, senza modifiche
+all’app dei turni. La ripetizione dei cinque scenari economici e di quel caso ha
+superato 6/6 controlli; il singolo cambio turno con l’attesa esplicita e il caso
+browser finale di stampa/cache sono stati verificati nuovamente con esito positivo.
+
+Controllate sintassi, compressione Terser e differenze Git. I dati contabili di
+prova sono stati creati e rimossi soltanto nel Supabase locale dedicato.
+Nessun nuovo script SQL per il semaforo, nessuna modifica alla contabilità reale
+e nessuna pubblicazione. Il ramo conserva anche il precedente lavoro Elimina,
+che richiede l’aggiornamento 045 già documentato.

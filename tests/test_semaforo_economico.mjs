@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const {situazioneEconomica:calcola} = await import('data:text/javascript;base64,' + readFileSync(new URL('../economia-semaforo.js',import.meta.url)).toString('base64'));
+const movimento = (entrate,uscite,altro={}) => ({data:'2026-06-15',anno:2026,entrate,uscite,...altro});
+assert.equal(calcola([movimento(1050.01,1000)],2026).colore,'verde');
+assert.equal(calcola([movimento(1050,1000)],2026).colore,'giallo');
+assert.equal(calcola([movimento(1000,1000)],2026).colore,'giallo');
+assert.equal(calcola([movimento(999.99,1000)],2026).colore,'rosso');
+assert.equal(calcola([movimento(0,0)],2026).colore,'giallo');
+assert.equal(calcola([movimento(1,0)],2026).colore,'verde');
+assert.equal(calcola([],2026).colore,'ignoto');
+assert.equal(calcola([movimento(1100,1000)],2026,'2026-12-31',true).colore,'ignoto');
+assert.equal(calcola([movimento('non valido',1000)],2026).colore,'ignoto');
+assert.equal(calcola([movimento(null,1000)],2026).colore,'ignoto');
+const risultato = calcola([movimento('1000.01','1000'),movimento(9999,0,{anno:2025}),movimento(9999,0,{data:'2025-12-31',anno:2025}),movimento(9999,0,{data:'2026-12-01'})],2026,'2026-06-30');
+assert.deepEqual([risultato.entrate,risultato.uscite,risultato.risultato,risultato.soglia,risultato.colore],[1000.01,1000,0.01,50,'giallo']);
+assert.equal(calcola([movimento(1050.01,1000,{data:'2025-12-31'})],2026).colore,'verde');
+console.log('Semaforo economico: soglie, centesimi, periodi e dati mancanti verificati.');

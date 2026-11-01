@@ -846,3 +846,48 @@ pagina rimasta indietro viene rifiutato. Il controllo di revisione impedisce
 anche di sovrascrivere una modifica di un altro gestore.
 I volontari vedono soltanto stati operativi e nomi incaricati, senza note interne,
 recapiti, prezzi o risposte delle richieste; non possono modificare la preparazione.
+
+### Elimina da La Sala oggi
+
+La versione 2026-11-01.94 aggiunge **Elimina** alle schede della panoramica.
+Eseguire prima [`045_elimina_eventi_oggi.sql`](supabase/045_elimina_eventi_oggi.sql),
+dopo 044. Il pulsante richiede sempre conferma con titolo, data e orario;
+Annulla lascia tutto invariato. I volontari non lo vedono. Segreteria può
+rimuovere prenotazioni; per le proiezioni servono amministratore o coordinatore,
+come nella gestione del cinema.
+
+Le prenotazioni nate nell’app, senza incassi registrati, vengono eliminate con
+i loro turni e la preparazione. Quelle con incassi vengono conservate come annullate
+per mantenere lo storico economico.
+Gli eventi collegati a Google Calendar vengono invece segnati annullati e fissati
+nell’app: spariscono dalla panoramica senza cancellare l’originale di Google e
+senza essere ripristinati dall’importazione. Restano consultabili fra gli annullati.
+Le proiezioni vengono eliminate singolarmente, conservando il film e gli altri
+orari; per quelle importate, l’esclusione viene conservata in `proiezioni_escluse`
+e inclusa nel backup, così Cinebot non le reimporta. La rimozione riguarda l’app:
+non modifica la vendita o la programmazione sul sito Cinebot.
+Casse e schede collegate restano archiviate. Una modifica dell’evento intervenuta
+nel frattempo blocca l’eliminazione e richiede di aggiornare la pagina.
+
+### Semaforo della situazione economica
+
+La versione 2026-11-01.95 mostra il semaforo in **Bilancio**, **Spese e tariffe**,
+**Resoconto** e nella pagina **In breve** del Parroco. Usa esclusivamente la prima
+nota: entrate meno uscite dell’anno di competenza selezionato, anche quando
+la registrazione ha una data in un altro anno. Nel resoconto considera i movimenti
+fino alla fine del mese scelto. Il criterio resta la competenza anche selezionando
+«Tutti i movimenti» nel bilancio.
+Comprende anche i movimenti previsti registrati nel periodo, come i totali
+contabili: non rappresenta la liquidità disponibile sul conto corrente.
+
+- **Rosso:** risultato negativo.
+- **Giallo:** dal pareggio fino a un avanzo pari al 5% delle uscite, incluso.
+- **Verde:** avanzo superiore al 5% delle uscite.
+
+La scheda mostra risultato, entrate, uscite e la spiegazione delle soglie.
+Senza movimenti o con un errore di lettura mostra **Da verificare**, senza
+accendere alcuna luce. Il calcolo usa i centesimi e legge la prima nota a pagine,
+così supera il limite di mille righe per richiesta senza troncare i totali.
+Restano invariati i permessi: amministratore e Parroco vedono il semaforo;
+il Parroco riceve soltanto gli aggregati mensili già previsti, senza movimenti
+individuali. Il semaforo non richiede nuovi script SQL.

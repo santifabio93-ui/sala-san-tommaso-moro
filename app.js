@@ -1,14 +1,15 @@
-import { creaPreparazione } from "./preparazione.js?v=2026-11-01.93";
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.93";
+import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.95";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.95";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.95";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.93";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.93";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.93";
-import { schedaEvento } from "./evento.js?v=2026-11-01.93";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.95";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.95";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.95";
+import { schedaEvento } from "./evento.js?v=2026-11-01.95";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.93";
+const VERSIONE = "2026-11-01.95";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -189,6 +190,7 @@ async function caricaParroco() {
     S.primaNota = (data.conti || []).map((r) => ({ data: r.mese + "-15", anno: r.anno, entrate: Number(r.entrate) || 0, uscite: Number(r.uscite) || 0 }));
     if (data.convenzione) S.conv = { inizio: data.convenzione.inizio || null, serate: data.convenzione.serate || 25, anni: data.convenzione.anni || 20 };
     S.avvisiParroco = data.avvisi || {};
+    S.datiCaricati = true;
   }
   render();
 }
@@ -196,6 +198,16 @@ async function caricaPreparazione() {
   const dati = [];
   for (let da = 0; ; da += 500) {
     const r = await sb.from(S.canWrite ? "evento_preparazione" : "preparazione_operativa").select("*").order("booking_id", { nullsFirst: true }).order("proiezione_id").order("compito").range(da, da + 499);
+    if (r.error) return r;
+    dati.push(...(r.data || []));
+    if ((r.data || []).length < 500) return { data: dati };
+  }
+}
+
+async function caricaPrimaNota() {
+  const dati = [];
+  for (let da = 0; ; da += 500) {
+    const r = await sb.from("prima_nota").select("*").order("data").order("n").order("id").range(da, da + 499);
     if (r.error) return r;
     dati.push(...(r.data || []));
     if ((r.data || []).length < 500) return { data: dati };
@@ -218,7 +230,7 @@ async function loadAll() {
       S.canCassa ? sb.from("cassa").select("*").order("data", { ascending: false }).order("creato", { ascending: false }).limit(1000) : null,
       sb.from("films").select("*").order("titolo"),
       sb.from("proiezioni").select("*").order("data").order("ora"),
-      S.isAdmin ? sb.from("prima_nota").select("*").order("data").order("n").limit(10000) : null,
+      S.isAdmin ? caricaPrimaNota() : null,
       S.isAdmin ? sb.from("donatori").select("*") : null,
       S.canWrite ? sb.from("schede").select("*").order("creato", { ascending: false }).limit(2000) : null,
       S.canWrite ? sb.from("c1").select("*").order("data", { ascending: false }).order("ora", { ascending: false }).limit(3000) : null,
@@ -649,14 +661,24 @@ function niceMax(v) {
   const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
 }
+function semaforoConti(anno, fino = null) {
+  if (!S.vedeConti) return "";
+  const errore = !S.datiCaricati || (S.isParroco ? S.loadErr2?.parroco : S.loadErr?.prima_nota);
+  return semaforoEconomicoHTML(situazioneEconomica(S.primaNota, anno, fino, errore), { esc, money });
+}
+
 function renderEconomy() {
   const years = new Set([new Date().getFullYear(), S.year]);
   S.bookings.forEach((b) => years.add(+b.data.slice(0, 4)));
   S.expenses.forEach((e) => years.add(+e.data.slice(0, 4)));
+  S.primaNota.forEach((r) => years.add(+r.data.slice(0, 4)));
   $("#years").innerHTML = [...years].sort().map((y) => `<button type="button" data-y="${y}" aria-pressed="${S.year === y}">${y}</button>`).join("");
   $("#years").querySelectorAll("[data-y]").forEach((b) => (b.onclick = () => { S.year = +b.dataset.y; renderEconomy(); }));
 
   const Y = String(S.year);
+  let semaforo = $("#economia-semaforo");
+  if (!semaforo) { semaforo = document.createElement("div"); semaforo.id = "economia-semaforo"; $("#view-economia .econ-grid").before(semaforo); }
+  semaforo.innerHTML = semaforoConti(S.year);
   const months = MESI.map((label, i) => {
     const k = `${Y}-${pad(i + 1)}`;
     const aff = S.bookings.filter((b) => b.data.startsWith(k)).reduce((s, b) => s + b.incassato, 0);
@@ -1615,7 +1637,7 @@ function renderBilancio() {
   const all = S.primaNota.filter((r) => r.data.startsWith(Y));
   const list = S.pnComp === "competenza" ? all.filter((r) => r.anno === S.pnYear) : all;
   if (!list.length) {
-    el.innerHTML = S.primaNota.length ? `<div class="empty">Nessun movimento nel ${Y}.</div>` : diagnosiPrimaNota("bilancio");
+    el.innerHTML = semaforoConti(S.pnYear) + (S.primaNota.length ? `<div class="empty">Nessun movimento nel ${Y}.</div>` : diagnosiPrimaNota("bilancio"));
     return;
   }
   const E = sommaE(list), U = sommaU(list), ris = r2(E - U);
@@ -1694,7 +1716,7 @@ function renderBilancio() {
   const movs = list.filter((r) => (!S.pnSett || r.settore === S.pnSett) && (!q || [r.descrizione, r.controparte, r.evento, r.categoria, r.note].join(" ").toLowerCase().includes(q))).sort((a, b) => b.data.localeCompare(a.data) || (b.n || 0) - (a.n || 0));
   const movVis = S.pnTutti ? movs : movs.slice(0, 60);
 
-  el.innerHTML = `
+  el.innerHTML = `${semaforoConti(S.pnYear)}
     <section class="kpis" aria-label="In sintesi">
       <div class="kpi"><span class="eyebrow">Entrate</span><b>${money(E)}</b><small>${list.filter((r) => r.entrate).length} movimenti</small></div>
       <div class="kpi"><span class="eyebrow">Uscite</span><b>${money(U)}</b><small>${prevU ? `di cui ${money(prevU)} previste da pagare` : `${list.filter((r) => r.uscite).length} movimenti`}</small></div>
@@ -2860,13 +2882,15 @@ $("#btn-export").onclick = async () => {
   const { data: organizzazioneSala, error: erroreSala } = await sb.from("eventi_sala").select("*");
   if (erroreSala) { toast("Backup non completato: impossibile leggere l’organizzazione degli eventi Sala. Riprova dopo aver verificato la migrazione 039."); return; }
   if (S.loadErr2?.preparazione) { toast("Backup non completato: preparazione eventi non disponibile. Verifica l’aggiornamento 044."); return; }
+  const { data: proiezioniEscluse, error: erroreEscluse } = await sb.from("proiezioni_escluse").select("*");
+  if (erroreEscluse) { toast("Backup non completato: verifica l’aggiornamento 045 delle proiezioni escluse."); return; }
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
     c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
-    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione };
+    convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione, proiezioni_escluse: proiezioniEscluse };
   const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
   download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
   try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
@@ -4650,6 +4674,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["045_elimina_eventi_oggi.sql", "Elimina eventi da La Sala oggi", undefined, "Eseguire dopo 044: conserva le esclusioni dalle importazioni"],
     ["044_preparazione_eventi.sql", "La Sala oggi e preparazione condivisa degli eventi", !e2.preparazione, "Stati e responsabili per tecnico, chiavi, allestimento e cassa"],
     ["043_cassa_badge_senza_account.sql", "Cassa con badge senza account sul computer", !!S.cassaBadgeDisponibile, "Abilitare i cassieri nella scheda del volontario"],
     ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],
@@ -4811,6 +4836,7 @@ function renderResoconto() {
       <div class="actions"><button class="btn" type="button" id="reso-copia">Copia il testo</button><button class="btn primary" type="button" id="reso-stampa">Stampa o salva PDF</button></div></div>
     <div id="reso-foglio" class="reso">
       <h2>Resoconto di ${esc(nomeMese(mese))}</h2>
+      ${semaforoConti(+mese.slice(0,4), iso(new Date(+mese.slice(0,4), +mese.slice(5,7), 0)))}
       <section class="kpis">${kpi("Giornate di apertura", d.giorni, `${d.eventi.length} ${d.eventi.length === 1 ? "evento" : "eventi"} in calendario`)}${kpi("Spettatori", d.spettatori, `${d.c1.length} proiezioni${var_ !== null ? ` · ${var_ >= 0 ? "+" : ""}${var_}% sull'anno scorso` : ""}`)}${kpi("Biglietti", money(r2(d.incasso)), "incasso lordo dai C1")}${kpi("Affitti", d.affitti.length, d.affitti.length ? money(d.affitti.reduce((s, b) => s + b.prezzo, 0)) : "")}</section>
       <div class="reso-grid">
         <div class="panel"><h3>Film del mese</h3>${d.film.length ? `<table><tbody>${d.film.slice(0, 8).map((f) => `<tr><td>${esc(f.titolo)}</td><td class="n">${f.sp} spett.</td><td class="n">${f.n} pr.</td><td class="n">${money(r2(f.lordo))}</td></tr>`).join("")}</tbody></table>` : `<p class="hint">Nessun borderò C1 per questo mese.</p>`}</div>
@@ -4834,11 +4860,12 @@ function renderResoconto() {
     const w = window.open("", "_blank");
     if (!w) { toast("Il browser ha bloccato la finestra di stampa"); return; }
     const foglio = $("#reso-foglio").cloneNode(true);
+    foglio.querySelectorAll(".eco-semaforo details").forEach(x => x.open = true);
     foglio.querySelector("textarea").outerHTML = S.resoNote ? `<p>${esc(S.resoNote).replace(/\n/g, "<br>")}</p>` : `<p class="hint">—</p>`;
     w.document.write(`<!doctype html><meta charset="utf-8"><title>Resoconto ${esc(nomeMese(mese))} · Sala San Tommaso Moro</title>
       <style>body{font:12.5px/1.45 system-ui,sans-serif;margin:22px;color:#111}h2{font:600 22px Georgia,serif;margin:0 0 4px}h3{font:600 15px Georgia,serif;margin:0 0 6px}.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#666}
       .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.kpi{border:1px solid #ccc;border-radius:8px;padding:8px}.kpi b{display:block;font-size:18px}.kpi small{color:#555}
-      .reso-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.panel{border:1px solid #ddd;border-radius:8px;padding:10px;break-inside:avoid;margin-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:3px 4px;border-top:1px solid #eee}.n{text-align:right}.hint{color:#666}.neg{color:#a8322f}ul{margin:4px 0;padding-left:18px}</style>
+      .reso-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.panel{border:1px solid #ddd;border-radius:8px;padding:10px;break-inside:avoid;margin-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:3px 4px;border-top:1px solid #eee}.n{text-align:right}.hint{color:#666}.neg{color:#a8322f}.eco-semaforo{display:flex;gap:12px}.eco-luci{display:flex;flex-direction:column;gap:5px}.eco-luce{display:block;width:14px;height:14px;border:1px solid #888;border-radius:50%}.eco-luce-rosso.accesa{background:#b12826}.eco-luce-giallo.accesa{background:#bc7a00}.eco-luce-verde.accesa{background:#18764a}.eco-esito{display:flex;gap:12px}.eco-semaforo details{display:block}.eco-semaforo details p{display:block}ul{margin:4px 0;padding-left:18px}</style>
       <div class="eyebrow">Sala San Tommaso Moro · Parrocchia di San Biagio · Piombino Dese</div>${foglio.innerHTML}<p class="hint">Preparato con l'app della sala il ${new Date().toLocaleDateString("it-IT")}.</p><script>print()<\/script>`);
     w.document.close();
   };
@@ -4866,6 +4893,7 @@ function renderBreve() {
   el.innerHTML = `
     <div class="toolbar"><div><span class="eyebrow">${esc(fmtDay(TODAY, { weekday: "long", day: "numeric", month: "long" }))}</span><h2>${ciao}${S.me.nome ? " " + esc(S.me.nome.split(" ")[0]) : ""}</h2></div>
       <a class="btn" href="#resoconto">Resoconto del mese</a></div>
+    ${semaforoConti(+anno)}
     <section class="kpis">${kpi(`${nomeMese(mese).split(" ")[0].replace(/^./, (c) => c.toUpperCase())} in sala`, d.giorni, "giornate di apertura")}${kpi("Spettatori del mese", d.spettatori, `${d.c1.length} proiezioni`)}${kpi("Eventi del mese", d.eventi.length, `${d.sala.length} della Sala · ${d.affitti.length} ${d.affitti.length === 1 ? "affitto" : "affitti"}`)}${kpi(`Risultato ${anno}`, money(risultato), "entrate − uscite, solo totali")}</section>
     <div class="oggi-grid">
       <div class="panel"><div class="section-head"><h3>In sala nelle prossime due settimane</h3></div>
