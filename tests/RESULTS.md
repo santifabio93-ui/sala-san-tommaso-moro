@@ -1,5 +1,34 @@
 # Esiti della validazione
 
+## Cassa con il solo badge: 48 test superati
+
+Suite completa su Supabase locale reale e Chromium: OK, 48 test in circa
+115 secondi. Database ricostruito da zero da 43 file SQL; migrazione 043
+rieseguita senza errori. Sintassi e compressione Terser 5.49.2 verificate.
+
+Sei test dedicati verificano ingresso automatico alla lettura del badge senza
+account, cookie o credenziali salvate nel browser; abilitazione dalla scheda
+del volontario; conteggio per tagli, salvataggio e chiusura con un cassiere
+diverso; ritorno alla lettura badge e riepilogo protetto della cassa chiusa.
+Verificati vista a 390 px e accesso al gestionale ancora soggetto al suo login.
+
+Controllati permessi dei badge, revoca permanente delle sessioni alla rimozione
+dell’abilitazione, rotazione del badge, scadenza assoluta e per inattività,
+limite ai tentativi e riservatezza delle funzioni interne e delle tabelle.
+Gli errori di lettura del badge mantengono il contatore dei tentativi.
+L’accesso non crea utenti Supabase o profili del computer.
+
+Verificati scope della serata corrente, eventi e proiezioni, assenza di note
+private dei film nel DTO, importi e saldo calcolati dal server, rifiuto di
+campi arbitrari e valori negativi, due aperture concorrenti senza duplicati,
+revisioni obsolete, badge in chiusura e impossibilità di modificare casse
+chiuse dalla pagina pubblica. L’apertura e la chiusura registrano i volontari
+reali, con i riferimenti agli account di accesso lasciati nulli.
+
+Il backup conserva l’abilitazione ma esclude badge, link personali e impronte
+della tessera. Nessuna modifica al database reale o pubblicazione: applicare
+043 prima dell’attivazione e abilitare esplicitamente i cassieri interessati.
+
 ## Scheda danza condizionale: 42 test superati
 
 Suite completa su Supabase locale reale e Chromium terminata con OK: 42 test
