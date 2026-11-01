@@ -1434,7 +1434,10 @@ class Regression(unittest.TestCase):
         page.locator('[data-cb-conto=fondo][data-taglio="50"]').fill('2')
         expect(page.locator('#cb-fondo_iniziale')).to_have_value('100')
         for kind,n,e in [('online','2','14'),('contanti','10','70'),('pos','3','21')]:
-            page.locator('#cb-'+kind+'_n').fill(n)
+            if kind=='online':
+                page.locator('#cb-'+kind+'_n').fill(n)
+            else:
+                self.assertEqual(page.locator('#cb-'+kind+'_n').count(),0)
             page.locator('#cb-'+kind+'_euro').fill(e)
         page.locator('#cb-omaggi_n').fill('1')
         page.locator('#cb-salva').click()
