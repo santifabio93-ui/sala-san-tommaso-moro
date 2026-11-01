@@ -186,6 +186,20 @@ Se una dotazione viene deselezionata, i suoi dettagli non vengono reinviati.
 Le richieste ancora da approvare devono essere integrate riaprendo il loro link;
 gli incontri e le richieste già approvati non vengono modificati.
 
+### Link personali e richieste già approvate
+
+I link copiati dall’app includono la versione (`&v=...`) per distinguere i nuovi
+caricamenti da pagine precedenti nella cache, conservando lo stesso codice della
+richiesta e la bozza locale. Il modulo mostra versione e percorso effettivo:
+Parrocchia oppure utilizzatori esterni. Un vecchio link esterno non viene
+riclassificato automaticamente come richiesta parrocchiale.
+
+Le richieste parrocchiali approvate mostrano un riepilogo completo in sola lettura:
+attività, persone, date attuali in calendario, spazi, allestimenti, attrezzature
+ed esigenze. I dati mai compilati sono indicati come mancanti; per integrazioni
+o modifiche si contatta il gestore. Non vengono riaperte richieste approvate.
+Questo aggiornamento dell’interfaccia non richiede nuove migrazioni SQL.
+
 ## Preventivo per chi chiede la sala
 
 Nella **Scheda evento → Prepara preventivo**, oppure in **Affitti → Richieste →

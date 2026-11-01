@@ -9,7 +9,7 @@
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="../style.css?v=2026-11-01.84">
+<link rel="stylesheet" href="../style.css?v=2026-11-01.85">
 <style>
 .wrap { max-width: 760px }
 .head { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px }
@@ -51,6 +51,10 @@
 .esito { text-align: center; padding: 30px 10px }
 .esito h2 { font-size: 1.6rem; margin-bottom: 6px }
 .errore-campo { outline: 2px solid var(--due-fg); outline-offset: 1px }
+.riepilogo-richiesta dl { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); gap: 10px 14px }
+.riepilogo-richiesta dt { color: var(--muted) }
+.riepilogo-richiesta dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere }
+@media (max-width: 560px) { .riepilogo-richiesta dl { grid-template-columns: minmax(0, 1fr); gap: 4px } .riepilogo-richiesta dd { margin-bottom: 12px } }
 @media print { .invia, .no-print, .head .hint { display: none !important } body { background: #fff } .sez { break-inside: avoid } }
 </style>
 </head>
@@ -60,10 +64,11 @@
     <div class="seal ritratto" aria-hidden="true"><img src="../moro.svg" alt=""></div>
     <div><div class="eyebrow">Parrocchia di San Biagio · Piombino Dese</div><h1>Sala San Tommaso Moro</h1><span class="hint">Scheda di richiesta di utilizzo della sala</span></div>
   </div>
+  <p class="hint no-print">Versione modulo 2026-11-01.85 · <span id="modulo-percorso">Verifica del percorso…</span></p>
   <div id="app"><p class="muted">Caricamento della scheda…</p></div>
 </div>
 <div id="toast" class="toast" hidden></div>
-<script src="../config.js?v=2026-11-01.84"></script>
-<script type="module" src="compila.js?v=2026-11-01.84"></script>
+<script src="../config.js?v=2026-11-01.85"></script>
+<script type="module" src="compila.js?v=2026-11-01.85"></script>
 </body>
 </html>

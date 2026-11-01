@@ -1,5 +1,5 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.84";
+import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.85";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Scheda di richiesta online: l'organizzatore la apre dal link personale (?t=codice), senza account.
@@ -201,6 +201,15 @@ async function avvia() {
   if (!token) { mostra(`<div class="esito"><h2>Link non completo</h2><p>Per compilare la scheda usate il link che vi ha mandato la sala. Per informazioni: salatommasomoro@gmail.com</p></div>`); return; }
   const { data: info, error } = await sb.rpc("scheda_apri", { p_token: token });
   if (error || !info) { mostra(`<div class="esito"><h2>Scheda non trovata</h2><p>Il link potrebbe essere scaduto o incompleto. Chiedete alla sala di mandarvene uno nuovo: salatommasomoro@gmail.com</p></div>`); return; }
+  let percorso = document.getElementById('modulo-percorso');
+  if (!percorso) {
+    // Compatibilità con una pagina HTML precedente ancora nella cache.
+    const versione = document.createElement('p'); versione.className = 'hint no-print';
+    versione.append('Versione modulo 2026-11-01.85 · ');
+    percorso = document.createElement('span'); percorso.id = 'modulo-percorso'; versione.append(percorso);
+    document.getElementById('app').before(versione);
+  }
+  percorso.textContent = info.percorso === 'parrocchia' ? 'Percorso Parrocchia' : 'Percorso utilizzatori esterni';
   if (info.percorso === 'parrocchia') { avviaParrocchia({ info, token, sb, esc, fmtData, mostra, BOZZA, rigaOrari }); return; }
   if (info.chiusa) { mostra(`<div class="esito"><h2>Scheda già approvata</h2><p>La sala ha già approvato la scheda${info.titolo ? ` per <b>${esc(info.titolo)}</b>` : ""}. Per modifiche contattate la sala: salatommasomoro@gmail.com</p></div>`); return; }
   let d = info.dati || {};

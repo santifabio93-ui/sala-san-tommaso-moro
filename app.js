@@ -1,10 +1,10 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.84";
-import { schedaEvento } from "./evento.js?v=2026-11-01.84";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.85";
+import { schedaEvento } from "./evento.js?v=2026-11-01.85";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.84";
+const VERSIONE = "2026-11-01.85";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1798,7 +1798,7 @@ function diagnosiPrimaNota(dove) {
 /* ---------- schede di richiesta online ---------- */
 const SCHEDA_GIORNI = 30, SCHEDA_URGENTE = 14; // da compilare 30 giorni prima; sotto i 14 è urgente
 const giorniA = (d) => Math.round((parse(d) - parse(TODAY)) / 864e5);
-const linkScheda = (s) => new URL("modulo/compila.html?t=" + s.token, location.href.split("#")[0]).href;
+const linkScheda = (s) => new URL("modulo/compila.html?t=" + s.token + "&v=" + VERSIONE, location.href.split("#")[0]).href;
 const schedaDi = (b) => S.schede.filter((s) => s.booking_id === b.id || s.id === b.scheda_parrocchia_id).sort((a, c) => c.creato.localeCompare(a.creato))[0];
 const schedeDaVerificare = () => S.schede.filter((s) => s.stato === "compilata").length;
 // eventi per cui di solito serve la scheda: in arrivo, non ricorrenti, non del cinema della sala
