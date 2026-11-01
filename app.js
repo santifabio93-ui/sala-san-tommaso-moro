@@ -1,12 +1,13 @@
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.89";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.88";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.88";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.88";
-import { schedaEvento } from "./evento.js?v=2026-11-01.88";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.89";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.89";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.89";
+import { schedaEvento } from "./evento.js?v=2026-11-01.89";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.88";
+const VERSIONE = "2026-11-01.89";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1987,7 +1988,7 @@ function risposteHtml(d, conLink = true) {
       return [`<dt>${esc(ETICHETTE[k] || k)}</dt><dd>${esc(val(k, v))}</dd>`];
     });
     return righe.length ? `<div><h4>${g}</h4><dl>${righe.join("")}</dl></div>` : "";
-  }).join("");
+  }).join("") + riepilogoDanza(d, esc);
 }
 const dlgSK = $("#dlg-scheda");
 function apriScheda(id) {
@@ -1996,6 +1997,9 @@ function apriScheda(id) {
   $("#sk-head").textContent = (b && b.titolo) || s.dati.titolo || s.titolo || "Scheda";
   $("#sk-stato").textContent = `${STATI_SCHEDA[s.stato]} · compilata ${s.compilata_il ? new Date(s.compilata_il).toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"} da ${s.firma_nome || "—"}${b ? ` · prenotazione del ${fmtShort(b.data)}` : " · non ancora in calendario"}`;
   $("#sk-risposte").innerHTML = risposteHtml(s.dati || {});
+  const controlli = document.getElementById('sk-danza') || document.querySelector('#sk-note').closest('.field').insertAdjacentElement('beforebegin', Object.assign(document.createElement('div'),{id:'sk-danza'}));
+  controlli.innerHTML = s.dati?.tipo === 'danza' && s.dati.danza_versione === 1 ? `<h3>Verifiche della Sala · saggio di danza</h3><p class="hint">Conferma solo quanto verificato e concordato. Questa approvazione non aggiunge date al calendario e non cambia i prezzi.</p>${Object.entries(VERIFICHE_DANZA).filter(([k])=>k!=='minori' || s.dati.danza_minori_n>0).map(([k,l])=>`<label class="check"><input type="checkbox" data-danza-verifica="${k}"${s.danza_verifica?.[k]?' checked':''}> ${esc(l)}</label>`).join('')}` : '';
+
   $("#sk-risposte").querySelectorAll("[data-allegato]").forEach((a) => (a.onclick = async (e) => {
     e.preventDefault();
     const w = window.open("", "_blank");
@@ -2017,6 +2021,7 @@ $("#sk-approva").onclick = async () => {
   const s = S.editingScheda, sic = (dlgSK.querySelector('[name="sk-sic"]:checked') || {}).value;
   if (!sic) { $("#sk-error").innerHTML = `<div class="warn">Indica il parere del responsabile della sicurezza.</div>`; return; }
   if (sic === "non_compatibile") { $("#sk-error").innerHTML = `<div class="warn">Con parere «non compatibile» la scheda non si approva: usa «Chiedi correzioni» o contatta l'organizzatore.</div>`; return; }
+  if (s.dati?.tipo === 'danza' && s.dati.danza_versione !== 1 && s.stato !== 'approvata') { $("#sk-error").textContent = 'La scheda danza è precedente ai nuovi dettagli: chiedi di completarla dal link personale prima di approvare.'; return; }
   if ((siaeStato(s.dati, s) === "da_ricevere" || (s.percorso === "parrocchia" && s.dati.siae === "si")) && S.siaeAvvisato !== s.id) {
     S.siaeAvvisato = s.id;
     $("#sk-error").innerHTML = `<div class="warn">${s.percorso === "parrocchia" ? "È previsto uso di opere protette: verifica la gestione delle autorizzazioni prima di approvare gli incontri gratuiti. Dopo la verifica, premi di nuovo «Approva»." : "Il permesso SIAE non è allegato: è a carico dell’organizzatore e va consegnato prima dell’evento. Se l’avete già ricevuto per email, premi di nuovo «Approva»."}</div>`;
@@ -2026,6 +2031,19 @@ $("#sk-approva").onclick = async () => {
     const button = $("#sk-approva"); button.disabled = true;
     try { await run(sb.rpc("parrocchia_approva", { p_scheda: s.id, p_sicurezza: sic, p_note: $("#sk-note").value.trim(), p_siae_verificata: S.siaeAvvisato === s.id }), "Richiesta approvata: incontri gratuiti creati in calendario"); dlgSK.close(); }
     catch (e) { $("#sk-error").innerHTML = `<div class="warn">${esc(errText(e))}</div>`; }
+    finally { button.disabled = false; }
+    return;
+  }
+  const verificheDanza = Object.fromEntries([...document.querySelectorAll('[data-danza-verifica]')].map(el=>[el.dataset.danzaVerifica, el.checked]));
+  if (s.dati?.tipo === 'danza' && s.dati.danza_versione === 1 && Object.values(verificheDanza).some(v=>!v)) { $("#sk-error").textContent = 'Completa le verifiche della Sala per il saggio di danza.'; return; }
+  if (s.dati?.tipo === 'danza' && s.dati.danza_versione === 1) {
+    const button = $("#sk-approva"); button.disabled = true;
+    try {
+      const {data,error} = await sb.from('schede').update({stato:'approvata',sicurezza:sic,sicurezza_note:$('#sk-note').value.trim(),danza_verifica:verificheDanza,verificata_da:S.me.id,verificata_il:new Date().toISOString()}).eq('id',s.id).eq('aggiornato',s.aggiornato).eq('stato',s.stato).select('id');
+      if (error) throw error;
+      if (data.length !== 1) throw new Error('Le risposte o le verifiche sono cambiate: riapri la scheda e controllale prima di approvare.');
+      toast('Scheda approvata'); dlgSK.close(); await loadAll();
+    } catch(e) { $('#sk-error').textContent = errText(e); }
     finally { button.disabled = false; }
     return;
   }
@@ -3947,6 +3965,7 @@ function renderSerata() {
       ${S.canWrite && !sk && !b.comune && b.prezzo > 0 ? riga("Scheda", '<span class="hint">l\'organizzatore non ha compilato la scheda</span>') : ""}
       ${daIncassare > 0 ? riga("Da incassare", `<b>${money(daIncassare)}</b> su ${money(b.prezzo)}`) : ""}
       ${b.note && S.canWrite ? riga("Note", esc(b.note)) : ""}
+      ${S.canWrite && dd.tipo === 'danza' ? riepilogoDanza(dd, esc) : ''}
       ${turniHtml ? `<h4>Chi è di turno</h4>${turniHtml}` : `<p class="hint">Nessun turno previsto per questo evento.</p>`}
     </article>`;
   }).join("");
@@ -4589,6 +4608,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],
     ["041_importa_collegamenti_gruppi.sql", "Importazione dei collegamenti confermati fra persone e gruppi", undefined, "Eseguire dopo 040 per usare Importa collegamenti in Rubrica"],
     ["040_gruppi_persone.sql", "Gruppi, persone e collegamento alle attività", !S.loadErr2?.gruppi],
     ["038_parrocchia_esigenze.sql", "Dettagli delle attività parrocchiali: spazi, programma e dotazioni", undefined, "Eseguire dopo 037 per validare le richieste dettagliate"],

@@ -728,6 +728,45 @@ Richiede [`041_importa_collegamenti_gruppi.sql`](supabase/041_importa_collegamen
 dopo 040. I CSV con nomi reali restano fuori dal repository e dal sito pubblico;
 la migrazione contiene solo la funzione di importazione e i controlli dei ruoli.
 
+
+### Domande condizionali per saggi di danza
+
+Nella scheda esterna esistente, selezionando **Saggio di danza** fra i tipi di
+evento si apre la sezione specifica. Non occorre un modulo o un token diverso.
+Scegliendo un altro tipo, le domande spariscono e i dati danza nascosti non
+vengono inviati. Le schede parrocchiali mantengono il loro percorso.
+
+La sezione raccoglie stili e svolgimento, ballerini complessivi e contemporanei
+sul palco, minori e fasce d’età, accompagnatori e responsabile adulto, pubblico
+per replica, pavimento/tappeto e calzature, cambi costume e retropalco, basi
+musicali e scaletta, operatore audio, luci e link tecnico facoltativo. Le domande
+su minori, tappeto proprio, cambi costume e basi si aprono solo quando pertinenti.
+Non vengono richiesti elenchi o dati anagrafici dei bambini.
+
+Nelle date ogni riga indica **Prova** oppure **Saggio / replica**. Si possono
+inserire più righe nello stesso giorno con accesso, allestimento, apertura porte,
+inizio, fine e sgombero. Sono controllati ordine degli orari, sovrapposizioni
+fra le righe e capienza del pubblico (338 in platea, 472 con galleria). Spazi,
+posa/disponibilità del tappeto e dotazioni restano richieste da concordare.
+Il salvataggio della scheda non cambia prezzi, prenotazioni o turni e non
+prenota automaticamente prove o repliche aggiuntive.
+
+Le risposte sono visibili nella revisione, nella scheda evento e in **La serata**
+per i ruoli che possono gestire le richieste. Prima dell’approvazione, la Sala
+conferma le verifiche su programma, pavimento, retropalco, tecnica e, se presenti,
+minori, oltre al parere di compatibilità già previsto. Il database controlla
+anche le approvazioni fatte tramite API. Un nuovo invio azzera le verifiche;
+una revisione aperta prima di un cambiamento delle risposte non può approvarle
+senza rileggerle. Nessuna verifica o nota interna è restituita dal link pubblico.
+
+Le bozze vengono mantenute anche dopo un invio finché la versione server non
+cambia. Il link personale mostra il riepilogo danza in sola lettura dopo
+l’approvazione. Le schede già approvate prima dell’aggiornamento restano valide;
+le richieste danza precedenti ancora da approvare devono essere completate
+con i nuovi dettagli dallo stesso link personale.
+
+Richiede [`042_schede_danza.sql`](supabase/042_schede_danza.sql) dopo 041.
+
 ## Diritti
 © 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
 il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.

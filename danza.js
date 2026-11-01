@@ -1,0 +1,47 @@
+// Campi aggiuntivi della scheda esistente, attivi soltanto scegliendo Saggio di danza.
+export const CAMPI_DANZA = [
+ ['danza_stili','Stili e svolgimento del saggio'],['danza_ballerini_n','Ballerini complessivi'],['palco_n','Massimo di ballerini contemporaneamente sul palco'],['danza_minori_n','Ballerini minorenni'],
+ ['danza_eta','Fasce d’età dei minori'],['danza_accompagnatori_n','Accompagnatori e addetti al seguito'],['danza_responsabile_minori','Responsabile dei minori'],['danza_responsabile_cell','Cellulare del responsabile dei minori'],
+ ['danza_pubblico_n','Spettatori attesi per replica'],['danza_pavimento','Pavimento o tappeto richiesto'],['danza_calzature','Calzature e uso del pavimento'],['danza_tappeto_note','Tappeto proprio: dimensioni e posa'],
+ ['danza_cambi','Spazi per cambi costume'],['danza_cambi_note','Esigenze per i cambi costume'],['danza_retro_n','Persone contemporaneamente nel retropalco'],
+ ['danza_musica','Musica'],['danza_audio_supporto','Basi musicali, formato e scaletta'],['danza_audio_responsabile','Responsabile della riproduzione o gestione audio'],['danza_audio_cell','Cellulare del responsabile audio'],['danza_luci','Esigenze luci e cambi di scena'],['danza_link_tecnico','Link a scaletta o scheda tecnica'],
+];
+const valori={sala:'Pavimento esistente, da verificare',tappeto_sala:'Tappeto della Sala richiesto, da concordare',tappeto_proprio:'Tappeto proprio, posa da concordare',si:'Sì, richiesti',no:'Non richiesti',registrata:'Basi registrate',vivo:'Musica dal vivo',mista:'Musica dal vivo e basi'};
+export const VERIFICHE_DANZA={programma:'Date di prove e repliche, occupazione e pubblico verificati; eventuali date aggiuntive concordate in calendario',pavimento:'Pavimento, calzature e richiesta di tappeto verificati e concordati',retropalco:'Spazi per cambi costume, retropalco e accessi concordati',tecnica:'Audio, luci, scaletta e responsabili tecnici verificati',minori:'Responsabile, accompagnatori e gestione dei minori verificati'};
+export function sezioneDanza(d,{campo,scelta,esc}){
+ const numero=(k,l,min,max=1000)=>campo(k,l,d[k],`type="number" min="${min}" max="${max}" step="1"`,true);
+ const testo=(k,l,obb=true)=>`<div class="campo full"><label for="f-${k}"${obb?' class="obbl"':''}>${l}</label><textarea id="f-${k}" name="${k}" maxlength="4000">${esc(d[k])}</textarea></div>`;
+ const scegli=(k,l,options)=>`<div class="campo full"><span class="lbl obbl">${l}</span>${scelta(k,options,d[k])}</div>`;
+ return `<section class="sez cond" data-se="tipo=danza" id="danza-dettagli" hidden><h2>Saggio di danza · organizzazione e necessità</h2><p class="hint">Compilate queste informazioni per il saggio e le eventuali prove. Non servono nomi, date di nascita o elenchi dei bambini. Spazi, tappeto e attrezzature sono richieste da concordare con la Sala.</p>
+ <h3>Ballerini, pubblico e accompagnatori</h3><div class="griglia">${testo('danza_stili','Stili di danza e svolgimento (gruppi, esibizioni, cambi)')}${numero('danza_ballerini_n','Ballerini complessivi',1)}${numero('danza_minori_n','Di cui minorenni',0)}${numero('danza_accompagnatori_n','Accompagnatori e addetti al seguito, esclusi i ballerini',0,200)}${numero('danza_pubblico_n','Pubblico atteso per replica (0 se senza pubblico)',0,472)}<p class="hint full">Indicate anche il massimo di persone contemporaneamente sul palco nel campo «Persone sul palco» qui sopra. Per più repliche indicate il pubblico di una singola replica.</p></div>
+ <div class="griglia cond" data-se-minori hidden>${campo('danza_eta','Fasce d’età dei ballerini minorenni',d.danza_eta,'maxlength="200"',true,'full')}${campo('danza_responsabile_minori','Adulto responsabile dei minori',d.danza_responsabile_minori,'maxlength="120"',true)}${campo('danza_responsabile_cell','Suo cellulare',d.danza_responsabile_cell,'type="tel" maxlength="60"',true)}</div>
+ <h3>Pavimento, cambi costume e retropalco</h3><div class="griglia">${scegli('danza_pavimento','Quale pavimento o tappeto vi serve?',Object.entries(valori).filter(([k])=>['sala','tappeto_sala','tappeto_proprio'].includes(k)))}${testo('danza_calzature','Calzature e uso del pavimento (punte, scarpe, piedi nudi, particolari necessità)')}<div class="cond full" data-se="danza_pavimento=tappeto_proprio">${testo('danza_tappeto_note','Dimensioni, materiale e modalità di posa del tappeto proprio')}</div>${scegli('danza_cambi','Vi servono spazi per cambi costume?',[['si','sì, da concordare'],['no','no']])}<div class="cond full" data-se="danza_cambi=si">${testo('danza_cambi_note','Quante persone cambiano insieme, quando e con quali esigenze di riservatezza?')}</div>${numero('danza_retro_n','Persone contemporaneamente nel retropalco, accompagnatori inclusi',0,1200)}<p class="hint full">Non sono garantiti camerini o spazi esclusivi. Collocazione, accessi, posa del tappeto e disponibilità delle dotazioni devono essere concordati con la Sala.</p></div>
+ <h3>Musica, scaletta e luci</h3><div class="griglia">${scegli('danza_musica','Musica per il saggio',[['registrata','basi registrate'],['vivo','dal vivo'],['mista','dal vivo e basi']])}<div class="cond full" data-se-in="danza_musica=registrata,mista">${testo('danza_audio_supporto','Come consegnerete basi e scaletta? Indicate formato, dispositivo e ordine dei brani')}</div>${campo('danza_audio_responsabile','Chi gestisce la riproduzione o l’audio?',d.danza_audio_responsabile,'maxlength="120"',true)}${campo('danza_audio_cell','Suo cellulare',d.danza_audio_cell,'type="tel" maxlength="60"',true)}${testo('danza_luci','Luci richieste: luce fissa, cambi per le coreografie, eventuali segnali in scaletta')}${campo('danza_link_tecnico','Link a scaletta o scheda tecnica (facoltativo)',d.danza_link_tecnico,'type="url" maxlength="1000"',false,'full')}</div>
+ <label class="accetta"><input type="checkbox" name="danza_conferma"${d.danza_conferma?' checked':''}><span class="obbl">So che spazi, pavimento/tappeto, attrezzature, prove e repliche vanno verificati e concordati con la Sala.</span></label></section>`;
+}
+export function erroriDanza(d){
+ if(d.tipo!=='danza')return [];
+ const e=[],richiedi=(ok,k,msg)=>{if(!ok)e.push({campo:k,msg});};
+ for(const [k,label] of [['danza_stili','stili e svolgimento'],['danza_calzature','calzature e uso del pavimento'],['danza_audio_responsabile','responsabile audio'],['danza_audio_cell','cellulare del responsabile audio'],['danza_luci','esigenze luci']])richiedi(String(d[k] || '').trim().length>=(k.endsWith('_cell')?6:3),k,label);
+ for(const [k,min,max] of [['danza_ballerini_n',1,1000],['danza_minori_n',0,Number(d.danza_ballerini_n)],['danza_accompagnatori_n',0,200],['danza_pubblico_n',0,d.fascia==='tutta'?472:338],['danza_retro_n',0,1200],['palco_n',1,Number(d.danza_ballerini_n)]])richiedi(Number.isInteger(d[k]) && d[k]>=min && d[k]<=max,k,`quantità valida: ${CAMPI_DANZA.find(c=>c[0]===k)?.[1] || 'persone sul palco'}`);
+ richiedi(['sala','tappeto_sala','tappeto_proprio'].includes(d.danza_pavimento),'danza_pavimento','scelta del pavimento/tappeto');
+ richiedi(['si','no'].includes(d.danza_cambi),'danza_cambi','risposta sui cambi costume');
+ richiedi(['registrata','vivo','mista'].includes(d.danza_musica),'danza_musica','tipo di musica');
+ const condizionali=[];
+ if(d.danza_pavimento==='tappeto_proprio')condizionali.push(['danza_tappeto_note','dettagli del tappeto proprio']);
+ if(d.danza_cambi==='si')condizionali.push(['danza_cambi_note','esigenze dei cambi costume']);
+ if(['registrata','mista'].includes(d.danza_musica))condizionali.push(['danza_audio_supporto','consegna di basi e scaletta']);
+ if(d.danza_minori_n>0){condizionali.push(['danza_eta','fasce d’età'],['danza_responsabile_minori','responsabile dei minori'],['danza_responsabile_cell','cellulare del responsabile dei minori']);richiedi(d.danza_accompagnatori_n>=1,'danza_accompagnatori_n','almeno un adulto al seguito dei minori');}
+ for(const [k,l] of condizionali)richiedi(String(d[k] || '').trim().length>=(k.endsWith('_cell')?6:3),k,l);
+ richiedi(d.danza_conferma===true,'danza_conferma','conferma delle esigenze da concordare');
+ if(d.danza_link_tecnico){try{richiedi(['http:','https:'].includes(new URL(d.danza_link_tecnico).protocol),'danza_link_tecnico','link tecnico http o https');}catch{richiedi(false,'danza_link_tecnico','link tecnico valido');}}
+ for(const o of d.orari || [])richiedi(o.data && o.inizio && o.fine && o.fine>o.inizio && ['prove','saggio'].includes(o.utilizzo),'orari','date e orari completi di ogni prova o replica');
+ return e;
+}
+export function riepilogoDanza(d,esc){
+ if(d.tipo!=='danza')return '';
+ if(d.danza_versione!==1)return '<p class="hint">Scheda danza precedente: i dettagli specifici non sono ancora stati raccolti.</p>';
+ const righe=CAMPI_DANZA.filter(([k])=>d[k]!==undefined && d[k]!=='').map(([k,l])=>`<dt>${l}</dt><dd>${esc(valori[d[k]] || d[k])}</dd>`).join('');
+ const orari=(d.orari || []).map(o=>`<li>${esc(o.utilizzo==='prove'?'Prova':'Saggio / replica')} · ${esc(o.data)} · ${esc(o.inizio)}–${esc(o.fine)}${o.all_da?' · accesso/allestimento '+esc(o.all_da):''}${o.sgombero?' · sgombero '+esc(o.sgombero):''}</li>`).join('');
+ return `<section class="danza-riepilogo"><h3>Saggio di danza · esigenze dichiarate</h3><dl class="evento-info">${righe}</dl><h4>Prove e repliche richieste</h4><ul>${orari}</ul><p class="hint">Sono richieste da verificare. Le date aggiuntive e la disponibilità di spazi, tappeto e dotazioni vanno concordate con la Sala.</p></section>`;
+}

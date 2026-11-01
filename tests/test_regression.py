@@ -1227,5 +1227,168 @@ class Regression(unittest.TestCase):
         self.assertEqual(sum(r['nome']==g['nome'] for r in ok(api('/rest/v1/gruppi',service=True))),0)
 
 
+    def dance_request(self):
+        b=self.booking()
+        s=ok(api('/rest/v1/schede','POST',{'booking_id':b['id'],'titolo':'Saggio scuola danza','stato':'inviata'},token=self.users['admin']['token']))[0]
+        self.parish_ids.append(s['id'])
+        d={'ente':'Scuola danza test','referente':'Referente danza','cellulare':'3331234567','titolo':'Saggio scuola danza','tipo':'danza','fascia':'platea','palco_n':10,
+           'danza_versione':1,'danza_stili':'Danza classica e contemporanea','danza_ballerini_n':30,'danza_minori_n':20,'danza_eta':'8–17 anni','danza_accompagnatori_n':5,
+           'danza_responsabile_minori':'Insegnante responsabile','danza_responsabile_cell':'3337654321','danza_pubblico_n':200,'danza_pavimento':'tappeto_sala','danza_calzature':'Mezze punte e piedi nudi',
+           'danza_cambi':'si','danza_cambi_note':'Due gruppi di dieci ballerini con accompagnatori','danza_retro_n':8,'danza_musica':'registrata','danza_audio_supporto':'File WAV su USB con scaletta numerata',
+           'danza_audio_responsabile':'Operatore audio test','danza_audio_cell':'3339876543','danza_luci':'Luce fissa e cambi tra coreografie','danza_conferma':True,
+           'siae':'no','ok_regole':True,'ok_dichiarazione':True,'ok_privacy':True,'firma':'Referente danza',
+           'orari':[{'data':DAY,'utilizzo':'prove','inizio':'10:00','fine':'12:00','all_da':'09:00','all_a':'09:30','porte':'','sgombero':'12:30'},
+                    {'data':DAY,'utilizzo':'saggio','inizio':'18:00','fine':'20:00','all_da':'16:00','all_a':'17:00','porte':'17:30','sgombero':'21:00'}]}
+        return b,s,d
+
+    def send_dance(self,s,d):
+        return rpc('scheda_invia',{'p_token':s['token'],'p_dati':d,'p_firma':d.get('firma','Referente danza')})
+
+    def test_dance_conditional_form_draft_review_and_approved_summary(self):
+        b,s,d=self.dance_request()
+        page=self.context.new_page()
+        page.goto('http://127.0.0.1:8765/modulo/compila.html?t='+s['token'])
+        expect(page.locator('#scheda')).to_be_visible()
+        expect(page.locator('#danza-dettagli')).not_to_be_visible()
+        page.get_by_role('radio',name='Saggio di danza',exact=True).check()
+        expect(page.locator('#danza-dettagli')).to_be_visible()
+        expect(page.locator('#modulo-percorso')).to_contain_text('Saggio di danza')
+        for k,v in d.items():
+            if k in ('tipo','fascia','orari','danza_versione'):continue
+            fields=page.locator('[name="'+k+'"]')
+            if fields.count()==0:continue
+            kind=fields.first.get_attribute('type')
+            if kind=='radio':page.locator('[name="'+k+'"][value="'+str(v)+'"]').check()
+            elif kind=='checkbox':fields.check()
+            else:fields.fill(str(v))
+        first=page.locator('.riga-orari').first
+        first.locator('[name=o_utilizzo]').select_option('prove')
+        for k,v in d['orari'][0].items():
+            if k!='utilizzo':first.locator('[name="o_'+k+'"]').fill(v)
+        page.get_by_role('button',name='+ Aggiungi una prova o una replica',exact=True).click()
+        second=page.locator('.riga-orari').nth(1)
+        for k,v in d['orari'][1].items():
+            if k!='utilizzo':second.locator('[name="o_'+k+'"]').fill(v)
+        page.reload()
+        expect(page.locator('#danza-dettagli')).to_be_visible()
+        expect(page.locator('[name=danza_responsabile_minori]')).to_have_value(d['danza_responsabile_minori'])
+        expect(page.locator('[name=danza_cambi_note]')).to_have_value(d['danza_cambi_note'])
+        page.set_viewport_size({'width':390,'height':844})
+        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth-innerWidth'),1)
+        page.locator('#btn-invia').click()
+        expect(page.get_by_role('heading',name='Grazie, scheda inviata!',exact=True)).to_be_visible()
+        saved=ok(api('/rest/v1/schede?id=eq.'+s['id'],service=True))[0]
+        self.assertEqual(saved['dati']['danza_minori_n'],20)
+        self.assertEqual([o['utilizzo'] for o in saved['dati']['orari']],['prove','saggio'])
+        page.reload()
+        expect(page.locator('[name=danza_luci]')).to_have_value(d['danza_luci'])
+        page.locator('[name=danza_luci]').fill('Luce uniforme concordata e cambio finale')
+        page.reload()
+        expect(page.locator('[name=danza_luci]')).to_have_value('Luce uniforme concordata e cambio finale')
+        page.locator('#btn-invia').click()
+        expect(page.get_by_role('heading',name='Grazie, scheda inviata!',exact=True)).to_be_visible()
+        staff=self.login()
+        staff.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+        expect(staff.locator('#evento-programma')).to_contain_text('Due gruppi di dieci ballerini')
+        staff.locator('[data-event-action=document]').first.click()
+        staff.locator('[name=sk-sic][value=compatibile]').check()
+        staff.locator('#sk-note').fill('Nota interna danza riservata')
+        staff.locator('#sk-approva').click()
+        expect(staff.locator('#sk-error')).to_contain_text('Completa le verifiche')
+        for check in staff.locator('[data-danza-verifica]').all():check.check()
+        staff.locator('#sk-approva').click()
+        expect(staff.locator('#dlg-scheda')).not_to_be_visible()
+        page.reload()
+        expect(page.get_by_role('heading',name='Scheda danza approvata',exact=True)).to_be_visible()
+        expect(page.locator('.danza-riepilogo')).to_contain_text('Luce uniforme concordata')
+        expect(page.locator('body')).not_to_contain_text('Nota interna danza riservata')
+        expect(page.locator('#scheda')).to_have_count(0)
+        public=ok(rpc('scheda_apri',{'p_token':s['token']}))
+        self.assertNotIn('danza_verifica',public)
+        self.assertNotIn('sicurezza_note',public)
+        current=ok(api('/rest/v1/bookings?id=eq.'+b['id'],service=True))[0]
+        self.assertEqual((current['prezzo'],current['inizio'],current['fine']),(500,'18:00:00','22:00:00'))
+        self.assertEqual(len(ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.'+s['id'],service=True))),0)
+
+    def test_dance_server_checks_conditional_fields_times_and_capacity(self):
+        b,s,d=self.dance_request()
+        ok(api('/rest/v1/schede?id=eq.'+s['id'],'PATCH',{'dati':{'tipo':'danza'},'stato':'aperta'},token=self.users['admin']['token']))
+        self.assertGreaterEqual(api('/rest/v1/schede?id=eq.'+s['id'],'PATCH',{'stato':'approvata','sicurezza':'compatibile'},token=self.users['admin']['token'])[0],400)
+
+        changes=[{'danza_versione':'1'},{'danza_minori_n':31},{'palco_n':31},{'danza_pubblico_n':339},
+                 {'danza_accompagnatori_n':0},{'danza_responsabile_cell':''},{'danza_pavimento':'tappeto_proprio','danza_tappeto_note':''},
+                 {'danza_cambi_note':''},{'danza_audio_supporto':''},{'danza_link_tecnico':'javascript:alert(1)'},{'danza_conferma':False},{'ok_regole':False}]
+        for change in changes:
+            with self.subTest(change=change):self.assertGreaterEqual(self.send_dance(s,{**d,**change})[0],400)
+        for key,value in [('fine','09:00'),('sgombero','11:00'),('all_a','13:00')]:
+            rows=[{**d['orari'][0],key:value},d['orari'][1]]
+            self.assertGreaterEqual(self.send_dance(s,{**d,'orari':rows})[0],400)
+        rows=[{**d['orari'][0],'sgombero':'18:00'},d['orari'][1]]
+        self.assertGreaterEqual(self.send_dance(s,{**d,'orari':rows})[0],400)
+        ok(self.send_dance(s,{**d,'fascia':'tutta','danza_pubblico_n':472}))
+        self.assertEqual(ok(api('/rest/v1/schede?id=eq.'+s['id'],service=True))[0]['stato'],'compilata')
+
+    def test_dance_approval_is_staff_checked_and_resubmission_clears_checks(self):
+        _,s,d=self.dance_request()
+        ok(self.send_dance(s,d))
+        staff=self.users['admin']['token']
+        checks={k:True for k in ('programma','pavimento','retropalco','tecnica','minori')}
+        target='/rest/v1/schede?id=eq.'+s['id']
+        self.assertGreaterEqual(api(target,'PATCH',{'stato':'approvata','sicurezza':'compatibile'},token=staff)[0],400)
+        self.assertGreaterEqual(api(target,'PATCH',{'stato':'approvata','sicurezza':'compatibile','danza_verifica':{**checks,'minori':False}},token=staff)[0],400)
+        ok(api(target,'PATCH',{'danza_verifica':checks},token=staff))
+        ok(self.send_dance(s,{**d,'danza_luci':'Nuova scaletta con cambi luce'}))
+        self.assertEqual(ok(api(target,service=True))[0]['danza_verifica'],{})
+        self.assertGreaterEqual(api(target,'PATCH',{'stato':'approvata','sicurezza':'non_compatibile','danza_verifica':checks},token=staff)[0],400)
+        ok(api(target,'PATCH',{'stato':'approvata','sicurezza':'condizioni','danza_verifica':checks},token=staff))
+        self.assertGreaterEqual(self.send_dance(s,d)[0],400)
+
+    def test_dance_questions_disappear_and_other_requests_still_work(self):
+        _,s,d=self.dance_request()
+        page=self.context.new_page()
+        page.goto('http://127.0.0.1:8765/modulo/compila.html?t='+s['token'])
+        page.get_by_role('radio',name='Saggio di danza',exact=True).check()
+        page.locator('[name=danza_stili]').fill('Informazione danza da non inviare')
+        page.get_by_role('radio',name='conferenza / incontro',exact=True).check()
+        expect(page.locator('#danza-dettagli')).not_to_be_visible()
+        for k in ('ente','referente','cellulare','titolo','firma'):page.locator('[name='+k+']').fill(d[k])
+        page.locator('[name=fascia][value=galleria]').check()
+        page.locator('[name=siae][value=no]').check()
+        for k in ('ok_regole','ok_dichiarazione','ok_privacy'):page.locator('[name='+k+']').check()
+        page.locator('#btn-invia').click()
+        expect(page.get_by_role('heading',name='Grazie, scheda inviata!',exact=True)).to_be_visible()
+        data=ok(api('/rest/v1/schede?id=eq.'+s['id'],service=True))[0]['dati']
+        self.assertEqual(data['tipo'],'conferenza')
+        self.assertFalse(any(k.startswith('danza_') for k in data))
+        self.assertNotIn('utilizzo',data['orari'][0])
+
+    def test_dance_details_are_private_for_volunteers(self):
+        b,s,d=self.dance_request()
+        ok(self.send_dance(s,d))
+        page=self.login('volontario')
+        page.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+        expect(page.locator('#evento-titolo')).to_be_visible()
+        expect(page.locator('.danza-riepilogo')).to_have_count(0)
+        expect(page.locator('body')).not_to_contain_text(d['danza_responsabile_minori'])
+        self.assertEqual(ok(api('/rest/v1/schede?id=eq.'+s['id'],token=self.users['volontario']['token'])),[])
+
+
+
+    def test_dance_stale_review_does_not_approve_changed_answers(self):
+        b,s,d=self.dance_request()
+        ok(self.send_dance(s,d))
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#evento/'+b['id'])
+        page.locator('[data-event-action=document]').first.click()
+        page.locator('[name=sk-sic][value=compatibile]').check()
+        for check in page.locator('[data-danza-verifica]').all():check.check()
+        ok(self.send_dance(s,{**d,'danza_luci':'Scaletta modificata mentre la Sala verifica'}))
+        page.locator('#sk-approva').click()
+        expect(page.locator('#sk-error')).to_contain_text('cambiate')
+        saved=ok(api('/rest/v1/schede?id=eq.'+s['id'],service=True))[0]
+        self.assertEqual(saved['stato'],'compilata')
+        self.assertEqual(saved['danza_verifica'],{})
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
