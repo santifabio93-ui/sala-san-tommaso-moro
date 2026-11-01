@@ -132,3 +132,12 @@ permessi, pagine rimaste indietro, preparazione rimossa in cascata e conservazio
 degli incassi. Le importazioni reali tramite RPC locali confermano che gli eventi
 Google restino annullati nell’app e le repliche Cinebot eliminate non ricompaiano,
 conservando film e altri orari. Non vengono chiamati Google o Cinebot reali.
+
+### Semaforo economico
+
+`test_semaforo_economico.mjs`, eseguito anche dalla suite Python, verifica soglie,
+centesimi, periodi e dati assenti o non validi. I test browser verificano i tre
+colori sui movimenti reali del Supabase locale, stampa, vista mobile, permessi e
+aggregati del Parroco. Un caso con 1001 movimenti controlla che un costo oltre la
+prima pagina venga conteggiato e non produca un falso verde. Per salvare la
+scheda mobile impostare `SALA_ECONOMIC_SCREENSHOT` a un percorso locale.

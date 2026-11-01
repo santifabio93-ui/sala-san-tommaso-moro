@@ -80,7 +80,7 @@ class Regression(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.users = {}
-        for role in ('admin', 'coordinatore', 'volontario', 'in_attesa', 'bloccato', 'segreteria'):
+        for role in ('admin', 'coordinatore', 'volontario', 'in_attesa', 'bloccato', 'segreteria', 'parroco'):
             email = f'{role}-{uuid4().hex[:8]}@example.test'
             user = ok(api('/auth/v1/admin/users', 'POST', {
                 'email': email, 'password': PASSWORD, 'email_confirm': True,
@@ -108,6 +108,8 @@ class Regression(unittest.TestCase):
             ok(api('/auth/v1/admin/users/' + user['id'], 'DELETE', service=True))
 
     def setUp(self):
+        self.prima_nota_ids = []
+        self.prima_nota_batches = []
         self.booking_ids = []
         self.volunteer_ids = []
         self.expense_ids = []
@@ -130,6 +132,10 @@ class Regression(unittest.TestCase):
 
     def tearDown(self):
         self.context.close()
+        for batch in self.prima_nota_batches:
+            ok(api('/rest/v1/prima_nota?file_nome=eq.'+batch,'DELETE',service=True))
+        for pid in self.prima_nota_ids:
+            ok(api('/rest/v1/prima_nota?id=eq.'+pid,'DELETE',service=True))
         for sid in self.parish_ids:
             ok(api('/rest/v1/bookings?scheda_parrocchia_id=eq.' + sid, 'DELETE', service=True))
             ok(api('/rest/v1/schede?id=eq.' + sid, 'DELETE', service=True))
@@ -224,6 +230,7 @@ class Regression(unittest.TestCase):
         page = self.context.new_page()
         page.goto('http://127.0.0.1:8765/modulo/turni.html?t=' + a['token'])
         page.locator('[data-si="1"]').first.click()
+        expect(page.get_by_text('Grazie, sei in turno!',exact=False)).to_be_visible()
         expect(page.locator('[data-cambio]')).to_be_visible()
         page.locator('[data-cambio]').click()
         expect(page.get_by_text('Cambio chiesto', exact=False).first).to_be_visible()
@@ -1825,6 +1832,84 @@ class Regression(unittest.TestCase):
         self.assertEqual((saved['proiezione_id'],saved['titolo'],saved['contanti_euro']),(None,'Incasso conservato',70))
         self.assertEqual(ok(api('/rest/v1/proiezioni_escluse',token=self.users['volontario']['token'])),[])
 
+
+    def economic_rows(self):
+        year=date.today().year
+        rows=ok(api('/rest/v1/prima_nota','POST',[
+            {'anno':year,'data':f'{year}-01-15','entrate':1100,'uscite':0,'descrizione':'Entrata riservata di prova'},
+            {'anno':year,'data':f'{year}-01-15','entrate':0,'uscite':1000,'descrizione':'Costo riservato di prova'}],service=True))
+        self.prima_nota_ids.extend(r['id'] for r in rows)
+        return rows
+
+    def test_economic_traffic_light_rules(self):
+        subprocess.run(['node',str(ROOT/'tests/test_semaforo_economico.mjs')],check=True,capture_output=True,text=True)
+
+    def test_economic_traffic_light_browser_colours_periods_and_print(self):
+        rows=self.economic_rows()
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#bilancio')
+        card=page.locator('#pn-body [data-semaforo-economico]')
+        expect(card).to_have_attribute('data-semaforo-economico','verde')
+        expect(card).to_contain_text('100')
+        for income,colour in [(1050,'giallo'),(999.99,'rosso')]:
+            ok(api('/rest/v1/prima_nota?id=eq.'+rows[0]['id'],'PATCH',{'entrate':income},service=True))
+            page.reload()
+            expect(card).to_have_attribute('data-semaforo-economico',colour)
+        page.set_viewport_size({'width':390,'height':844})
+        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth-innerWidth'),1)
+        card.get_by_text('Come viene calcolato',exact=True).click()
+        expect(card).to_contain_text('5% delle uscite')
+        if os.environ.get('SALA_ECONOMIC_SCREENSHOT'):
+            page.locator('#sipario').wait_for(state='detached',timeout=10000)
+            card.screenshot(path=os.environ['SALA_ECONOMIC_SCREENSHOT'])
+        page.goto('http://127.0.0.1:8765/#resoconto')
+        expect(page.locator('#reso-body [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','rosso')
+        with page.expect_popup() as popup:
+            page.locator('#reso-stampa').click()
+        printed=popup.value
+        expect(printed.locator('[data-semaforo-economico]')).to_contain_text('Rosso')
+        expect(printed.locator('[data-semaforo-economico]')).to_contain_text('5% delle uscite')
+        page.evaluate("document.querySelector('#economia-semaforo').remove()")
+        page.goto('http://127.0.0.1:8765/#economia')
+        expect(page.locator('#economia-semaforo [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','rosso')
+
+    def test_economic_traffic_light_uses_more_than_1000_movements(self):
+        year=date.today().year
+        batch='semaforo-pagination-'+uuid4().hex
+        self.prima_nota_batches.append(batch)
+        rows=[{'anno':year,'data':f'{year}-01-01','n':i,'entrate':1,'uscite':0,'file_nome':batch} for i in range(1,1001)]
+        rows.append({'anno':year,'data':f'{year}-01-02','n':1001,'entrate':0,'uscite':1200,'file_nome':batch})
+        ok(api('/rest/v1/prima_nota','POST',rows,service=True))
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#bilancio')
+        card=page.locator('#pn-body [data-semaforo-economico]')
+        expect(card).to_have_attribute('data-semaforo-economico','rosso')
+        expect(card).to_contain_text('-200')
+
+    def test_economic_traffic_light_missing_data_and_permissions(self):
+        page=self.login()
+        page.goto('http://127.0.0.1:8765/#bilancio')
+        expect(page.locator('#pn-body [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','ignoto')
+        self.economic_rows()
+        self.context.route('**/rest/v1/prima_nota*',lambda route:route.fulfill(status=400,content_type='application/json',body='{"message":"Dati temporaneamente non disponibili"}'))
+        page.reload()
+        expect(page.locator('#pn-body [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','ignoto')
+        page.locator('#app [data-logout]').click()
+        volunteer=self.login('volontario')
+        expect(volunteer.locator('[data-semaforo-economico]')).to_have_count(0)
+        self.assertEqual(ok(api('/rest/v1/prima_nota',token=self.users['volontario']['token'])),[])
+
+    def test_economic_traffic_light_parroco_only_monthly_totals(self):
+        self.economic_rows()
+        data=ok(api('/rest/v1/rpc/parroco_dati','POST',{},token=self.users['parroco']['token']))
+        self.assertTrue(data['conti'])
+        self.assertTrue(all(set(r)=={'anno','mese','entrate','uscite'} for r in data['conti']))
+        self.assertEqual(ok(api('/rest/v1/prima_nota',token=self.users['parroco']['token'])),[])
+        page=self.login('parroco')
+        expect(page.locator('#breve-body [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','verde')
+        expect(page.locator('#breve-body')).not_to_contain_text('Entrata riservata di prova')
+        page.goto('http://127.0.0.1:8765/#resoconto')
+        expect(page.locator('#reso-body [data-semaforo-economico]')).to_have_attribute('data-semaforo-economico','verde')
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

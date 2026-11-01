@@ -307,3 +307,25 @@ Controllate anche sintassi JavaScript, compressione Terser e differenze Git.
 
 Per attivare online, eseguire 045 dopo 044 e integrare `feat/elimina-eventi-oggi`.
 Nessuna modifica al database reale e nessuna pubblicazione eseguita.
+
+## Semaforo economico — versione 2026-11-01.95
+
+Verificati cinque scenari dedicati: soglie e centesimi, tre colori nel browser,
+assenza/errori di lettura e permessi, aggregati del Parroco e prima nota con
+1001 movimenti. Tutti superati. Le righe datate in un altro anno seguono l’anno
+di competenza; il resoconto applica anche la fine del mese selezionato.
+Controllati stampa, mobile a 390 px e HTML precedente conservato dal browser.
+
+Suite completa: 60 scenari eseguiti, 59 superati al primo giro. Il test
+preesistente del cambio turno pubblico ha chiesto il cambio prima della conferma
+dell’iscrizione: la pagina rende il nuovo turno visibile in modo ottimistico.
+Il test ora attende la conferma dell’iscrizione prima del cambio, senza modifiche
+all’app dei turni. La ripetizione dei cinque scenari economici e di quel caso ha
+superato 6/6 controlli; il singolo cambio turno con l’attesa esplicita e il caso
+browser finale di stampa/cache sono stati verificati nuovamente con esito positivo.
+
+Controllate sintassi, compressione Terser e differenze Git. I dati contabili di
+prova sono stati creati e rimossi soltanto nel Supabase locale dedicato.
+Nessun nuovo script SQL per il semaforo, nessuna modifica alla contabilità reale
+e nessuna pubblicazione. Il ramo conserva anche il precedente lavoro Elimina,
+che richiede l’aggiornamento 045 già documentato.

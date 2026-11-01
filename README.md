@@ -868,3 +868,26 @@ e inclusa nel backup, così Cinebot non le reimporta. La rimozione riguarda l’
 non modifica la vendita o la programmazione sul sito Cinebot.
 Casse e schede collegate restano archiviate. Una modifica dell’evento intervenuta
 nel frattempo blocca l’eliminazione e richiede di aggiornare la pagina.
+
+### Semaforo della situazione economica
+
+La versione 2026-11-01.95 mostra il semaforo in **Bilancio**, **Spese e tariffe**,
+**Resoconto** e nella pagina **In breve** del Parroco. Usa esclusivamente la prima
+nota: entrate meno uscite dell’anno di competenza selezionato, anche quando
+la registrazione ha una data in un altro anno. Nel resoconto considera i movimenti
+fino alla fine del mese scelto. Il criterio resta la competenza anche selezionando
+«Tutti i movimenti» nel bilancio.
+Comprende anche i movimenti previsti registrati nel periodo, come i totali
+contabili: non rappresenta la liquidità disponibile sul conto corrente.
+
+- **Rosso:** risultato negativo.
+- **Giallo:** dal pareggio fino a un avanzo pari al 5% delle uscite, incluso.
+- **Verde:** avanzo superiore al 5% delle uscite.
+
+La scheda mostra risultato, entrate, uscite e la spiegazione delle soglie.
+Senza movimenti o con un errore di lettura mostra **Da verificare**, senza
+accendere alcuna luce. Il calcolo usa i centesimi e legge la prima nota a pagine,
+così supera il limite di mille righe per richiesta senza troncare i totali.
+Restano invariati i permessi: amministratore e Parroco vedono il semaforo;
+il Parroco riceve soltanto gli aggregati mensili già previsti, senza movimenti
+individuali. Il semaforo non richiede nuovi script SQL.
