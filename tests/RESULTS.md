@@ -1,5 +1,30 @@
 # Esiti della validazione
 
+## Eventi della Sala e sezioni per l’ospite: 28 test superati
+
+Suite completa su Supabase locale reale e Chromium: OK, 28 test in circa
+75 secondi. Database ricostruito da zero da 39 file SQL; migrazione 039
+rieseguita con successo per controllarne anche l’idempotenza.
+
+Verificati il salvataggio di una conferenza senza campi teatrali, la selezione
+delle sezioni delegate, la compilazione pubblica di audio e palco, la revisione
+della Sala e il riepilogo operativo nella serata. Una risposta successiva annulla
+la precedente conferma. Cambi di orario richiedono nuova verifica; annullamento
+e cambio di incarico revocano i link precedenti. I controlli di revisione
+impediscono le sovrascritture di dati cambiati nel frattempo.
+
+Le API pubbliche restituiscono soltanto titolo, data/orari, tipo, sezioni e
+risposte dell’ospite: nessuna nota interna o informazione economica. Testati
+rifiuto di campi non assegnati, permessi dei ruoli, quantità e link tecnici
+non validi, bozza incompleta e conferma prematura. Controllati il trasferimento
+esplicito dei soli testi autorizzati al dialogo social, senza salvataggio
+automatico, e la presenza dei nuovi dati nel backup JSON.
+
+Moduli interno e ospite verificati a 390 px senza scorrimento orizzontale.
+Sintassi e compressione con Terser 5.49.2 superate per i quattro moduli coinvolti.
+Nessuna modifica al database reale e nessuna pubblicazione; per l’attivazione
+applicare 039 dopo le migrazioni precedenti, prima della pubblicazione dell’app.
+
 ## Link personali e riepilogo approvato: 24 test superati
 
 Riprodotto il percorso che, dopo l’approvazione, mostrava solo conferma e date:

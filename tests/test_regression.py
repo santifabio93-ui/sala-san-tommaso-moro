@@ -761,6 +761,180 @@ class Regression(unittest.TestCase):
         self.assertEqual(row['prezzo'], 500)
         self.assertEqual(len(ok(api('/rest/v1/bookings?id=eq.' + b['id'], token=self.users['coordinatore']['token']))), 1)
 
+    def sala_evento(self, tipo='conferenza', sezioni=None, tecnica=None):
+        b = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'della_sala': True}, token=self.users['admin']['token']))
+        body = {'p_booking': b['id'], 'p_tipo': tipo, 'p_interni': {
+            'referente_interno': 'Referente interno', 'ospite_nome': 'Ospite di prova',
+            'ospite_contatto': '3331234567', 'programma': 'Presentazione e dialogo con il pubblico',
+            'durata_minuti': '90', 'pubblico_n': '100', 'note_interne': 'ACCORDO RISERVATO 98765',
+            'descrizione_pubblica': 'Una serata aperta a tutti', 'autorizza_promozione': True},
+            'p_tecnica': tecnica or {}, 'p_sezioni': sezioni or [], 'p_revisione': None}
+        r = ok(api('/rest/v1/rpc/evento_sala_salva', 'POST', body, token=self.users['admin']['token']))
+        return b, r, body
+
+    def test_sala_conference_internal_browser_and_confirmation(self):
+        b = self.booking()
+        ok(api('/rest/v1/bookings?id=eq.' + b['id'], 'PATCH', {'della_sala': True}, service=True))
+        page = self.login()
+        page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        page.get_by_role('button', name='Prepara informazioni e invito').click()
+        dlg = page.locator('#dlg-evento-sala')
+        expect(dlg).to_be_visible()
+        self.assertEqual(dlg.locator('[data-delega]').count(), 3)
+        self.assertEqual(dlg.locator('[data-delega="palco"], [data-delega="luci"]').count(), 0)
+        for key, value in {'referente_interno': 'Anna della Sala', 'ospite_nome': 'Relatore Test',
+                'ospite_contatto': '3331234567', 'programma': 'Conferenza seguita da domande del pubblico',
+                'durata_minuti': '90', 'pubblico_n': '100', 'note_interne': 'Accordo interno riservato'}.items():
+            dlg.locator('#es-' + key).fill(value)
+        dlg.locator('#tecnica-audio_uso').fill('Due microfoni per relatore e moderatore')
+        dlg.locator('#es-salva').click()
+        expect(dlg).not_to_be_visible()
+        panel = page.locator('#evento-sala-panel')
+        expect(panel).to_contain_text('Da verificare dalla Sala')
+        panel.get_by_role('button', name='Verifica e conferma esigenze').click()
+        expect(panel).to_contain_text('Esigenze confermate dalla Sala')
+        r = ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'], service=True))[0]
+        self.assertIsNone(r['ospite_token'])
+        self.assertEqual(r['tecnica_confermata']['audio_uso'], 'Due microfoni per relatore e moderatore')
+        original = ok(api('/rest/v1/bookings?id=eq.' + b['id'], service=True))[0]
+        self.assertEqual((original['prezzo'], original['data'], original['inizio']), (500, DAY, '18:00:00'))
+        page.goto('http://127.0.0.1:8765/#serata')
+        expect(page.locator('#serata-eventi-sala')).to_contain_text('Due microfoni per relatore e moderatore')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        page.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        page.get_by_role('button', name='Modifica informazioni', exact=True).click()
+        self.assertLessEqual(dlg.evaluate('(el) => el.scrollWidth - el.clientWidth'), 1)
+        dlg.get_by_text('Materiali autorizzati per la promozione', exact=True).click()
+        dlg.locator('#es-descrizione_pubblica').fill('Descrizione autorizzata per il pubblico')
+        dlg.locator('#es-nomi_pubblicabili').fill('Relatore pubblico')
+        dlg.locator('#es-promozione').check()
+        dlg.locator('#es-salva').click()
+        expect(dlg).not_to_be_visible()
+        panel.get_by_role('button', name='Verifica e conferma esigenze').click()
+        panel.get_by_role('button', name='Prepara info per i social').click()
+        expect(page.locator('#soc-descrizione')).to_have_value('Descrizione autorizzata per il pubblico')
+        expect(page.locator('#soc-regista')).to_have_value('Relatore pubblico')
+        expect(page.locator('#soc-note')).to_have_value('')
+        self.assertEqual(ok(api('/rest/v1/eventi_info?chiave=eq.b:' + b['id'], service=True)), [])
+        page.locator('#dlg-social').get_by_role('button', name='Chiudi', exact=True).click()
+        page.goto('http://127.0.0.1:8765/#economia')
+        with page.expect_download() as downloaded:
+            page.locator('#btn-export').click()
+        backup = json.loads(Path(downloaded.value.path()).read_text())
+        own = next(row for row in backup['organizzazione_sala'] if row['booking_id']==b['id'])
+        self.assertEqual(own['interni']['note_interne'], 'Accordo interno riservato')
+
+
+    def test_sala_guest_scoped_browser_review_and_resubmission(self):
+        b, r, body = self.sala_evento('teatro', ['palco', 'audio'])
+        public = ok(rpc('ospite_evento_apri', {'p_token': r['ospite_token']}))
+        self.assertEqual(set(public), {'titolo','data','inizio','fine','tipo','sezioni','dati','nome_compilatore','contatto_compilatore','stato','revisione'})
+        self.assertNotIn('ACCORDO RISERVATO', json.dumps(public))
+
+        editor = self.login()
+        editor.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        editor.get_by_role('button', name='Modifica informazioni', exact=True).click()
+        dlg = editor.locator('#dlg-evento-sala')
+        expect(dlg.locator('[data-delega="palco"]')).to_be_checked()
+        expect(dlg.locator('#tecnica-disposizione_palco')).not_to_be_visible()
+        dlg.locator('[data-delega="logistica"]').check()
+        dlg.locator('[data-delega="logistica"]').uncheck()
+        expect(dlg.locator('#tecnica-arrivo')).to_be_visible()
+        dlg.locator('#es-salva').click()
+        expect(dlg).not_to_be_visible()
+        page = self.context.new_page()
+        page.set_viewport_size({'width':390,'height':844})
+        page.goto('http://127.0.0.1:8765/modulo/ospite.html?t=' + r['ospite_token'])
+        expect(page.locator('#ospite-form')).to_be_visible()
+        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth - innerWidth'), 1)
+        self.assertEqual(page.locator('#ospite-esigenze_luci, #ospite-arrivo, #es-note_interne').count(), 0)
+        page.locator('#ospite-nome').fill('Tecnico compagnia')
+        page.locator('#ospite-contatto').fill('3339876543')
+        page.locator('#ospite-persone_palco').fill('4')
+        page.locator('#ospite-disposizione_palco').fill('Quattro sedie e un tavolo al centro')
+        page.locator('#ospite-audio_uso').fill('Voci dal vivo e base musicale')
+        page.locator('#ospite-invia').click()
+        expect(page.get_by_role('heading', name='Informazioni inviate')).to_be_visible()
+        staff = editor
+        staff.goto('http://127.0.0.1:8765/#evento/' + b['id'])
+        expect(staff.locator('#evento-sala-panel')).to_contain_text('Quattro sedie e un tavolo al centro')
+        staff.get_by_role('button', name='Verifica e conferma esigenze').click()
+        expect(staff.locator('#evento-sala-panel')).to_contain_text('Esigenze confermate dalla Sala')
+        confirmed = ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'], service=True))[0]
+        self.assertEqual(confirmed['tecnica_confermata']['persone_palco'], '4')
+        page.reload()
+        expect(page.locator('#ospite-form')).to_be_visible()
+        page.locator('#ospite-disposizione_palco').fill('Cinque sedie e un tavolo al centro')
+        page.locator('#ospite-invia').click()
+        expect(page.get_by_role('heading', name='Informazioni inviate')).to_be_visible()
+        updated = ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'], service=True))[0]
+        self.assertIsNone(updated['tecnica_confermata'])
+        self.assertIsNone(updated['verificata_il'])
+        self.assertEqual(updated['stato_ospite'], 'da_verificare')
+        self.assertEqual(updated['interni']['note_interne'], 'ACCORDO RISERVATO 98765')
+
+    def test_sala_token_revocation_scope_permissions_and_revisions(self):
+        b, r, body = self.sala_evento('teatro', ['palco'])
+        guest = {'p_token': r['ospite_token'], 'p_dati': {'persone_palco':'4','disposizione_palco':'Sedie in cerchio'},
+                 'p_nome':'Tecnico ospite','p_contatto':'3331234567','p_revisione':r['revisione']}
+        for forbidden in ('note_interne','esigenze_luci','prezzo','referente_interno'):
+            result = rpc('ospite_evento_invia', {**guest, 'p_dati': {**guest['p_dati'], forbidden:'Segreto'}})
+            self.assertGreaterEqual(result[0], 400)
+        self.assertGreaterEqual(rpc('ospite_evento_invia', {**guest, 'p_dati': {'persone_palco':'0','disposizione_palco':'Sedie in cerchio'}})[0],400)
+        self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_conferma','POST',{'p_booking':b['id'],'p_revisione':r['revisione']},token=self.users['admin']['token'])[0],400)
+        for role in ('volontario','in_attesa','bloccato'):
+            token = self.users[role]['token']
+            self.assertEqual(ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'], token=token)),[])
+            self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=token)[0],400)
+            result=api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'],'PATCH',{'interni':{'note_interne':'HACK'}},token=token)
+            self.assertTrue(result[0]>=400 or result[1]==[])
+        self.assertEqual(ok(api('/rest/v1/eventi_sala?booking_id=eq.' + b['id'])),[])
+        body.update(p_revisione=r['revisione'],p_tipo='conferenza',p_sezioni=['palco'])
+        self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=self.users['admin']['token'])[0],400)
+        body.update(p_sezioni=['audio'])
+        new = ok(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=self.users['segreteria']['token']))
+        self.assertNotEqual(new['ospite_token'],r['ospite_token'])
+        self.assertIsNone(ok(rpc('ospite_evento_apri',{'p_token':r['ospite_token']})))
+        self.assertGreaterEqual(rpc('ospite_evento_invia',guest)[0],400)
+        self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=self.users['admin']['token'])[0],400)
+        self.assertEqual(new['ospite_dati'],{})
+        for mutation in ({'stato':'annullata'},{'stato':'confermata','della_sala':False}):
+            ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',mutation,service=True))
+            self.assertIsNone(ok(rpc('ospite_evento_apri',{'p_token':new['ospite_token']})))
+            self.assertGreaterEqual(rpc('ospite_evento_invia',{**guest,'p_token':new['ospite_token'],'p_revisione':new['revisione'],'p_dati':{'audio_uso':'Due microfoni'}})[0],400)
+
+
+    def test_sala_draft_validation_and_booking_changes_require_review(self):
+        b, r, body = self.sala_evento('proiezione', ['video'])
+        staff = self.users['admin']['token']
+        submit = {'p_token': r['ospite_token'], 'p_dati': {'contenuti_video': 'Documentario', 'supporto_video': 'File MP4'},
+                  'p_nome': 'Tecnico ospite', 'p_contatto': '3331234567', 'p_revisione': r['revisione']}
+        self.assertGreaterEqual(rpc('ospite_evento_invia', {**submit, 'p_dati': {**submit['p_dati'], 'documento_tecnico_url': 'javascript:alert(1)'}})[0],400)
+        ok(rpc('ospite_evento_invia', submit))
+        current = ok(api('/rest/v1/eventi_sala?booking_id=eq.'+b['id'],service=True))[0]
+        # A reply arriving after the editor opened cannot be overwritten.
+        body['p_revisione'] = r['revisione']
+        self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=staff)[0],400)
+        confirmed = ok(api('/rest/v1/rpc/evento_sala_conferma','POST',{'p_booking':b['id'],'p_revisione':current['revisione']},token=staff))
+        self.assertIsNotNone(confirmed['verificata_il'])
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'inizio':'17:00'},token=staff))
+        changed = ok(api('/rest/v1/eventi_sala?booking_id=eq.'+b['id'],service=True))[0]
+        self.assertIsNone(changed['verificata_il'])
+        self.assertIsNone(changed['tecnica_confermata'])
+        self.assertNotEqual(changed['revisione'],confirmed['revisione'])
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'stato':'annullata'},token=staff))
+        ok(api('/rest/v1/bookings?id=eq.'+b['id'],'PATCH',{'stato':'confermata'},token=staff))
+        self.assertIsNone(ok(rpc('ospite_evento_apri',{'p_token':r['ospite_token']})))
+        changed = ok(api('/rest/v1/eventi_sala?booking_id=eq.'+b['id'],service=True))[0]
+        body['p_revisione'] = changed['revisione']
+        body['p_interni'] = {'referente_interno':'Anna'}
+        draft = ok(api('/rest/v1/rpc/evento_sala_salva','POST',body,token=staff))
+        self.assertFalse(draft['interni_completi'])
+        self.assertNotEqual(draft['ospite_token'],r['ospite_token'])
+        self.assertIsNotNone(draft['ospite_token'])
+        self.assertGreaterEqual(api('/rest/v1/rpc/evento_sala_conferma','POST',{'p_booking':b['id'],'p_revisione':draft['revisione']},token=staff)[0],400)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
