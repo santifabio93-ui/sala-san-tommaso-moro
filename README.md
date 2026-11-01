@@ -620,6 +620,46 @@ In **Economia → Esporta tutto** scarichi un file JSON con tutti i dati e un CS
 L'app conserva nomi, telefoni ed email di clienti e volontari. Prepara una breve informativa privacy
 e, se la sala fa capo a una parrocchia o associazione, falla verificare da chi segue questi aspetti.
 
+## Eventi organizzati dalla Sala: referente interno e ospite
+
+Aprire una prenotazione segnata **Della Sala**, quindi **Scheda evento →
+Organizzazione della Sala → Prepara informazioni e invito**. Il referente interno
+sceglie conferenza, teatro, concerto, danza o proiezione e raccoglie programma,
+contatti, durata, pubblico, accessibilità e accordi riservati. Si può salvare una
+bozza incompleta; la conferma richiede le informazioni essenziali.
+
+Le sezioni tecniche dipendono dal tipo: una conferenza non presenta palco e luci
+di scena. Ogni sezione può essere compilata internamente oppure affidata
+all’ospite. **Prepara messaggio per l’ospite** apre un testo da copiare: non invia
+messaggi automaticamente. Il link personale `modulo/ospite.html` consente solo
+le sezioni assegnate, senza account; chi possiede il link può compilarle.
+Il database non restituisce al link note interne, importi o informazioni social.
+
+La risposta rimane **Da verificare dalla Sala** finché amministratore,
+coordinatore o segreteria non selezionano **Verifica e conferma esigenze**.
+Anche una modifica di titolo, date, orari o stato della prenotazione richiede
+una nuova verifica; l’annullamento revoca definitivamente il link.
+La conferma fotografa le esigenze operative e le rende disponibili anche in
+**La serata** per questi ruoli. Una nuova risposta o modifica interna annulla
+la verifica precedente. I volontari non accedono a questa raccolta riservata.
+La conferma delle esigenze non cambia lo stato della prenotazione e non promette
+la disponibilità delle attrezzature richieste.
+
+Cambiando tipo o sezioni assegnate, il vecchio link viene revocato e le risposte
+vanno raccolte di nuovo. Le revisioni impediscono che due compilazioni concorrenti
+si sovrascrivano: in caso di conflitto occorre ricaricare. Date, prezzi e turni
+restano gestiti dalla prenotazione. Le informazioni per il pubblico hanno campi
+separati e un’autorizzazione esplicita: dopo la verifica **Prepara info per i
+social** le trasferisce nel dialogo social, dove vanno ancora salvate.
+
+Prima dell’attivazione applicare [`039_eventi_sala_inviti.sql`](supabase/039_eventi_sala_inviti.sql)
+nel SQL Editor di Supabase, dopo le migrazioni precedenti. La tabella privata è
+protetta da RLS; i salvataggi e la conferma passano da RPC che controllano ruolo,
+revisione e tipo di evento. Le RPC pubbliche restituiscono solo i campi previsti
+per l’ospite e rifiutano risposte fuori dalle sezioni assegnate.
+Il backup JSON include i dati nella sezione `organizzazione_sala`.
+
+
 ## Diritti
 © 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
 il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.

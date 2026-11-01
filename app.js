@@ -1,10 +1,11 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.85";
-import { schedaEvento } from "./evento.js?v=2026-11-01.85";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.86";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.86";
+import { schedaEvento } from "./evento.js?v=2026-11-01.86";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.85";
+const VERSIONE = "2026-11-01.86";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -68,6 +69,12 @@ const SUB_LABELS = { prenotazioni: "Elenco", richieste: "Richieste", sopralluogh
 const canSee = (k) => (S.postazione ? k === "cassa" : k === "cassa" ? S.canCassa : VIEWS[k].roles.includes(S.role));
 const apriPreventivo = creaPreventivi({ getState: () => S, calcolaTariffa, esc, iso, fmtDay });
 const sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { flowType: "pkce" } });
+const eventiSala = creaEventiSala({ client: () => sb, getState: () => S, esc, onChange: () => loadAll(), openCopyText,
+  promozione: (b, i) => {
+    apriInfoSocial("b:" + b.id, true);
+    for (const [campo, valore] of [["descrizione", i.descrizione_pubblica], ["regista", i.nomi_pubblicabili], ["materiali", i.materiali_pubblici]]) if (valore) $("#soc-" + campo).value = valore;
+  }
+});
 
 const S = {
   session: null, me: null, role: null, canWrite: false, isAdmin: false, canSign: false,
@@ -296,7 +303,7 @@ const scheduleReload = () => { clearTimeout(reloadTimer); reloadTimer = setTimeo
 function startRealtime() {
   stopRealtime();
   channel = sb.channel("sala");
-  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  for (const table of ["bookings", "signups", "expenses", "richieste", "cassa", "sopralluoghi", "films", "proiezioni", "c1", "donatori", "schede", "volontari", "richieste_film", "catalogo_film", "programmazione", "sas_email", "pulizie_fatte", "scorte", "conteggi", "turni_cambi", "eventi_info", "social_domande", "rubrica", "eventi_sala"]) channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
   channel.subscribe();
 }
 function stopRealtime() { if (channel) { sb.removeChannel(channel); channel = null; } }
@@ -587,6 +594,9 @@ function renderEvento() {
     return;
   }
   root.innerHTML = schedaEvento(S, b, { esc, money, fmtDay, orario, coverage, turni, signupsFor, schedaDi, siaeStato, residuo, isRecurring });
+  if (S.canWrite && b.della_sala && b.stato !== "annullata") {
+    const host = document.createElement("div"); host.id = "evento-sala-panel"; root.append(host); eventiSala.renderPanel(b, host);
+  }
   root.querySelectorAll("[data-event-action]").forEach((button) => { button.onclick = () => {
     const action = button.dataset.eventAction;
     if (["edit", "payment"].includes(action) && S.canWrite) { openBooking(b); if (action === "payment") $("#b-incassato").focus(); }
@@ -2775,14 +2785,16 @@ function download(name, text, type) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-$("#btn-export").onclick = () => {
+$("#btn-export").onclick = async () => {
+  const { data: organizzazioneSala, error: erroreSala } = await sb.from("eventi_sala").select("*");
+  if (erroreSala) { toast("Backup non completato: impossibile leggere l’organizzazione degli eventi Sala. Riprova dopo aver verificato la migrazione 039."); return; }
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
     c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
-    convenzione: S.conv, persone: S.profiles };
+    convenzione: S.conv, persone: S.profiles, organizzazione_sala: organizzazioneSala };
   const conta = Object.fromEntries(Object.entries(tabelle).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.length]));
   download(`sala-stm-backup-${stamp}.json`, JSON.stringify({ esportato: new Date().toISOString(), da: S.me.email, versione: VERSIONE, righe: conta, ...tabelle }, null, 2), "application/json");
   try { localStorage.setItem("sala-ultimo-backup", new Date().toISOString()); } catch (e) {}
@@ -3930,6 +3942,9 @@ function renderSerata() {
   if (conti.length) el.querySelector(".toolbar").insertAdjacentHTML("afterend", `<div class="panel conta-serata"><div class="section-head"><h3>🚪 Contapersone</h3><span class="hint">${d === TODAY ? "dal vivo, dai volontari alla porta" : "com'è andata"}</span></div>
     ${conti.map((c) => { const pr = Math.max(0, c.entrati - c.usciti), q = pr / c.capienza;
       return `<div class="todo-riga"><div><b>${esc(c.titolo)}</b><div class="hint">entrati in tutto ${c.entrati} · picco ${c.picco} su ${c.capienza}</div></div><div class="az"><span class="pill ${pr >= c.capienza ? "dapagare" : q >= 0.85 ? "acconto" : "saldato"}">${d === TODAY ? `in sala ${pr}/${c.capienza}` : `picco ${c.picco}`}</span></div></div>`; }).join("")}</div>`);
+  if (S.canWrite && eventi.some(b => b.della_sala)) {
+    const host = document.createElement("div"); host.id = "serata-eventi-sala"; el.append(host); eventiSala.renderSerata(eventi, host);
+  }
   el.insertAdjacentHTML("beforeend", pannelloScorte());
   collegaScorte(el);
 }
