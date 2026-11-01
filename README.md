@@ -697,6 +697,37 @@ testo nei contatti rimangono conservati: nessun raggruppamento o collegamento
 automatico dei dati precedenti. I contatti ricavati dalle altre funzioni dell’app
 vengono registrati stabilmente solo quando scelti per un gruppo o un’attività.
 
+
+### Importare collegamenti confermati
+
+In **Rubrica → Importa collegamenti** si può caricare un CSV UTF-8 separato da
+punto e virgola con le colonne `Stato;Persona;Gruppo;Tipo gruppo`. Sono accettate
+le righe con stato `CONFERMATO` o `ESPRESSO NEL FILE`; le proposte ancora da
+confermare e i gruppi privi di persona vengono esclusi. Il tipo è uno tra
+`parrocchia`, `associazione`, `compagnia`, `altro`. Sono gestiti anche BOM,
+virgolette, punti e virgola nei valori e campi su più righe. Massimo 500 KB,
+500 righe nel file e 200 collegamenti confermati per importazione.
+
+Il file viene letto nel browser. Nell’anteprima ogni nome è confrontato con le
+persone della rubrica: se non c’è una corrispondenza unica occorre scegliere il
+contatto corretto, oppure escludere la riga. Anche gruppo e tipo possono essere
+corretti prima di salvare. L’importazione aggiunge appartenenze e conserva
+persone già presenti nel gruppo, tipo, note e referente abituale. I nuovi gruppi
+non ricevono automaticamente un referente abituale. Le attività già registrate
+non vengono modificate.
+
+L’operazione è atomica: un errore o una versione cambiata del gruppo annullano
+l’intero salvataggio. Ripetere lo stesso import senza modifiche intermedie non
+aggiunge duplicati. Dopo l’importazione, aprire un gruppo dalla rubrica per
+rinominarlo, cambiare le persone, scegliere il referente abituale o archiviarlo.
+Nessun file viene ricaricato automaticamente e nessun collegamento viene
+ripristinato all’apertura dell’app. Un’ulteriore importazione avviene soltanto
+con una nuova azione esplicita nell’anteprima.
+
+Richiede [`041_importa_collegamenti_gruppi.sql`](supabase/041_importa_collegamenti_gruppi.sql)
+dopo 040. I CSV con nomi reali restano fuori dal repository e dal sito pubblico;
+la migrazione contiene solo la funzione di importazione e i controlli dei ruoli.
+
 ## Diritti
 © 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
 il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.

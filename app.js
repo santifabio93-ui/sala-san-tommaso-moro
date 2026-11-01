@@ -1,12 +1,12 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.87";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.87";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.87";
-import { schedaEvento } from "./evento.js?v=2026-11-01.87";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.88";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.88";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.88";
+import { schedaEvento } from "./evento.js?v=2026-11-01.88";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.87";
+const VERSIONE = "2026-11-01.88";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -1856,6 +1856,8 @@ const SC_FILTRI = [
 ];
 function renderSchede() {
   $("#sc-parrocchia").hidden = !S.staff;
+  // Le scelte di gruppo richiedono la rubrica completa, anche aprendo subito la vista.
+  $("#sc-parrocchia").disabled = $("#sc-nuova").disabled = !S.datiCaricati;
   if (S.loadErr?.schede) { $("#sc-list").innerHTML = `<div class="warn">In Supabase manca lo script <b>010_schede.sql</b>: eseguilo nel SQL Editor e ricarica la pagina. (${esc(S.loadErr.schede)})</div>`; $("#sc-kpis").innerHTML = ""; return; }
   const righe = righeSchede();
   const n = (f) => righe.filter(f).length;
@@ -4587,6 +4589,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["041_importa_collegamenti_gruppi.sql", "Importazione dei collegamenti confermati fra persone e gruppi", undefined, "Eseguire dopo 040 per usare Importa collegamenti in Rubrica"],
     ["040_gruppi_persone.sql", "Gruppi, persone e collegamento alle attività", !S.loadErr2?.gruppi],
     ["038_parrocchia_esigenze.sql", "Dettagli delle attività parrocchiali: spazi, programma e dotazioni", undefined, "Eseguire dopo 037 per validare le richieste dettagliate"],
     ["037_richieste_parrocchia.sql", "Richieste parrocchiali gratuite con approvazione", S.schede.length ? "percorso" in S.schede[0] : undefined],

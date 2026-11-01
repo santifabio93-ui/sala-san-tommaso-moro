@@ -1,5 +1,7 @@
+import { creaImportatoreGruppi } from "./gruppi-importa.js?v=2026-11-01.88";
 // I gruppi sono distinti dai contatti e possono condividere le stesse persone.
 export function creaGruppi({client,getState,contatti,esc,onChange,toast}) {
+ const importa=creaImportatoreGruppi({client,getState,contatti,esc,onChange,toast});
  const tipi={parrocchia:'Gruppo della Parrocchia',associazione:'Associazione',compagnia:'Compagnia o formazione',altro:'Altro gruppo'};
  const dialog=document.body.appendChild(Object.assign(document.createElement('dialog'),{id:'dlg-gruppo'}));
  dialog.setAttribute('aria-label','Gruppo e persone');
@@ -12,7 +14,8 @@ export function creaGruppi({client,getState,contatti,esc,onChange,toast}) {
   if(S.loadErr2?.gruppi){host.innerHTML='<p class="hint">Per gestire gruppi e persone applica la migrazione 040 e ricarica.</p>';return;}
   const q=(S.rbQ || '').trim().toLocaleLowerCase('it');
   const lista=(S.gruppi || []).filter(g=>(S.grArchiviati || !g.archiviato) && (!q || [g.nome,tipi[g.tipo],...(S.gruppiPersone || []).filter(m=>m.gruppo_id===g.id).map(m=>nome(m.persona_chiave))].join(' ').toLocaleLowerCase('it').includes(q))); 
-  host.innerHTML=`<section class="panel"><div class="section-head"><h3>Gruppi e persone</h3><button class="btn" id="gr-nuovo">+ Nuovo gruppo</button></div><p class="hint">La stessa persona può appartenere a più gruppi. Il referente abituale è una proposta: ogni attività conserva la propria scelta.</p><div class="rb-lista">${lista.map(g=>`<div class="rb-card"><button type="button" class="rb-apri" data-gr="${g.id}"><b>${esc(g.nome)}${g.archiviato?' · archiviato':''}</b><span class="hint">${tipi[g.tipo]} · ${(S.gruppiPersone || []).filter(m=>m.gruppo_id===g.id).length} persone${g.referente_chiave?' · referente: '+esc(nome(g.referente_chiave)):''}</span></button></div>`).join('') || (q?'<p>Nessun gruppo con questa ricerca.</p>':'<p>Ancora nessun gruppo. Puoi creare prima le persone con «Nuovo contatto».</p>')}</div><label><input id="gr-archiviati" type="checkbox"${S.grArchiviati?' checked':''}> Mostra anche i gruppi archiviati</label></section>`;
+  host.innerHTML=`<section class="panel"><div class="section-head"><h3>Gruppi e persone</h3><div class="actions"><button class="btn" id="gr-importa" type="button">Importa collegamenti</button><button class="btn" id="gr-nuovo" type="button">+ Nuovo gruppo</button></div></div><p class="hint">La stessa persona può appartenere a più gruppi. Il referente abituale è una proposta: ogni attività conserva la propria scelta.</p><div class="rb-lista">${lista.map(g=>`<div class="rb-card"><button type="button" class="rb-apri" data-gr="${g.id}"><b>${esc(g.nome)}${g.archiviato?' · archiviato':''}</b><span class="hint">${tipi[g.tipo]} · ${(S.gruppiPersone || []).filter(m=>m.gruppo_id===g.id).length} persone${g.referente_chiave?' · referente: '+esc(nome(g.referente_chiave)):''}</span></button></div>`).join('') || (q?'<p>Nessun gruppo con questa ricerca.</p>':'<p>Ancora nessun gruppo. Puoi creare prima le persone con «Nuovo contatto».</p>')}</div><label><input id="gr-archiviati" type="checkbox"${S.grArchiviati?' checked':''}> Mostra anche i gruppi archiviati</label></section>`;
+  host.querySelector('#gr-importa').onclick=importa;
   host.querySelector('#gr-nuovo').onclick=()=>apri(null);
   host.querySelector('#gr-archiviati').onchange=e=>{S.grArchiviati=e.target.checked;render(host);};
   host.querySelectorAll('[data-gr]').forEach(el=>el.onclick=()=>apri(S.gruppi.find(g=>g.id===el.dataset.gr)));
