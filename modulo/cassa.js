@@ -66,7 +66,7 @@ function errore(error){
  const host=root.querySelector('#cb-error');if(host)host.textContent=error.message;
 }
 function contoHTML(tipo,pezzi={}){
- return `<details><summary>${tipo==='fondo'?'Conta il fondo iniziale':'Conta i contanti a fine serata'}</summary><div class="cb-conta">${TAGLI.map(t=>`<label>${euro(t)}<input type="number" min="0" max="100000" step="1" inputmode="numeric" data-cb-conto="${tipo}" data-taglio="${t}" value="${pezzi[t] || ''}" aria-label="Pezzi da ${t} euro (${tipo})"></label>`).join('')}</div></details>`;
+ return `<details><summary>${tipo==='fondo'?'Conta il fondo iniziale':'Conta i contanti a fine serata'}</summary><div class="cb-conta">${TAGLI.map(t=>`<label><span class="ct-taglio ${t>=5?'banconota b'+t:'moneta '+(t>=1?'bimetallica':t>=.1?'oro':'rame')}" aria-hidden="true">${t>=1?t+' €':Math.round(t*100)+' cent'}</span><span class="hint">Pezzi</span><input type="number" min="0" max="100000" step="1" inputmode="numeric" data-cb-conto="${tipo}" data-taglio="${t}" value="${pezzi[t] || ''}" aria-label="Pezzi da ${t} euro (${tipo})"></label>`).join('')}</div></details>`;
 }
 function leggiConto(tipo){return Object.fromEntries([...root.querySelectorAll(`[data-cb-conto="${tipo}"]`)].filter(el=>el.value!=='').map(el=>[el.dataset.taglio,Number(el.value)]));}
 function modulo(c){

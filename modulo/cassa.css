@@ -3,3 +3,6 @@
 @media print{.cb-login,.badge-cassa>.hint,button,.actions{display:none!important}.badge-cassa{max-width:none;margin:0}}
 
 .cb-success{color:var(--accent);font-weight:600}
+
+/* Stessi tagli illustrati del conteggio nel gestionale. */
+.cb-conta label{align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;gap:8px}.cb-conta .ct-taglio.banconota{width:76px;max-width:100%}.cb-conta .ct-taglio.moneta{margin-inline:0}.cb-conta input{text-align:center}
