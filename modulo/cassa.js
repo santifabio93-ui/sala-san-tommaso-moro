@@ -66,7 +66,7 @@ function errore(error){
  const host=root.querySelector('#cb-error');if(host)host.textContent=error.message;
 }
 function contoHTML(tipo,pezzi={}){
- return `<details><summary>${tipo==='fondo'?'Conta il fondo iniziale':'Conta i contanti a fine serata'}</summary><div class="cb-conta">${TAGLI.map(t=>`<label>${euro(t)}<input type="number" min="0" max="100000" step="1" inputmode="numeric" data-cb-conto="${tipo}" data-taglio="${t}" value="${pezzi[t] || ''}" aria-label="Pezzi da ${t} euro (${tipo})"></label>`).join('')}</div></details>`;
+ return `<details><summary>${tipo==='fondo'?'Conta il fondo iniziale':'Conta i contanti a fine serata'}</summary><div class="cb-conta">${TAGLI.map(t=>`<label><span class="ct-taglio ${t>=5?'banconota b'+t:'moneta '+(t>=1?'bimetallica':t>=.1?'oro':'rame')}" aria-hidden="true">${t>=1?t+' €':Math.round(t*100)+' cent'}</span><span class="hint">Pezzi</span><input type="number" min="0" max="100000" step="1" inputmode="numeric" data-cb-conto="${tipo}" data-taglio="${t}" value="${pezzi[t] || ''}" aria-label="Pezzi da ${t} euro (${tipo})"></label>`).join('')}</div></details>`;
 }
 function leggiConto(tipo){return Object.fromEntries([...root.querySelectorAll(`[data-cb-conto="${tipo}"]`)].filter(el=>el.value!=='').map(el=>[el.dataset.taglio,Number(el.value)]));}
 function modulo(c){
@@ -78,10 +78,10 @@ function modulo(c){
  const v=c || {fondo_iniziale:stato.fondo_proposto,online_n:0,online_euro:0,contanti_n:0,contanti_euro:0,pos_n:0,pos_euro:0,omaggi_n:0,contati:null,prelievo:0,note:'',conteggio:{}};
  const campo=(k,l,tipo='number')=>`<div class="field h"><label for="cb-${k}">${l}</label><input id="cb-${k}" name="${k}" type="${tipo}" value="${esc(v[k] ?? '')}"${tipo==='number'?' min="0" step="'+(k.endsWith('_n')?'1':'0.01')+'"':''}></div>`;
  const selezione=c?.booking_id?'b:'+c.booking_id:c?.proiezione_id?'p:'+c.proiezione_id:'';
- root.innerHTML=`<section class="panel"><h2>${c?'Continua la cassa':'Apri cassa'} · ${esc(stato.data)}</h2><p>Alla cassa: ${esc(stato.nome)}</p><form id="cb-form"><div class="form"><div class="field"><label for="cb-evento">Evento o proiezione</label><select id="cb-evento"><option value="">Altro evento: scrivi il titolo</option>${stato.eventi.map(e=>`<option value="${e.valore}"${e.valore===selezione?' selected':''}>${esc(e.titolo)} · ${esc(e.ora)}</option>`).join('')}</select></div><div class="field" id="cb-titolo-wrap"><label for="cb-titolo">Titolo</label><input id="cb-titolo" maxlength="200" value="${esc(c?.titolo || '')}"></div>${campo('fondo_iniziale','Fondo iniziale (€)')}${campo('online_n','Biglietti online')}${campo('online_euro','Incasso online (€)')}${campo('contanti_n','Biglietti in contanti')}${campo('contanti_euro','Incasso contanti (€)')}${campo('pos_n','Biglietti POS')}${campo('pos_euro','Incasso POS (€)')}${campo('omaggi_n','Omaggi')}${campo('contati','Contanti contati (€)')}${campo('prelievo','Da prelevare dopo il conteggio (€)')}<div class="field"><label for="cb-note">Note</label><textarea id="cb-note" maxlength="2000">${esc(v.note)}</textarea></div></div>${contoHTML('fondo',v.conteggio?._fondo)}${contoHTML('chiusura',Object.fromEntries(Object.entries(v.conteggio || {}).filter(([k])=>k!=='_fondo')))}<div class="cb-riepilogo" id="cb-totali"></div><p id="cb-error" class="cb-error" role="alert"></p><div class="actions"><button class="btn primary" id="cb-salva" type="submit">Salva cassa</button><button class="btn" id="cb-chiudi" type="button">Chiudi la cassa</button><button class="btn ghost" id="cb-annulla" type="button">Torna alle casse</button></div></form></section>`;
+ root.innerHTML=`<section class="panel"><h2>${c?'Continua la cassa':'Apri cassa'} · ${esc(stato.data)}</h2><p>Alla cassa: ${esc(stato.nome)}</p><form id="cb-form"><div class="form"><div class="field"><label for="cb-evento">Evento o proiezione</label><select id="cb-evento"><option value="">Altro evento: scrivi il titolo</option>${stato.eventi.map(e=>`<option value="${e.valore}"${e.valore===selezione?' selected':''}>${esc(e.titolo)} · ${esc(e.ora)}</option>`).join('')}</select></div><div class="field" id="cb-titolo-wrap"><label for="cb-titolo">Titolo</label><input id="cb-titolo" maxlength="200" value="${esc(c?.titolo || '')}"></div>${campo('fondo_iniziale','Fondo iniziale (€)')}${campo('online_n','Biglietti online')}${campo('online_euro','Incasso online (€)')}${campo('contanti_euro','Incasso contanti (€)')}${campo('pos_euro','Incasso POS (€)')}${campo('omaggi_n','Omaggi')}${campo('contati','Contanti contati (€)')}${campo('prelievo','Da prelevare dopo il conteggio (€)')}<div class="field"><label for="cb-note">Note</label><textarea id="cb-note" maxlength="2000">${esc(v.note)}</textarea></div></div>${contoHTML('fondo',v.conteggio?._fondo)}${contoHTML('chiusura',Object.fromEntries(Object.entries(v.conteggio || {}).filter(([k])=>k!=='_fondo')))}<div class="cb-riepilogo" id="cb-totali"></div><p id="cb-error" class="cb-error" role="alert"></p><div class="actions"><button class="btn primary" id="cb-salva" type="submit">Salva cassa</button><button class="btn" id="cb-chiudi" type="button">Chiudi la cassa</button><button class="btn ghost" id="cb-annulla" type="button">Torna alle casse</button></div></form></section>`;
  const evento=root.querySelector('#cb-evento');
  const cambiaEvento=()=>root.querySelector('#cb-titolo-wrap').hidden=!!evento.value;cambiaEvento();evento.onchange=cambiaEvento;
- for(const tipo of ['online','contanti','pos']){
+ for(const tipo of ['online']){
   const n=root.querySelector('#cb-'+tipo+'_n'),importo=root.querySelector('#cb-'+tipo+'_euro');
   let manuale=!!c;
   importo.oninput=()=>{manuale=importo.value!=='';};
@@ -100,9 +100,10 @@ function modulo(c){
  totali();
 }
 function leggi(){
- const numero=k=>Number(root.querySelector('#cb-'+k).value || 0);
+ const numero=k=>Number(root.querySelector('#cb-'+k)?.value || 0);
  const d={data:stato.data,evento:root.querySelector('#cb-evento').value,titolo:root.querySelector('#cb-titolo').value.trim(),note:root.querySelector('#cb-note').value.trim(),contati:root.querySelector('#cb-contati').value===''?null:numero('contati'),conteggio:{...leggiConto('chiusura')}};
- for(const k of ['fondo_iniziale','online_n','online_euro','contanti_n','contanti_euro','pos_n','pos_euro','omaggi_n','prelievo'])d[k]=numero(k);
+ for(const k of ['fondo_iniziale','online_n','online_euro','contanti_euro','pos_euro','omaggi_n','prelievo'])d[k]=numero(k);
+ for(const k of ['contanti_n','pos_n'])d[k]=Number(corrente?.[k] || 0);
  const fondo=leggiConto('fondo');if(Object.keys(fondo).length)d.conteggio._fondo=fondo;
  return d;
 }
