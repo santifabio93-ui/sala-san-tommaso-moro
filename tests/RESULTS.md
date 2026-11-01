@@ -1,5 +1,35 @@
 # Esiti della validazione
 
+## Persone, gruppi e attività: 32 test superati
+
+La suite completa su Supabase locale reale e Chromium ha terminato con OK:
+32 test in circa 93 secondi. Database ricostruito da zero da 40 file SQL e
+migrazione 040 rieseguita senza errori. Dopo la rifinitura del riutilizzo dei
+contatti, verificati nuovamente i quattro test dedicati ai gruppi.
+
+Verificati creazione del gruppo dalla rubrica, ricerca delle persone anche per
+telefono, scelta del referente abituale, proposta nella prenotazione e sostituzione
+per il singolo evento. Cambiare il referente del gruppo conserva persona,
+contatti e prezzo delle prenotazioni precedenti. La rubrica mostra appartenenza
+e storico; i contatti utilizzati vengono nascosti invece di essere eliminati.
+
+Testati appartenenza a più gruppi, conservazione di note/correzioni esistenti,
+persistenza dei contatti ricavati dall’app con ente e categoria, referente
+obbligatoriamente membro del gruppo, nomi duplicati e revisioni concorrenti.
+I gruppi archiviati restano nello storico e non possono essere associati a nuove
+attività; le attività precedenti restano modificabili. Chiavi esterne proteggono
+contatti e gruppi ancora utilizzati. Volontari, utenti non abilitati e accesso
+anonimo non leggono l’anagrafica dei gruppi né ne modificano i dati.
+
+Verificati predisposizione del modulo parrocchiale, approvazione gratuita e
+trasferimento dei collegamenti agli incontri. Se il compilatore dichiara una
+persona o un gruppo diversi, il collegamento corrispondente non viene attribuito
+all’identità originaria. Il modulo pubblico non espone altre persone o note
+interne. Controllati dialogo a 390 px, sintassi e compressione Terser 5.49.2.
+
+Nessuna modifica al database reale e nessuna pubblicazione. Per l’attivazione
+applicare 040 dopo 039, prima della pubblicazione della nuova versione dell’app.
+
 ## Eventi della Sala e sezioni per l’ospite: 28 test superati
 
 Suite completa su Supabase locale reale e Chromium: OK, 28 test in circa

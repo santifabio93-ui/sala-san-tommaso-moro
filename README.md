@@ -660,6 +660,43 @@ per l’ospite e rifiutano risposte fuori dalle sezioni assegnate.
 Il backup JSON include i dati nella sezione `organizzazione_sala`.
 
 
+
+## Persone, gruppi e attività
+
+In **Rubrica → Nuovo contatto** si inseriscono le persone, con telefono ed email.
+Un contatto in rubrica non crea un account di accesso all’app.
+In **Rubrica → Gruppi e persone → Nuovo gruppo** si sceglie il nome del gruppo,
+si cercano e spuntano le persone che ne fanno parte e si indica, se presente,
+il referente abituale. La stessa persona può appartenere a più gruppi.
+Si possono distinguere gruppi parrocchiali, associazioni, compagnie e altri gruppi.
+
+Nella **prenotazione** e quando si prepara una **scheda di richiesta**, anche
+parrocchiale, è possibile scegliere il gruppo e il referente dalla rubrica.
+Il gruppo propone il referente abituale; si può scegliere un’altra persona per
+la singola attività oppure compilare i campi a mano. Il gruppo resta facoltativo
+per gli inviti individuali. La scelta compila nome e contatti della bozza corrente:
+non modifica i contatti originali o gli altri appuntamenti.
+
+La scheda evento mostra il gruppo e la rubrica riporta gruppi di appartenenza e
+storico delle attività collegate. Cambiare il referente abituale del gruppo non
+cambia quello degli eventi già salvati. Nascondere un contatto utilizzato mantiene
+le associazioni; i gruppi si archiviano e restano nello storico, senza essere
+proposti per nuove attività. I collegamenti sono inclusi nel backup JSON.
+
+Nelle nuove richieste parrocchiali, gruppo e dati del referente vengono già
+predisposti nel modulo personale. Il link pubblico non espone l’elenco dei gruppi,
+le altre persone o le note interne. All’approvazione, gli incontri ereditano i
+collegamenti se i nomi dichiarati corrispondono al gruppo e alla persona scelti;
+se il compilatore indica un gruppo o una persona diversi, il collegamento relativo
+rimane vuoto e va verificato dal gestore nella prenotazione.
+
+Prima dell’attivazione applicare [`040_gruppi_persone.sql`](supabase/040_gruppi_persone.sql)
+dopo 039. Amministratore, coordinatore e segreteria gestiscono i gruppi; volontari
+e link pubblici non accedono alla relativa anagrafica. Gli enti già scritti come
+testo nei contatti rimangono conservati: nessun raggruppamento o collegamento
+automatico dei dati precedenti. I contatti ricavati dalle altre funzioni dell’app
+vengono registrati stabilmente solo quando scelti per un gruppo o un’attività.
+
 ## Diritti
 © 2026 Fabio Santi, realizzata per la Sala San Tommaso Moro (Parrocchia di San Biagio). Tutti i diritti riservati:
 il codice è visibile ma non può essere copiato, modificato o riusato senza autorizzazione scritta. Vedi il file `LICENSE`.

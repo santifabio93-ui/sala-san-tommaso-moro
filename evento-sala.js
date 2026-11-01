@@ -1,4 +1,4 @@
-import { TIPI_EVENTO_SALA, SEZIONI_PER_TIPO, SEZIONI_EVENTO_SALA, campoEventoSala } from './evento-sala-campi.js?v=2026-11-01.86';
+import { TIPI_EVENTO_SALA, SEZIONI_PER_TIPO, SEZIONI_EVENTO_SALA, campoEventoSala } from './evento-sala-campi.js?v=2026-11-01.87';
 
 // Tutte le scritture passano dalle RPC: il link pubblico riceve un DTO separato.
 export function creaEventiSala({ client, getState, esc, onChange, openCopyText, promozione }) {
@@ -29,7 +29,7 @@ export function creaEventiSala({ client, getState, esc, onChange, openCopyText, 
    const invito = host.querySelector('[data-es="invito"]');
    if (invito) invito.onclick = () => {
     const url = new URL('modulo/ospite.html', location.href.split('#')[0]);
-    url.search = new URLSearchParams({t:r.ospite_token,v:'2026-11-01.86'});
+    url.search = new URLSearchParams({t:r.ospite_token,v:'2026-11-01.87'});
     openCopyText(`Ciao ${r.interni.ospite_nome || ''},\nper «${b.titolo}» del ${b.data} ti chiediamo di compilare queste parti: ${r.sezioni_ospite.map(s=>SEZIONI_EVENTO_SALA[s].titolo).join(', ')}.\n${url.href}\nLe esigenze saranno verificate dalla Sala prima della conferma. Grazie!`);
    };
    const conferma = host.querySelector('[data-es="conferma"]');
