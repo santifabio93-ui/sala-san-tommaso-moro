@@ -1,15 +1,15 @@
-import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.96";
-import { creaPreparazione } from "./preparazione.js?v=2026-11-01.96";
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.96";
+import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.97";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.97";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.97";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.96";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.96";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.96";
-import { schedaEvento } from "./evento.js?v=2026-11-01.96";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.97";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.97";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.97";
+import { schedaEvento } from "./evento.js?v=2026-11-01.97";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.96";
+const VERSIONE = "2026-11-01.97";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -252,6 +252,10 @@ async function loadAll() {
     // scambi di turno aperti (aggiornamento 32)
     const tc = S.staff ? await sb.from("turni_cambi").select("*").eq("stato", "aperta") : { data: null };
     S.cambi = tc.data || [];
+    // fatture dei film lette dalla cartella Drive (aggiornamento 46, solo amministratore)
+    const ff = S.isAdmin ? await sb.from("fatture_film").select("*").order("data") : { data: null };
+    S.fatture = (ff.data || []).map((f) => ({ ...f, imponibile: Number(f.imponibile) || 0, iva: Number(f.iva) || 0, totale: Number(f.totale) || 0 }));
+    S.loadErr2.fatture = ff.error && (ff.error.message || "errore");
     // informazioni degli eventi per chi cura i social (aggiornamento 33)
     const ei = S.staff ? await sb.from("eventi_info").select("*") : { data: null };
     S.loadErr2.eventiInfo = ei.error && ei.error.message;
@@ -307,7 +311,7 @@ async function loadAll() {
       S.preventivo = st.data.preventivo || {};
       S.sasContatti = Array.isArray(st.data.sas_contatti) ? st.data.sas_contatti : [];
       S.tariffe = { ...DEFAULT_TARIFFE, ...(st.data.tariffe || {}) };
-      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, primaNotaFile: st.data.prima_nota_file, sas: st.data.sync_sas, rubrica: st.data.sync_rubrica };
+      S.sync = { calendario: st.data.sync_calendario, email: st.data.sync_email, cinebot: st.data.sync_cinebot, c1: st.data.sync_c1, primaNota: st.data.sync_prima_nota, fatture: st.data.sync_fatture, primaNotaFile: st.data.prima_nota_file, sas: st.data.sync_sas, rubrica: st.data.sync_rubrica };
       S.conv = { inizio: st.data.convenzione_inizio || null, serate: st.data.convenzione_serate || 25, anni: st.data.convenzione_anni || 20 };
       S.prezzoBiglietto = st.data.prezzo_biglietto == null ? null : Number(st.data.prezzo_biglietto);
       // impostazioni del controllo del sito (aggiornamento 12); senza lo script il controllo funziona lo stesso
@@ -1625,6 +1629,69 @@ function lineChart(el, labels, values, fmtV) {
   });
 }
 
+/* ---------- fatture dei film: confrontate con la prima nota, senza contarle due volte ---------- */
+// abbina le fatture dei film ai movimenti della prima nota: una fattura già registrata non va contata di nuovo
+const normF = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "");
+const PAROLE_VUOTE = /^(srl|spa|sas|snc|srls|group|gruppo|italia|italy|entertainment|distribuzione|distribution|film|films|pictures|cinema|cinematografica|fondazione|societa|di|della|del|the|and)$/;
+const paroleFornitore = (f) => String(f || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !PAROLE_VUOTE.test(w));
+const giorni = (a, b) => (new Date(a + "T12:00:00") - new Date(b + "T12:00:00")) / 864e5;
+function abbinaFatture(fatture, primaNota) {
+  const usati = new Set(), esito = new Map();
+  const testoRiga = (r) => normF(`${r.descrizione} ${r.controparte} ${r.note} ${r.evento} ${r.n_documento}`);
+  const importoRiga = (r) => (r.uscite ? r.uscite : -r.entrate); // rimborsi tra le entrate = uscite in negativo
+  const stessoFornitore = (f, r) => { const t = testoRiga(r); return paroleFornitore(f.fornitore).some((w) => t.includes(w) || (w.length >= 5 && t.includes(w.slice(0, 4)))); };
+  const stessoFilm = (f, r) => { const k = normF(f.film).slice(0, 8); return k.length >= 4 && testoRiga(r).includes(k); };
+  const vicino = (f, r) => { const g = giorni(r.data, f.data); return g >= -45 && g <= 240; };
+  const candidati = (f) => primaNota.filter((r) => !usati.has(r) && (r.uscite || r.entrate) && vicino(f, r) && (stessoFornitore(f, r) || stessoFilm(f, r)));
+  const uguale = (a, b) => Math.abs(a - b) < 0.02;
+  // 1) una riga con lo stesso totale (o lo stesso imponibile)
+  for (const f of fatture) {
+    const c = candidati(f).filter((r) => uguale(importoRiga(r), f.totale) || (f.imponibile && uguale(importoRiga(r), f.imponibile)));
+    c.sort((a, b) => Math.abs(giorni(a.data, f.data)) - Math.abs(giorni(b.data, f.data)));
+    if (c[0]) { usati.add(c[0]); esito.set(f, [c[0]]); }
+  }
+  // 2) più righe che insieme fanno il totale (fattura divisa per film), stesso giorno
+  for (const f of fatture.filter((x) => !esito.has(x))) {
+    const c = candidati(f), perGiorno = {};
+    c.forEach((r) => (perGiorno[r.data] = perGiorno[r.data] || []).push(r));
+    for (const g of Object.values(perGiorno)) if (g.length > 1 && uguale(g.reduce((s, r) => s + importoRiga(r), 0), f.totale)) { g.forEach((r) => usati.add(r)); esito.set(f, g); break; }
+  }
+  // 3) una riga che paga più fatture dello stesso fornitore
+  const restanti = fatture.filter((x) => !esito.has(x));
+  for (const r of primaNota.filter((x) => !usati.has(x) && x.uscite)) {
+    const stesse = restanti.filter((f) => !esito.has(f) && vicino(f, r) && stessoFornitore(f, r));
+    for (let i = 0; i < stesse.length; i++) for (let j = i + 1; j < stesse.length; j++)
+      if (!usati.has(r) && uguale(stesse[i].totale + stesse[j].totale, importoRiga(r))) { usati.add(r); esito.set(stesse[i], [r]); esito.set(stesse[j], [r]); }
+  }
+  return esito;
+}
+// stato di ogni fattura: già in prima nota (con le righe) oppure da registrare; calcolato una volta per caricamento
+function statoFatture() {
+  const chiave = `${S.fatture.length}|${S.primaNota.length}|${S.fatture.map((f) => f.file_id + f.totale).join()}`;
+  if (statoFatture.chiave === chiave) return statoFatture.esito;
+  const ordinate = [...S.fatture].filter((f) => f.data && f.totale).sort((a, b) => a.data.localeCompare(b.data));
+  statoFatture.esito = abbinaFatture(ordinate, S.primaNota); statoFatture.chiave = chiave;
+  return statoFatture.esito;
+}
+const fattureDaRegistrare = () => { const e = statoFatture(); return S.fatture.filter((f) => f.totale && !e.has(f)); };
+function pannelloFatture() {
+  if (!S.isAdmin) return "";
+  if (S.loadErr2?.fatture) return `<div class="panel" style="margin-top:18px"><h2>Fatture dei film</h2><p class="hint">Per leggere le fatture dalla cartella Drive «FATTURE FILM» esegui in Supabase lo script <b>046_fatture_film.sql</b>, poi aggiungi «+fatture» alla MODALITA dello script Google.</p></div>`;
+  if (!S.fatture.length) return `<div class="panel" style="margin-top:18px"><h2>Fatture dei film</h2><p class="hint">Nessuna fattura ancora letta: aggiungi «+fatture» alla MODALITA dello script Google ed esegui <b>provaFatture</b>.</p></div>`;
+  const e = statoFatture(), da = fattureDaRegistrare(), nonLette = S.fatture.filter((f) => !f.totale);
+  const tot = (a) => r2(a.reduce((s, f) => s + f.totale, 0));
+  const pdf = (f) => (f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.numero || f.file_nome)}</a>` : esc(f.numero));
+  const cond = (f) => [f.minimo ? `min. ${money(f.minimo)}` : "", f.percentuale ? `${String(f.percentuale).replace(".", ",")}%` : ""].filter(Boolean).join(" + ");
+  const riga = (f) => { const r = e.get(f), scad = f.scadenza && !r ? (f.scadenza < TODAY ? ` <span class="pill dapagare">scaduta il ${esc(fmtShort(f.scadenza))}</span>` : ` <span class="hint">scade il ${esc(fmtShort(f.scadenza))}</span>`) : "";
+    return `<tr><td>${esc(f.data ? fmtShort(f.data) : "")}</td><td>${esc(f.fornitore)}<div class="hint">${pdf(f)}</div></td><td>${esc(f.film || f.tipo)}${f.voci && f.voci.length > 1 ? `<div class="hint">${esc(f.voci.map((v) => v.film).join(", "))}</div>` : ""}${cond(f) ? `<div class="hint">${esc(cond(f))}</div>` : ""}</td><td class="n">${money(f.totale)}</td>
+      <td>${r ? `<span class="pill saldato">in prima nota</span><div class="hint">${esc(r.map((x) => fmtShort(x.data)).join(", "))}</div>` : `<span class="pill acconto">da registrare</span>${scad}`}</td></tr>`; };
+  const tabella = (lista) => `<div class="tbl-wrap"><table><thead><tr><th>Data</th><th>Fornitore · n.</th><th>Film · condizioni</th><th class="n">Totale</th><th>Prima nota</th></tr></thead><tbody>${lista.map(riga).join("")}</tbody></table></div>`;
+  return `<div class="panel" style="margin-top:18px"><h2>Fatture dei film</h2>
+    <span class="hint">${S.fatture.length} fatture nella cartella Drive · ${S.fatture.length - da.length - nonLette.length} già in prima nota · <b>${da.length} da registrare${da.length ? ` (${money(tot(da))})` : ""}</b>. Il bilancio usa solo la prima nota: le fatture già registrate non si contano due volte.</span>
+    ${da.length ? `<h3 style="margin:12px 0 4px">Da registrare in prima nota</h3>${tabella(da.sort((a, b) => (a.scadenza || a.data || "").localeCompare(b.scadenza || b.data || "")))}` : `<p class="hint">Tutte le fatture lette risultano in prima nota. ✓</p>`}
+    ${nonLette.length ? `<p class="hint">Non riesco a leggere ${nonLette.length} ${nonLette.length === 1 ? "PDF" : "PDF"} (non sembrano fatture elettroniche): ${nonLette.map((f) => `<a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.file_nome)}</a>`).join(", ")}.</p>` : ""}
+    <details style="margin-top:10px"><summary>Tutte le fatture (${S.fatture.length - nonLette.length})</summary>${tabella(S.fatture.filter((f) => f.totale).sort((a, b) => (b.data || "").localeCompare(a.data || "")))}</details></div>`;
+}
 function renderBilancio() {
   const years = [...new Set([...S.primaNota.map((r) => +r.data.slice(0, 4)), new Date().getFullYear()])].sort();
   $("#pn-years").innerHTML = years.map((y) => `<button type="button" data-y="${y}" aria-pressed="${S.pnYear === y}">${y}</button>`).join("");
@@ -1707,6 +1774,7 @@ function renderBilancio() {
     daFare > 0 && sommaU(list.filter((r) => r.evento && eventi.some((x) => x.futuro && x.nome === r.evento))) > 0 && (() => { const fut = eventi.filter((x) => x.futuro && (x.u > 0 || x.e > 0)).sort((a, b) => a.quando.localeCompare(b.quando)), tu = r2(fut.reduce((s, x) => s + x.u, 0)), te = r2(fut.reduce((s, x) => s + x.e, 0));
       return `<div class="insight"><span class="k">Soldi anticipati per eventi futuri</span>Per <b>${fut.length}</b> ${fut.length === 1 ? "evento non ancora svolto" : "eventi non ancora svolti"} sono già usciti <b>${money(tu)}</b>${te > 0 ? ` e già entrati ${money(te)} (prevendite, acconti)` : ""}: sono da recuperare con gli incassi.
         <details class="perdite"><summary>Vedi quali sono</summary><ul>${fut.map((x) => `<li><span>${esc(x.nome)}${x.quando < "9999" ? ` <small>${esc(fmtShort(x.quando))}</small>` : ""}</span><b>${money(x.u)}${x.e > 0 ? ` <small>· entrati ${money(x.e)}</small>` : ""}</b></li>`).join("")}</ul></details></div>`; })(),
+    (() => { const da = S.isAdmin ? fattureDaRegistrare().filter((f) => (f.data || "").startsWith(Y)) : []; return da.length ? `<div class="insight"><span class="k">Fatture non ancora in prima nota</span><b>${da.length}</b> ${da.length === 1 ? "fattura" : "fatture"} dei film per <b>${money(r2(da.reduce((s, f) => s + f.totale, 0)))}</b> non ${da.length === 1 ? "risulta" : "risultano"} ancora in prima nota: il risultato qui sopra non le conta. Elenco in fondo, in «Fatture dei film».</div>` : ""; })(),
     inPerdita.length > 0 && `<div class="insight"><span class="k">Eventi in perdita</span><b>${inPerdita.length}</b> eventi su ${fatti.length} già svolti chiudono in negativo, per un totale di ${money(Math.abs(inPerdita.reduce((s, x) => s + x.m, 0)))}. Il peggiore: <b>${esc(inPerdita[inPerdita.length - 1].nome)}</b>.${daFare ? ` ${daFare === 1 ? "Non conto l'evento che deve ancora svolgersi: ha già dei costi ma non ancora gli incassi." : `Non conto i ${daFare} eventi che devono ancora svolgersi: hanno già dei costi ma non ancora gli incassi.`}` : ""}
       <details class="perdite"><summary>Vedi quali sono</summary><ul>${inPerdita.slice().reverse().map((x) => `<li><span>${esc(x.nome)}${x.settore ? ` <small>${esc(x.settore)}</small>` : ""}</span><b class="neg">${money(x.m)}</b></li>`).join("")}</ul></details></div>`,
   ].filter(Boolean).join("");
@@ -1744,6 +1812,7 @@ function renderBilancio() {
       <div class="tbl-wrap"><table><thead><tr><th>Evento</th><th>Settore</th><th class="n">Entrate</th><th class="n">Costi diretti</th><th class="n">Margine</th><th class="n">Spettatori</th><th class="n">Margine / spett.</th></tr></thead><tbody>
       ${eventi.map((x) => `<tr${x.futuro ? ' class="muted"' : ""}><td>${esc(x.nome)}${x.futuro ? ` <span class="pill opzione">${x.quando < "9999" ? `da fare · ${esc(fmtShort(x.quando))}` : "da fare"}</span>` : ""}</td><td>${esc(x.settore)}</td><td class="n">${money(x.e)}</td><td class="n">${money(x.u)}</td><td class="n ${x.m < 0 && !x.futuro ? "neg" : ""}">${x.futuro ? `<span class="hint">${money(x.m)} finora</span>` : `<b>${money(x.m)}</b>`}</td><td class="n">${(!x.futuro && x.sp) || "—"}</td><td class="n ${x.m < 0 && !x.futuro ? "neg" : ""}">${x.sp && !x.futuro ? money(r2(x.m / x.sp)) : "—"}</td></tr>`).join("")}
       </tbody></table></div></div>` : ""}
+    ${pannelloFatture()}
     <div class="panel" style="margin-top:18px"><h2>Movimenti</h2><span class="hint">${movs.length} movimenti${S.pnSett || q ? " filtrati" : ""} · ${money(sommaE(movs))} entrate · ${money(sommaU(movs))} uscite</span>
       <div class="pn-filters"><select id="pn-sett" aria-label="Settore"><option value="">Tutti i settori</option>${settori.map((s) => `<option${s === S.pnSett ? " selected" : ""}>${esc(s)}</option>`).join("")}</select>
         <input type="search" id="pn-q" placeholder="Cerca descrizione, controparte, evento…" value="${esc(S.pnQ)}" aria-label="Cerca nei movimenti"></div>
@@ -2887,7 +2956,7 @@ $("#btn-export").onclick = async () => {
   const stamp = TODAY;
   // tutto quello che l'app ha caricato: si può riaprire con qualsiasi programma (JSON) e serve per ripartire se si perde il database
   const tabelle = { prenotazioni: S.bookings, iscrizioni_turni: S.signups, spese: S.expenses, cassa: S.cassa, sopralluoghi: S.sopralluoghi, film: S.films, proiezioni: S.proiezioni,
-    c1: S.c1, prima_nota: S.primaNota, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
+    c1: S.c1, prima_nota: S.primaNota, fatture_film: S.fatture, donatori: S.donatori, schede: S.schede, richieste_email: S.requests, volontari: (S.volontari || []).map(({ token, cf_impronta, badge, ...v }) => v),
     pulizie_fatte: S.pulizieFatte, scorte: S.scorte, conteggi: S.conteggi, turni_cambi: S.cambi, richieste_film: S.richiesteFilm, catalogo_sas: S.catalogo, programmazione_sas: S.programmazione,
     email_sas: S.sasEmail, rubrica: S.rubrica, rubrica_posta: S.rubricaMail, info_social: Object.values(S.eventiInfo || {}), domande_social: S.socialDomande, tariffe: S.tariffe, preventivo: S.preventivo,
     convenzione: S.conv, persone: S.profiles, gruppi: S.gruppi, gruppi_persone: S.gruppiPersone, organizzazione_sala: organizzazioneSala, preparazione_eventi: S.preparazione, proiezioni_escluse: proiezioniEscluse };
@@ -3132,7 +3201,10 @@ function coseDaFareFilm() {
     if (film && S.isAdmin && S.primaNota.length && ultima && ultima.data >= addDays(TODAY, -60) && !nx) {
       const n = normFilm(f.titolo);
       const pagato = S.primaNota.some((r) => r.uscite > 0 && normFilm(`${r.evento} ${r.descrizione}`).includes(n));
-      if (!pagato) out.push({ f, testo: "Il noleggio non risulta ancora in prima nota: controllare la fattura del distributore", entro: addDays(ultima.data, 30), azione: "", nuovo: false, prima: ultima.data });
+      // la fattura nella cartella Drive: se è già abbinata a una riga della prima nota il noleggio è registrato
+      const fattura = (S.fatture || []).find((x) => normFilm(`${x.film} ${(x.voci || []).map((v) => v.film).join(" ")}`).includes(n.slice(0, 10)));
+      const registrata = fattura && statoFatture().has(fattura);
+      if (!pagato && !registrata) out.push({ f, testo: fattura ? `Fattura del noleggio arrivata (${fattura.fornitore} n. ${fattura.numero}, ${money(fattura.totale)}): da registrare in prima nota` : "Il noleggio non risulta ancora in prima nota e la fattura non è nella cartella «FATTURE FILM»", entro: addDays(ultima.data, 30), azione: "", nuovo: false, prima: ultima.data });
     }
   }
   return out.sort((a, b) => a.entro.localeCompare(b.entro));
@@ -4595,6 +4667,9 @@ function coseDiOggi() {
   // scorte da comprare
   if ((S.scorte || []).length) add("info", `Scorte da comprare: ${S.scorte.map((x) => x.cosa.toLowerCase()).join(", ")}`, "#serata");
   // gruppo pulizie: cosa hanno segnalato negli ultimi tre giorni
+  // fatture dei film non ancora in prima nota con la scadenza vicina o passata
+  if (S.isAdmin && (S.fatture || []).length) fattureDaRegistrare().filter((f) => f.scadenza && f.scadenza <= addDays(TODAY, 7)).forEach((f) =>
+    add(f.scadenza < TODAY ? "warn" : "info", `Fattura ${f.fornitore}${f.film ? ` («${f.film}»)` : ""} di ${money(f.totale)} ${f.scadenza < TODAY ? "scaduta" : "in scadenza"} il ${fmtShort(f.scadenza)}: non risulta ancora in prima nota`, "#bilancio"));
   // promemoria del backup (una volta al mese, per l'amministratore)
   if (S.isAdmin) { let ub = null; try { ub = localStorage.getItem("sala-ultimo-backup"); } catch (e) {}
     const gg = ub ? Math.floor((Date.now() - new Date(ub)) / 864e5) : null;
@@ -4674,6 +4749,7 @@ function aggiornamentiSql() {
     ["016_sas.sql", "Richieste al SAS", !manca(e2.sas) && k.has("sas_contatti")],
     ["017_sas_email.sql", "Email del SAS lette da sole", !manca(e2.sasEmail) && k.has("sync_sas")],
     ["020_modifiche_calendario.sql", "Eventi del calendario modificabili dall'app", S.bookings.length ? "fissato_app" in S.bookings[0] : undefined],
+    ["046_fatture_film.sql", "Fatture dei film lette dalla cartella Drive e confrontate con la prima nota", S.isAdmin ? !S.loadErr2?.fatture : undefined, "Poi ricopia lo script Google (2026-11-04.6) e aggiungi «+fatture» alla MODALITA"],
     ["045_elimina_eventi_oggi.sql", "Elimina eventi da La Sala oggi", undefined, "Eseguire dopo 044: conserva le esclusioni dalle importazioni"],
     ["044_preparazione_eventi.sql", "La Sala oggi e preparazione condivisa degli eventi", !e2.preparazione, "Stati e responsabili per tecnico, chiavi, allestimento e cassa"],
     ["043_cassa_badge_senza_account.sql", "Cassa con badge senza account sul computer", !!S.cassaBadgeDisponibile, "Abilitare i cassieri nella scheda del volontario"],
@@ -4711,6 +4787,7 @@ function lettureScript() {
     ["Programmazione da Cinebot", s.cinebot, 6, "cinema"],
     ["Borderò C1", s.c1, 24 * 10, "c1"],
     ["Prima nota", s.primaNota, 24 * 14, "primanota"],
+    ...(s.fatture ? [["Fatture dei film", s.fatture, 24 * 3, "fatture"]] : []),
     ["Email del SAS", s.sas, 6, "sas"],
     ...(s.rubrica ? [["Contatti della posta (rubrica)", s.rubrica, 24, "rubrica"]] : []),
   ].map(([cosa, quando, ore, modo]) => ({ cosa, quando, modo, stato: !quando ? "mai" : (Date.now() - new Date(quando)) / 36e5 > ore ? "vecchia" : "ok" }));

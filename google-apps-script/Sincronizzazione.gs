@@ -36,6 +36,8 @@
  *                  La prima volta legge tutta la posta inviata, un po' alla volta; poi ogni 6 ore le novità.
  *                  Se nell'account della sala lo script serve solo per questo, basta MODALITA = "rubrica": non tocca
  *                  il calendario e non legge le richieste (lo fa già l'altro account). Lo SYNC_TOKEN può essere lo stesso.
+ *                  aggiungi "+fatture" per leggere i PDF delle fatture dei film (cartelle Drive «FATTURE FILM 2026», «… 2027»…;
+ *                  oppure gli id in FATTURE_CARTELLA, separati da virgola): l'app le confronta con la prima nota
  *   CALENDARIO     (facoltativo) id del calendario; se manca si usa quello principale dell'account
  *   CALENDARIO_DAL (facoltativo) da che giorno leggere il calendario, es. 2026-01-01; se manca, gli ultimi 60 giorni
  *   CALENDARIO_APP (per la modalità "+app") id di un SECONDO calendario, es. «Sala – App», che lo script tiene
@@ -51,7 +53,7 @@
  * Poi esegui una volta la funzione "installa": chiede i permessi e attiva il controllo ogni 15 minuti.
  */
 
-const VERSIONE_SCRIPT = "2026-11-04.5"; // compare nel log: serve a capire se il codice incollato è l'ultimo
+const VERSIONE_SCRIPT = "2026-11-04.6"; // compare nel log: serve a capire se il codice incollato è l'ultimo
 const FUSO = "Europe/Rome";
 const GIORNI_INDIETRO = 60;
 const GIORNI_AVANTI = 400;
@@ -84,6 +86,7 @@ function sincronizza() {
     if (cfg.modalita.indexOf("email") !== -1) prova("email", () => leggiEmail(cfg));
     if (cfg.modalita.indexOf("cinema") !== -1) prova("cinema", () => leggiCinebotSeServe(cfg));
     if (cfg.modalita.indexOf("c1") !== -1) prova("c1", () => leggiC1(cfg, 30));
+    if (cfg.modalita.indexOf("fatture") !== -1) prova("fatture", () => leggiFatture(cfg, false));
     if (cfg.modalita.indexOf("primanota") !== -1) prova("prima nota", () => leggiPrimaNota(cfg, false));
     if (cfg.modalita.indexOf("sas") !== -1) prova("sas", () => leggiSas(cfg));
     if (/(^|\+)app(\+|$)/.test(cfg.modalita)) prova("calendario dell'app", () => sincronizzaCalendarioApp(cfg));
@@ -603,35 +606,92 @@ function testoDaPdfLocale(byte) {
   const b = Array.from(byte, (x) => x & 255);
   const latin = (arr) => arr.map((c) => String.fromCharCode(c)).join("");
   const testo = latin(b);
-  const pezzi = [];
-  const reStream = /<<([^]*?)>>\s*stream\r?\n/g;
+  // gli oggetti del PDF, con il contenuto dei flussi già decompresso
+  const oggetti = {}, flussi = [];
+  const reObj = /(\d+)\s+0\s+obj\b/g;
   let m;
-  while ((m = reStream.exec(testo))) {
-    const inizio = reStream.lastIndex, fine = testo.indexOf("endstream", inizio);
-    if (fine < 0) break;
-    let dati = b.slice(inizio, fine);
-    if (/FlateDecode/.test(m[1])) { try { dati = inflaZlib(dati); } catch (e) { continue; } }
-    else if (/\/Filter/.test(m[1])) continue;
-    pezzi.push(latin(dati));
+  while ((m = reObj.exec(testo))) {
+    const fineObj = testo.indexOf("endobj", reObj.lastIndex);
+    if (fineObj < 0) break;
+    const corpo = testo.slice(reObj.lastIndex, fineObj);
+    const st = corpo.match(/stream\r?\n/);
+    let dizionario = corpo, dati = null;
+    if (st) {
+      dizionario = corpo.slice(0, st.index);
+      const inizio = reObj.lastIndex + st.index + st[0].length, fine = testo.indexOf("endstream", inizio);
+      dati = b.slice(inizio, fine);
+      if (/FlateDecode/.test(dizionario)) { try { dati = inflaZlib(dati); } catch (e) { dati = null; } }
+      else if (/\/Filter/.test(dizionario)) dati = null;
+    }
+    oggetti[m[1]] = { diz: dizionario, dati: dati ? latin(dati) : null };
+    if (dati) flussi.push(oggetti[m[1]]);
+    reObj.lastIndex = fineObj;
   }
+  // tabelle ToUnicode dei caratteri: nome del font → { codice → testo }, e quanti byte per codice
+  const hexTesto = (h) => { let s = ""; for (let i = 0; i + 3 < h.length + 1; i += 4) s += String.fromCharCode(parseInt(h.substr(i, 4), 16)); return s; };
+  const leggiCmap = (c) => {
+    const mappa = {}; let larghezza = 1;
+    (c.match(/begincodespacerange([\s\S]*?)endcodespacerange/) || [, ""])[1].replace(/<([0-9a-f]+)>/i, (_, h) => (larghezza = h.length / 2));
+    (c.match(/beginbfchar[\s\S]*?endbfchar/g) || []).forEach((blocco) => blocco.replace(/<([0-9a-f]+)>\s*<([0-9a-f]+)>/gi, (_, a, d) => (mappa[parseInt(a, 16)] = hexTesto(d))));
+    (c.match(/beginbfrange[\s\S]*?endbfrange/g) || []).forEach((blocco) => blocco.replace(/<([0-9a-f]+)>\s*<([0-9a-f]+)>\s*(<[0-9a-f]+>|\[[^\]]*\])/gi, (_, a, z, d) => {
+      const da = parseInt(a, 16), a2 = parseInt(z, 16);
+      if (d[0] === "<") { const base = parseInt(d.slice(1, -1), 16); for (let k = da; k <= a2; k++) mappa[k] = String.fromCharCode(base + k - da); }
+      else (d.match(/<([0-9a-f]+)>/gi) || []).forEach((x, i) => (mappa[da + i] = hexTesto(x.slice(1, -1))));
+    }));
+    return { mappa, larghezza };
+  };
+  const font = {};
+  Object.keys(oggetti).forEach((n) => {
+    (oggetti[n].diz.match(/\/Font\s*<<([\s\S]*?)>>/g) || []).forEach((d) => d.replace(/\/([^\s/<>]+)\s+(\d+)\s+0\s+R/g, (_, nome, rif) => {
+      const f = oggetti[rif], tu = f && (f.diz.match(/\/ToUnicode\s+(\d+)\s+0\s+R/) || [])[1];
+      if (tu && oggetti[tu] && oggetti[tu].dati) font[nome] = leggiCmap(oggetti[tu].dati);
+    }));
+  });
+  const decodifica = (codici, f) => {
+    if (!f) return codici.map((c) => String.fromCharCode(c)).join("");
+    let s = "";
+    for (let i = 0; i < codici.length; i += f.larghezza) {
+      const c = f.larghezza === 2 ? (codici[i] << 8) | (codici[i + 1] || 0) : codici[i];
+      s += f.mappa[c] != null ? f.mappa[c] : f.larghezza === 1 ? String.fromCharCode(c) : "";
+    }
+    return s;
+  };
+  const daLetterale = (q) => {
+    const out = [];
+    for (let i = 1; i < q.length - 1; i++) {
+      let c = q[i];
+      if (c === "\\") {
+        const n = q[++i];
+        const ott = q.slice(i).match(/^[0-7]{1,3}/);
+        if (ott) { out.push(parseInt(ott[0], 8)); i += ott[0].length - 1; continue; }
+        out.push(({ n: 10, r: 13, t: 9, b: 8, f: 12 })[n] ?? n.charCodeAt(0));
+      } else out.push(c.charCodeAt(0));
+    }
+    return out;
+  };
   const voci = [];
-  pezzi.forEach((p) => {
-    const blocchi = p.split(/\bBT\b/).slice(1);
-    blocchi.forEach((bl) => {
+  flussi.forEach((fl) => {
+    const p = fl.dati;
+    if (!/\bBT\b/.test(p)) return;
+    // pagina capovolta («1 0 0 -1 … cm»): le righe vanno dall'alto in basso con la y che cresce
+    const giu = /^\s*q?\s*1 0 -?0 -1 [-\d.]+ [-\d.]+ cm/.test(p) ? -1 : 1;
+    let fontCorrente = null;
+    p.split(/\bBT\b/).slice(1).forEach((bl) => {
       const corpo = bl.split(/\bET\b/)[0];
       let x = 0, y = 0;
       const tm = corpo.match(/([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm/);
       if (tm) { x = +tm[5]; y = +tm[6]; }
-      const td = corpo.match(/([-\d.]+)\s+([-\d.]+)\s+Td/);
+      const td = corpo.match(/([-\d.]+)\s+([-\d.]+)\s+T[dD]/);
       if (!tm && td) { x = +td[1]; y = +td[2]; }
       let s = "";
-      const reStr = /\((?:\\.|[^\\)])*\)\s*Tj|\[(?:[^\]]*)\]\s*TJ/g;
+      const reOp = /\/([^\s/]+)\s+[-\d.]+\s+Tf|\((?:\\.|[^\\)])*\)\s*Tj|<[0-9a-fA-F\s]*>\s*Tj|\[(?:[^\]]*)\]\s*TJ/g;
       let k;
-      while ((k = reStr.exec(corpo))) {
-        const parti = k[0].match(/\((?:\\.|[^\\)])*\)/g) || [];
-        s += parti.map((q) => q.slice(1, -1).replace(/\\([nrtbf()\\]|\d{1,3})/g, (_, e) => ({ n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", "(": "(", ")": ")", "\\": "\\" }[e] || String.fromCharCode(parseInt(e, 8))))).join("");
+      while ((k = reOp.exec(corpo))) {
+        if (k[1]) { fontCorrente = font[k[1]] || null; continue; }
+        const parti = k[0].match(/\((?:\\.|[^\\)])*\)|<[0-9a-fA-F\s]*>/g) || [];
+        s += parti.map((q) => q[0] === "<" ? decodifica((q.slice(1, -1).replace(/\s/g, "").match(/../g) || []).map((h) => parseInt(h, 16)), fontCorrente) : decodifica(daLetterale(q), fontCorrente)).join("");
       }
-      if (s.trim()) voci.push({ x, y, s: s.trim() });
+      if (s.trim()) voci.push({ x, y: y * giu, s: s.trim() });
     });
   });
   // righe dall'alto in basso, parole da sinistra a destra (tolleranza di 3 punti sull'altezza)
@@ -1284,6 +1344,91 @@ function provaRubrica() {
   Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("rubrica") === -1 ? "  ← manca «+rubrica»: la lettura automatica non partirà" : ""));
   leggiRubrica(cfg, mem, !mem.getProperty("RUBRICA_FINE"));
   Logger.log(JSON.stringify(firma("Buongiorno, vi confermo la data.\n\nCordiali saluti\nMario Rossi\nPresidente\nCoro San Biagio APS\ncell. 347 123 4567\nwww.corosanbiagio.it\n\nIl giorno lun 3 nov, Sala ha scritto:\n> 333 0000000")));
+}
+
+/* ---------------- fatture dei film (PDF della fattura elettronica su Drive) ---------------- */
+// legge solo i PDF nuovi o cambiati (20 per giro); a ogni giro manda anche l'elenco dei PDF presenti,
+// così una fattura spostata o cancellata dalla cartella sparisce anche dall'app
+function cartelleFatture() {
+  const p = PropertiesService.getScriptProperties().getProperty("FATTURE_CARTELLA");
+  if (p) return p.split(",").map((id) => DriveApp.getFolderById(id.trim()));
+  const out = [], it = DriveApp.searchFolders('title contains "FATTURE FILM" and trashed = false');
+  while (it.hasNext()) out.push(it.next());
+  return out;
+}
+function leggiFatture(cfg, tutte) {
+  const mem = PropertiesService.getScriptProperties();
+  const viste = tutte ? {} : JSON.parse(mem.getProperty("FATTURE_VISTE") || "{}"), nuoveViste = {};
+  const presenti = [], daLeggere = [];
+  cartelleFatture().forEach((cartella) => {
+    const it = cartella.getFiles();
+    while (it.hasNext()) {
+      const f = it.next();
+      if (!/\.pdf$/i.test(f.getName()) && f.getMimeType() !== "application/pdf") continue;
+      const t = f.getLastUpdated().getTime();
+      presenti.push(f.getId());
+      if (viste[f.getId()] === t) nuoveViste[f.getId()] = t; else daLeggere.push(f);
+    }
+  });
+  const fatture = daLeggere.slice(0, 20).map((f) => {
+    nuoveViste[f.getId()] = f.getLastUpdated().getTime();
+    let dati = {};
+    try { dati = analizzaFattura(testoDaPdfLocale(f.getBlob().getBytes())); } catch (e) { Logger.log("Fattura «" + f.getName() + "» non letta: " + e.message); }
+    return Object.assign({ file_id: f.getId(), file_nome: f.getName(), link: f.getUrl() }, dati);
+  });
+  const firma = presenti.slice().sort().join(",");
+  if (!fatture.length && mem.getProperty("FATTURE_PRESENTI") === firma) return;
+  const esito = rpc(cfg, "sync_fatture_push", { p_fatture: fatture, p_presenti: presenti });
+  mem.setProperty("FATTURE_VISTE", JSON.stringify(nuoveViste));
+  mem.setProperty("FATTURE_PRESENTI", firma);
+  Logger.log("Fatture dei film: " + presenti.length + " PDF nelle cartelle, lette " + fatture.length + (daLeggere.length > 20 ? " (altre " + (daLeggere.length - 20) + " al prossimo giro)" : "") + " → " + JSON.stringify(esito));
+  fatture.filter((x) => !x.totale).forEach((x) => Logger.log("  ATTENZIONE: in «" + x.file_nome + "» non trovo il totale: non sembra una fattura elettronica"));
+}
+// da eseguire a mano: rilegge tutte le fatture e scrive nel log cosa trova
+function provaFatture() {
+  const cfg = leggiImpostazioni();
+  Logger.log("Script versione " + VERSIONE_SCRIPT + " · modalità: " + cfg.modalita + (cfg.modalita.indexOf("fatture") === -1 ? "  ← manca «+fatture»: la lettura automatica non partirà" : ""));
+  leggiFatture(cfg, true);
+}
+// i dati di una fattura elettronica (layout dell'Agenzia delle Entrate / DocEasy) dal testo del PDF
+function analizzaFattura(testo) {
+  const t = String(testo || "").replace(/\r/g, ""), righe = t.split("\n").map((r) => r.trim());
+  const num = (s) => Number(String(s).replace(/\./g, "").replace(",", ".")) || 0;
+  const iso = (d) => { const m = String(d || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2) : ""; };
+  const fornitore = ((righe[0] || "").match(/^(.*?)(?=(?:via|viale|v\.le|piazza|p\.zza|corso|largo|strada|vicolo|contrada|localit[aà]|loc\.)\s)/i) || [])[1] || (righe[0] || "").split(/P\.IVA/i)[0];
+  const doc = t.match(/\b(TD0\d)\s*-\s*(\S+)\s+(\d{1,2}\/\d{1,2}\/\d{4})/);
+  const totale = num((t.match(/Totale documento:\s*([\d.,]+)/i) || [])[1]);
+  // riepilogo IVA: una riga per aliquota con aliquota, imponibile e imposta
+  let imponibile = 0, imposta = 0;
+  const iR = righe.findIndex((r) => /^% IVA Natura/i.test(r)), fR = righe.findIndex((r, i) => i > iR && /^Totale documento/i.test(r));
+  if (iR >= 0) righe.slice(iR + 1, fR > 0 ? fR : iR + 4).forEach((r) => { const n = r.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || []; if (n.length >= 3) { imponibile += num(n[n.length - 2]); imposta += num(n[n.length - 1]); } });
+  const iP = righe.findIndex((r) => /Data scadenza/i.test(r));
+  const scadenza = iP >= 0 ? iso(((righe.slice(iP + 1, iP + 4).find((r) => /\d{1,2}\/\d{1,2}\/\d{4}\s+[\d.,]+$/.test(r)) || "").match(/(\d{1,2}\/\d{1,2}\/\d{4})\s+[\d.,]+$/) || [])[1]) : "";
+  // causale e descrizione delle righe: film, date, condizioni
+  const iD = righe.findIndex((r) => /^# Descrizione/i.test(r)), fD = righe.findIndex((r, i) => i > iD && /^Documenti di trasporto|^Dati di riepilogo/i.test(r));
+  const corpo = righe.slice(iD + 1, fD > 0 ? fD : iD + 12).join("\n"), causale = righe.slice(1, iD).join(" ");
+  const tutto = causale + "\n" + corpo;
+  const pulisci = (s) => String(s || "").replace(/\s+/g, " ").replace(/^[-–\s]+|[-–\s]+$/g, "").trim();
+  let film = (tutto.match(/Titolo Film\s*:\s*(.+?)\s*-\s*(?:Tenitura|Minimo|MG\b|Programmazione|Data|\d)/i) || [])[1]
+    || (tutto.match(/CONDIZIONI:[\d.,]+%--(.+?)--/i) || [])[1]
+    || (corpo.match(/^\d+\s+(.+?)\s*\(\d{4}\)\s*-\s*\d{1,2}\/\d{1,2}\/\d{4}/m) || [])[1]
+    || (corpo.match(/(?:programmazione|noleggio)\s+(?:per\s+programmazione\s+)?film\s+([^\n]+?)(?:\s+[\d.,]{6,}|$)/im) || [])[1] || "";
+  // più film nella stessa fattura (es. licenze MPLC): una voce per riga
+  const voci = [];
+  corpo.replace(/^\d+\s+(.+?)\s*\(\d{4}\)\s*-\s*(\d{1,2}\/\d{1,2}\/\d{4})/gm, (_, f, d) => voci.push({ film: pulisci(f), data: iso(d) }));
+  const dataProiezione = iso((tutto.match(/(?:Tenitura|Programmazione)\s*:\s*(?:dal\s+)?(\d{1,2}\/\d{1,2}\/\d{4})/i) || [])[1])
+    || iso((tutto.match(/--(\d{1,2}\/\d{1,2}\/\d{4})--/) || [])[1]) || (voci[0] && voci[0].data) || "";
+  const perc = (tutto.match(/(?:al|CONDIZIONI:|\/)\s*(\d{1,2}(?:[.,]\d+)?)\s*%/i) || [])[1];
+  const minimo = (tutto.match(/(?:Minimo Garantito\s*:?\s*|MG\s*)([\d.,]+)/i) || [])[1];
+  const tipo = /cinebot|biglietti online|vendita biglietti|licenza annuale/i.test(fornitore + " " + corpo) ? "Servizi Cinebot" : /mplc/i.test(fornitore) ? "Licenza MPLC" : "Noleggio film";
+  const nota = doc && doc[1] === "TD04";
+  return {
+    fornitore: pulisci(fornitore).replace(/([a-z])([A-Z]{3,})$/, "$1 $2"), tipo_documento: doc ? doc[1] : "", numero: doc ? doc[2] : "", data: doc ? iso(doc[3]) : "",
+    tipo, film: pulisci(film), voci: voci.length > 1 ? voci : [], data_proiezione: dataProiezione,
+    percentuale: perc ? Number(perc.replace(",", ".")) : null, minimo: minimo ? num(minimo) : null,
+    imponibile: Math.round((nota ? -imponibile : imponibile) * 100) / 100, iva: Math.round((nota ? -imposta : imposta) * 100) / 100,
+    totale: Math.round((nota ? -totale : totale) * 100) / 100, scadenza,
+  };
 }
 
 /* ---------------- prova manuale ---------------- */

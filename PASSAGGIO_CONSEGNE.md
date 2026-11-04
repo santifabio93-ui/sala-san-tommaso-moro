@@ -10,7 +10,7 @@ Il manuale completo delle funzioni è il [README](README.md).
 |---|---|---|
 | **L'app** (pagine web) | repository GitHub `sala-san-tommaso-moro`, pubblicato con GitHub Pages | quello che si apre dal telefono o dal computer |
 | **Il database** | progetto Supabase (indirizzo in `config.js`) | tutti i dati: prenotazioni, turni, cassa, prima nota, rubrica… |
-| **Lo script Google** | Google Apps Script, nell'account Google di chi gestisce la sala (e, per la rubrica, nell'account della sala) | ogni 15 minuti legge calendario, email, Cinebot, C1, prima nota e porta tutto nel database |
+| **Lo script Google** | Google Apps Script, nell'account Google di chi gestisce la sala (e, per la rubrica, nell'account della sala) | ogni 15 minuti legge calendario, email, Cinebot, C1, prima nota, fatture dei film e porta tutto nel database |
 | **I link senza account** | cartella `modulo/` | turni dei volontari, pulizie, contapersone, scheda di richiesta, info per i social |
 
 Non c'è un server da tenere acceso: GitHub, Supabase e Google funzionano da soli e sono gratuiti con l'uso attuale.
@@ -48,7 +48,7 @@ Per ognuno, la persona che subentra deve essere aggiunta **prima** che serva:
 
 **Lo script Google si è fermato o va spostato in un altro account**
 1. Su script.google.com crea un progetto, incolla `Sincronizzazione.gs` e `appsscript.json` (in *Impostazioni progetto* spunta «Mostra il file manifest»).
-2. *Impostazioni progetto → Proprietà script*: `SUPABASE_URL`, `SUPABASE_KEY` (la chiave pubblica), `SYNC_TOKEN` (il codice di sincronizzazione, in Supabase nella tabella `sync_tokens`), `MODALITA` (es. `lettura+email+cinema+c1+primanota+sas+foglietto`).
+2. *Impostazioni progetto → Proprietà script*: `SUPABASE_URL`, `SUPABASE_KEY` (la chiave pubblica), `SYNC_TOKEN` (il codice di sincronizzazione, in Supabase nella tabella `sync_tokens`), `MODALITA` (es. `lettura+email+cinema+c1+primanota+fatture+sas+foglietto`).
 3. Esegui `installa` e concedi i permessi. Le funzioni `prova…` scrivono nel log cosa leggono.
 
 **L'app non si apre o mostra dati vecchi**

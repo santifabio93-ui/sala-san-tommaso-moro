@@ -416,6 +416,15 @@ distributore, costo per spettatore; giorni di utilizzo e ricavo medio per affitt
 **conto economico riclassificato** a margine di contribuzione. Sono costi variabili le categorie U01, U02, U03, U05,
 U06, U07, U15 (legate agli spettacoli); le altre uscite sono costi fissi di struttura (`CAT_VARIABILI` in `app.js`).
 
+## Fatture dei film
+Esegui `supabase/046_fatture_film.sql`. Con `+fatture` nella proprietà `MODALITA` lo script Google legge i PDF delle
+fatture elettroniche nelle cartelle Drive «FATTURE FILM …» (o in quelle indicate da `FATTURE_CARTELLA`): distributore,
+numero, data, film, percentuale e minimo, imponibile, IVA, totale, scadenza; le note di credito (TD04) valgono in
+negativo. Rilegge solo i PDF nuovi o cambiati (20 per volta); per provarlo esegui `provaFatture`. Le fatture **non
+diventano movimenti**: l'app le abbina alla prima nota (stesso importo, totale o imponibile, con distributore o film
+uguale, anche se pagate in più righe o due fatture in un bonifico) e mostra solo quelle che mancano, in **Economia →
+Bilancio → Fatture dei film** e in *Oggi* quando la scadenza è vicina o passata. Così nulla si conta due volte.
+
 ## Donazioni
 Esegui `supabase/008_donatori.sql` nel SQL Editor (si può rieseguire). In **Economia → Donazioni** (solo amministratori)
 le donazioni arrivano dalla prima nota (categoria E03, donatore = colonna «Controparte»): totale, numero di donatori,
