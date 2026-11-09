@@ -1,4 +1,4 @@
-import { riepilogoDanza } from "./danza.js?v=2026-11-01.89";
+import { riepilogoDanza } from "./danza.js?v=2026-11-01.98";
 // Scheda unica di una prenotazione: usa soltanto i dati già caricati e i permessi della vista.
 export function schedaEvento(S, b, h) {
   const { esc, money, fmtDay, orario, coverage, turni, signupsFor, schedaDi, siaeStato, residuo, isRecurring } = h;

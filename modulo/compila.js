@@ -1,6 +1,6 @@
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { sezioneDanza, erroriDanza, riepilogoDanza } from "../danza.js?v=2026-11-01.89";
-import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.89";
+import { sezioneDanza, erroriDanza, riepilogoDanza } from "../danza.js?v=2026-11-01.98";
+import { avviaParrocchia } from "./parrocchia.js?v=2026-11-01.98";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // Scheda di richiesta online: l'organizzatore la apre dal link personale (?t=codice), senza account.
@@ -219,7 +219,7 @@ async function avvia() {
   if (!percorso) {
     // Compatibilità con una pagina HTML precedente ancora nella cache.
     const versione = document.createElement('p'); versione.className = 'hint no-print';
-    versione.append('Versione modulo 2026-11-01.89 · ');
+    versione.append('Versione modulo 2026-11-01.98 · ');
     percorso = document.createElement('span'); percorso.id = 'modulo-percorso'; versione.append(percorso);
     document.getElementById('app').before(versione);
   }

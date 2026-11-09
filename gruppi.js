@@ -1,4 +1,4 @@
-import { creaImportatoreGruppi } from "./gruppi-importa.js?v=2026-11-01.88";
+import { creaImportatoreGruppi } from "./gruppi-importa.js?v=2026-11-01.98";
 // I gruppi sono distinti dai contatti e possono condividere le stesse persone.
 export function creaGruppi({client,getState,contatti,esc,onChange,toast}) {
  const importa=creaImportatoreGruppi({client,getState,contatti,esc,onChange,toast});

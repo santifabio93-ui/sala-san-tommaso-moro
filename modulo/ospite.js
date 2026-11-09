@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm';
-import { TIPI_EVENTO_SALA, SEZIONI_EVENTO_SALA, campoEventoSala } from '../evento-sala-campi.js?v=2026-11-01.86';
+import { TIPI_EVENTO_SALA, SEZIONI_EVENTO_SALA, campoEventoSala } from '../evento-sala-campi.js?v=2026-11-01.98';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const root=document.getElementById('ospite-body'), cfg=window.SALA_CONFIG || {};
 const token=new URLSearchParams(location.search).get('t');

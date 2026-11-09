@@ -1,15 +1,15 @@
-import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.97";
-import { creaPreparazione } from "./preparazione.js?v=2026-11-01.97";
-import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.97";
+import { situazioneEconomica, semaforoEconomicoHTML } from "./economia-semaforo.js?v=2026-11-01.98";
+import { creaPreparazione } from "./preparazione.js?v=2026-11-01.98";
+import { riepilogoDanza, VERIFICHE_DANZA } from "./danza.js?v=2026-11-01.98";
 // © 2026 Fabio Santi, per la Sala San Tommaso Moro. Tutti i diritti riservati (vedi LICENSE).
-import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.97";
-import { creaGruppi } from "./gruppi.js?v=2026-11-01.97";
-import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.97";
-import { schedaEvento } from "./evento.js?v=2026-11-01.97";
+import { creaPreventivi } from "./preventivo-affitto.js?v=2026-11-01.98";
+import { creaGruppi } from "./gruppi.js?v=2026-11-01.98";
+import { creaEventiSala } from "./evento-sala.js?v=2026-11-01.98";
+import { schedaEvento } from "./evento.js?v=2026-11-01.98";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/+esm";
 
 // da aggiornare a ogni rilascio insieme ai «?v=» in index.html, così i browser scaricano subito la nuova versione
-const VERSIONE = "2026-11-01.97";
+const VERSIONE = "2026-11-01.98";
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const eur = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
@@ -4756,8 +4756,10 @@ function aggiornamentiSql() {
     ["042_schede_danza.sql", "Domande condizionali e verifiche per saggi di danza", S.schede.length ? "danza_verifica" in S.schede[0] : undefined],
     ["041_importa_collegamenti_gruppi.sql", "Importazione dei collegamenti confermati fra persone e gruppi", undefined, "Eseguire dopo 040 per usare Importa collegamenti in Rubrica"],
     ["040_gruppi_persone.sql", "Gruppi, persone e collegamento alle attività", !S.loadErr2?.gruppi],
+    ["039_eventi_sala_inviti.sql", "Eventi organizzati dalla Sala: informazioni interne e sezioni per gli ospiti", undefined, "Serve per il link «ospite» degli eventi della Sala"],
     ["038_parrocchia_esigenze.sql", "Dettagli delle attività parrocchiali: spazi, programma e dotazioni", undefined, "Eseguire dopo 037 per validare le richieste dettagliate"],
     ["037_richieste_parrocchia.sql", "Richieste parrocchiali gratuite con approvazione", S.schede.length ? "percorso" in S.schede[0] : undefined],
+    ["036_turni_iscrizione_simultanea.sql", "Iscrizioni ai turni senza doppioni se si tocca due volte", undefined, "Eseguire dopo 031"],
     ["035_siae_sala.sql", "SIAE a carico della sala per gli eventi co-organizzati", S.schede.length ? "siae_sala" in S.schede[0] : undefined],
     ["034_rubrica.sql", "Rubrica della sala (anche i contatti della posta)", !manca(e2.rubrica) && !manca(e2.rubricaMail), "Per i contatti della posta: ricopia lo script Google (2026-11-03.2) e aggiungi «+rubrica» alla MODALITA dell'account della sala"],
     ["033_info_social.sql", "Info per i social: il link con tutte le informazioni di ogni evento e le domande", k.has("social_token") && !manca(e2.socialDomande), "Se l'avevi già eseguito, rieseguilo: ora ci sono anche le domande"],
